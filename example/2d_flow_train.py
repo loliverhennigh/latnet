@@ -12,7 +12,7 @@ from sailfish.lb_single import LBFluidSim
 from sailfish.sym import S
 
 # import latnet librarys
-from latnet.random_boundary.random_obj
+from latnet.controller import LatNetController
 from latnet.boundary
 
 # import important librarys

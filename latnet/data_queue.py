@@ -14,29 +14,34 @@ import psutil as ps
 from Queue import Queue
 import threading
 
-class data_queue:
-  def __init__(self, base_dir='/data/test', sailfish_sim_maker=None, max_queue=50, nr_threads=1):
+class DataQueue:
+  def __init__(self, config, sailfish_sim):
 
     # base dir where all the xml files are
-    self.base_dir = base_dir
-    self.sailfish_sim_maker
+    self.base_dir = config.base_dir
+    self.sailfish_sim = sailfish_sim
+
+    # configs
+    self.batch_size     = config.batch_size
+    self.num_simulation = config.num_simulations
+    self.seq_length     = config.seq_length
 
     # lists to store the datasets
     self.geometries    = []
     self.lat_states    = []
 
     # make queue
-    self.max_queue = max_queue
+    self.max_queue = config.max_queue
     self.queue = Queue() # to stop halting when putting on the queue
     self.queue_batches = []
 
     # Start threads
-    for i in xrange(nr_threads):
+    for i in xrange(config.nr_threads):
       get_thread = threading.Thread(target=self.data_worker)
       get_thread.daemon = True
       get_thread.start()
 
-  def create_dataset(self, num_sim=4):
+  def create_dataset(self):
 
     print("clearing old data...")
     self.geometries = []
@@ -49,24 +54,20 @@ class data_queue:
       p.communicate()
 
     print("generating simulations...")
-    for i in tqdm(xrange(num_sim)):
-      save_dir = self.base_dir + "sim_" + str(i)
-      ctrl = LBSimulationController(BoxSimulation)
-      ctrl.run()
-
+    for i in tqdm(xrange(self.num_simulations)):
       with open(os.devnull, 'w') as devnull:
         p = ps.subprocess.Popen(('mkdir -p ' + save_dir).split(' '), stdout=devnull, stderr=devnull)
         p.communicate()
-        p = ps.subprocess.Popen(cmd.split(' '), stdout=devnull, stderr=devnull)
-        print(p)
-        p.communicate()
+      save_dir = self.base_dir + "sim_" + str(i)
+      ctrl = LBSimulationController(BoxSimulation)
+      ctrl.run()
 
     print("parsing new data")
     self.parse_data()
 
   def data_worker(self):
     while True:
-      geometry_file, steady_flow_files = self.queue.get()
+      geometry_file, lat_files = self.queue.get()
 
       # load geometry file
       geometry_array = np.load(geometry_file)
@@ -75,58 +76,56 @@ class data_queue:
 
 
       # load flow file
-      steady_flow_array = []
-      for flow_file in steady_flow_files:
-        steady_flow = np.load(flow_file)
-        steady_flow = steady_flow.f.dist0a[:,1:-1,1:self.size+1]
-        steady_flow = np.swapaxes(steady_flow, 0, 1)
-        steady_flow = np.swapaxes(steady_flow, 1, 2)
-        steady_flow = np.expand_dims(steady_flow, axis=0)
-        steady_flow_array.append(steady_flow)
-      steady_flow_array = np.concatenate(steady_flow_array, axis=0)
-      steady_flow_array = steady_flow_array.astype(np.float32)
+      lat_array = []
+      for lat_file in lat_files:
+        lat = np.load(flow_file)
+        lat = lat.f.dist0a[:,1:-1,1:self.size+1]
+        lat = np.swapaxes(lat, 0, 1)
+        lat = np.swapaxes(lat, 1, 2)
+        lat = np.expand_dims(lat, axis=0)
+        lat_array.append(lat)
+      lat_array = np.concatenate(lat_array, axis=0)
+      lat_array = lat_array.astype(np.float32)
   
       # add to que
-      self.queue_batches.append((geometry_array, steady_flow_array))
+      self.queue_batches.append((geometry_array, lat_array))
       self.queue.task_done()
   
   def parse_data(self): 
     # get list of all simulation runs
-    sim_dir = glob.glob(self.base_dir + "size_" + str(self.size) + "/dim_" + str(self.dim) + "/*/")
+    sim_dir = glob.glob(self.base_dir + "*/")
 
     # clear lists
     self.geometries = []
-    self.steady_flows = []
+    self.lat_states = []
 
     print("parsing dataset")
     for d in tqdm(sim_dir):
       # get needed filenames
       geometry_file    = d + "flow_geometry.npy"
-      steady_flow_file = glob.glob(d + "*.0.cpoint.npz")
-      steady_flow_file.sort()
+      lat_file = glob.glob(d + "*.0.cpoint.npz")
+      lat_file.sort()
 
       # check file for geometry
       if not os.path.isfile(geometry_file):
         continue
 
-      if len(steady_flow_file) == 0:
+      if len(lat_file) == 0:
         continue
 
       # store name
       self.geometries.append(geometry_file)
-      self.steady_flows.append(steady_flow_file)
+      self.lat_states.append(lat_file)
 
-    self.num_sim = len(self.geometries)
-
-  def minibatch(self, batch_size=32, seq_length=5):
+  def minibatch(self, state=None, boundary=None):
 
     for i in xrange(self.max_queue - len(self.queue_batches) - self.queue.qsize()):
-      sim_index = np.random.randint(0, self.num_sim)
-      if len(self.steady_flows[sim_index]) - seq_length < 1:
+      sim_index = np.random.randint(0, self.num_simulations)
+      if len(self.lat_statess[sim_index]) - seq_length < 1:
         exit()
         continue
-      sim_start_index = np.random.randint(0, len(self.steady_flows[sim_index])-seq_length)
-      self.queue.put((self.geometries[sim_index], self.steady_flows[sim_index][sim_start_index:sim_start_index+seq_length]))
+      sim_start_index = np.random.randint(0, len(self.lat_states[sim_index])-seq_length)
+      self.queue.put((self.geometries[sim_index], self.lat_states[sim_index][sim_start_index:sim_start_index+seq_length]))
    
     #print("num in queue")
     #print(len(self.queue_batches))
@@ -141,7 +140,7 @@ class data_queue:
       self.queue_batches.pop(0)
     batch_boundary = np.stack(batch_boundary, axis=0)
     batch_data = np.stack(batch_data, axis=0)
-    return batch_boundary, batch_data
+    return {boundary:batch_boundary, state:batch_data}
 
 """
 #dataset = Sailfish_data("../../data/", size=32, dim=3)
