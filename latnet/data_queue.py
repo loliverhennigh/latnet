@@ -10,6 +10,7 @@ import gc
 import skfmm
 import time
 import psutil as ps
+import shutil
 
 from Queue import Queue
 import threading
@@ -18,14 +19,17 @@ class DataQueue:
   def __init__(self, config, sailfish_sim):
 
     # base dir where all the xml files are
-    self.base_dir = config.base_dir
+    self.base_dir = config.sailfish_sim_dir
     self.sailfish_sim = sailfish_sim
 
     # configs
-    self.batch_size     = config.batch_size
-    self.num_simulation = config.num_simulations
-    self.seq_length     = config.seq_length
-
+    self.batch_size      = config.batch_size
+    self.num_simulations = config.num_simulations
+    self.seq_length      = config.seq_length
+    shape = config.shape.split('x')
+    shape = map(int, shape)
+    self.shape = shape
+ 
     # lists to store the datasets
     self.geometries    = []
     self.lat_states    = []
@@ -49,18 +53,16 @@ class DataQueue:
     self.queue_batches = []
     with self.queue.mutex:
       self.queue.queue.clear()
-    with open(os.devnull, 'w') as devnull:
-      p = ps.subprocess.Popen(('rm -r ' + self.base_dir + "sim_*").split(' '), stdout=devnull, stderr=devnull)
-      p.communicate()
+    shutil.rmtree(self.base_dir)
 
     print("generating simulations...")
     for i in tqdm(xrange(self.num_simulations)):
       with open(os.devnull, 'w') as devnull:
+        save_dir = self.base_dir + "sim_" + str(i)
         p = ps.subprocess.Popen(('mkdir -p ' + save_dir).split(' '), stdout=devnull, stderr=devnull)
         p.communicate()
-      save_dir = self.base_dir + "sim_" + str(i)
-      ctrl = LBSimulationController(BoxSimulation)
-      ctrl.run()
+        p = ps.subprocess.Popen((self.sailfish_sim + ' --checkpoint_file=' + save_dir + "/flow").split(' '), stdout=devnull, stderr=devnull)
+        p.communicate()
 
     print("parsing new data")
     self.parse_data()
@@ -78,8 +80,8 @@ class DataQueue:
       # load flow file
       lat_array = []
       for lat_file in lat_files:
-        lat = np.load(flow_file)
-        lat = lat.f.dist0a[:,1:-1,1:self.size+1]
+        lat = np.load(lat_file)
+        lat = lat.f.dist0a[:,1:-1,1:self.shape[0]+1]
         lat = np.swapaxes(lat, 0, 1)
         lat = np.swapaxes(lat, 1, 2)
         lat = np.expand_dims(lat, axis=0)
@@ -121,26 +123,32 @@ class DataQueue:
 
     for i in xrange(self.max_queue - len(self.queue_batches) - self.queue.qsize()):
       sim_index = np.random.randint(0, self.num_simulations)
-      if len(self.lat_statess[sim_index]) - seq_length < 1:
-        exit()
-        continue
-      sim_start_index = np.random.randint(0, len(self.lat_states[sim_index])-seq_length)
-      self.queue.put((self.geometries[sim_index], self.lat_states[sim_index][sim_start_index:sim_start_index+seq_length]))
+      sim_start_index = np.random.randint(0, len(self.lat_states[sim_index])-self.seq_length)
+      self.queue.put((self.geometries[sim_index], self.lat_states[sim_index][sim_start_index:sim_start_index+self.seq_length]))
    
-    #print("num in queue")
-    #print(len(self.queue_batches))
-    while len(self.queue_batches) < batch_size:
-      time.sleep(0.01)
+    while len(self.queue_batches) < self.batch_size:
+      print("spending time waiting for queue")
+      time.sleep(1.01)
 
     batch_boundary = []
     batch_data = []
-    for i in xrange(batch_size): 
+    for i in xrange(self.batch_size): 
       batch_boundary.append(self.queue_batches[0][0].astype(np.float32))
       batch_data.append(self.queue_batches[0][1])
       self.queue_batches.pop(0)
     batch_boundary = np.stack(batch_boundary, axis=0)
     batch_data = np.stack(batch_data, axis=0)
     return {boundary:batch_boundary, state:batch_data}
+
+class FuncThread(threading.Thread):
+    def __init__(self, target, *args):
+        self._target = target
+        self._args = args
+        threading.Thread.__init__(self)
+ 
+    def run(self):
+        self._target(*self._args)
+ 
 
 """
 #dataset = Sailfish_data("../../data/", size=32, dim=3)

@@ -9,12 +9,12 @@ import numpy as np
 
 FLAGS = tf.app.flags.FLAGS
 
-class Optimizer
+class Optimizer:
 
   def __init__(self, config):
     self.lr = config.lr
     if config.optimizer == "adam":
-      self.train_op = adam_updates
+      self.train_op = self.adam_updates
 
   def compute_gradients(self, loss, params):
     self.gradients = tf.gradients(loss, params)
@@ -22,12 +22,8 @@ class Optimizer
   def adam_updates(self, params, mom1=0.9, mom2=0.999):
     ''' Adam optimizer '''
     updates = []
-    if type(cost_or_grads) is not list:
-      grads = tf.gradients(cost_or_grads, params)
-    else:
-      grads = cost_or_grads
     t = tf.Variable(1., 'adam_t')
-    for p, g in zip(params, grads):
+    for p, g in zip(params, self.gradients):
       mg = tf.Variable(tf.zeros(p.get_shape()), p.name + '_adam_mg')
       if mom1>0:
         v = tf.Variable(tf.zeros(p.get_shape()), p.name + '_adam_v')
@@ -39,7 +35,7 @@ class Optimizer
       mg_t = mom2*mg + (1. - mom2)*tf.square(g)
       mg_hat = mg_t / (1. - tf.pow(mom2,t))
       g_t = v_hat / tf.sqrt(mg_hat + 1e-8)
-      p_t = p - lr * g_t
+      p_t = p - self.lr * g_t
       updates.append(mg.assign(mg_t))
       updates.append(p.assign(p_t))
     updates.append(t.assign_add(1))
