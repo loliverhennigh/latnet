@@ -26,6 +26,12 @@ class DataQueue:
     self.batch_size      = config.batch_size
     self.num_simulations = config.num_simulations
     self.seq_length      = config.seq_length
+    self.new_sim_epochs  = config.new_sim_epochs
+    self.sim_renew       = 0
+    self.iteration       = 0
+    self.num_states      = 0
+
+    # shape
     shape = config.shape.split('x')
     shape = map(int, shape)
     self.shape = shape
@@ -45,24 +51,41 @@ class DataQueue:
       get_thread.daemon = True
       get_thread.start()
 
-  def create_dataset(self):
+    # create dataset
+    if os.path.isdir(self.base_dir):
+      shutil.rmtree(self.base_dir)
+    self.create_dataset(range(self.num_simulations))
 
-    print("clearing old data...")
+  def create_dataset(self, sim_nr):
+
+    print("clearing old sim...")
     self.geometries = []
     self.lat_states = []
     self.queue_batches = []
     with self.queue.mutex:
       self.queue.queue.clear()
-    shutil.rmtree(self.base_dir)
+    for i in sim_nr:
+      if os.path.isdir(self.base_dir + "sim_" + str(i)):
+        shutil.rmtree(self.base_dir + "sim_" + str(i))
 
-    print("generating simulations...")
-    for i in tqdm(xrange(self.num_simulations)):
+    if len(sim_nr) > 1:
+      print("generating new simulations...")
+      l = tqdm(sim_nr)
+    else:
+      print("generating new simulation...")
+      l = sim_nr
+    for i in l:
       with open(os.devnull, 'w') as devnull:
         save_dir = self.base_dir + "sim_" + str(i)
         p = ps.subprocess.Popen(('mkdir -p ' + save_dir).split(' '), stdout=devnull, stderr=devnull)
         p.communicate()
-        p = ps.subprocess.Popen((self.sailfish_sim + ' --checkpoint_file=' + save_dir + "/flow").split(' '), stdout=devnull, stderr=devnull)
-        p.communicate()
+        # possibly run simulation multiple times to ensure that enough states are created
+        while True:
+          p = ps.subprocess.Popen((self.sailfish_sim + ' --checkpoint_file=' + save_dir + "/flow").split(' '), stdout=devnull, stderr=devnull)
+          p.communicate()
+          lat_file = glob.glob(save_dir + "/*.0.cpoint.npz")
+          if len(lat_file) > self.seq_length:
+            break
 
     print("parsing new data")
     self.parse_data()
@@ -92,7 +115,7 @@ class DataQueue:
       # add to que
       self.queue_batches.append((geometry_array, lat_array))
       self.queue.task_done()
-  
+ 
   def parse_data(self): 
     # get list of all simulation runs
     sim_dir = glob.glob(self.base_dir + "*/")
@@ -100,13 +123,15 @@ class DataQueue:
     # clear lists
     self.geometries = []
     self.lat_states = []
+    self.num_states = 0
 
     print("parsing dataset")
-    for d in tqdm(sim_dir):
+    for d in sim_dir:
       # get needed filenames
       geometry_file    = d + "flow_geometry.npy"
       lat_file = glob.glob(d + "*.0.cpoint.npz")
       lat_file.sort()
+      self.num_states += len(lat_file)
 
       # check file for geometry
       if not os.path.isfile(geometry_file):
@@ -121,15 +146,25 @@ class DataQueue:
 
   def minibatch(self, state=None, boundary=None):
 
+    # check to see if new data is needed
+    self.iteration += self.batch_size
+    if self.iteration > (self.num_states * self.new_sim_epochs): 
+      self.iteration -= self.new_sim_epochs * len(self.lat_states[self.sim_renew])
+      self.create_dataset([self.sim_renew])
+      self.sim_renew = (self.sim_renew + 1) % self.num_simulations
+
+    # queue up data if needed
     for i in xrange(self.max_queue - len(self.queue_batches) - self.queue.qsize()):
       sim_index = np.random.randint(0, self.num_simulations)
       sim_start_index = np.random.randint(0, len(self.lat_states[sim_index])-self.seq_length)
       self.queue.put((self.geometries[sim_index], self.lat_states[sim_index][sim_start_index:sim_start_index+self.seq_length]))
    
+    # possibly wait if data needs time to queue up
     while len(self.queue_batches) < self.batch_size:
       print("spending time waiting for queue")
       time.sleep(1.01)
 
+    # generate batch of data in the form of a feed dict
     batch_boundary = []
     batch_data = []
     for i in xrange(self.batch_size): 
@@ -139,16 +174,6 @@ class DataQueue:
     batch_boundary = np.stack(batch_boundary, axis=0)
     batch_data = np.stack(batch_data, axis=0)
     return {boundary:batch_boundary, state:batch_data}
-
-class FuncThread(threading.Thread):
-    def __init__(self, target, *args):
-        self._target = target
-        self._args = args
-        threading.Thread.__init__(self)
- 
-    def run(self):
-        self._target(*self._args)
- 
 
 """
 #dataset = Sailfish_data("../../data/", size=32, dim=3)

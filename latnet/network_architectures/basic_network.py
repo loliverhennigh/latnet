@@ -78,9 +78,10 @@ def decoder_state(y_i, lattice_size=9, extract_type=None, extract_pos=64):
 
   for i in xrange(CONFIGS['nr_downsamples']):
     filter_size = int(CONFIGS['filter_size']*pow(2,CONFIGS['nr_downsamples']-i-1))
-    y_i = transpose_conv_layer(y_i, 1, 2, filter_size, "up_conv_" + str(i))
+    y_i = transpose_conv_layer(y_i, 4, 2, filter_size, "up_conv_" + str(i), nonlinearity=nonlinearity)
+    y_i = conv_layer(y_i, 3, 1, filter_size, "conv_" + str(i), nonlinearity=nonlinearity)
 
-  y_i = conv_layer(y_i, 1, 1, lattice_size, "last_conv")
+  y_i = conv_layer(y_i, 3, 1, lattice_size, "last_conv")
   return tf.nn.tanh(y_i)
 
 

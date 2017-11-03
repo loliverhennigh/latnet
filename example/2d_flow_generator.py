@@ -115,12 +115,12 @@ class BoxSimulation(LBFluidSim):
   @classmethod
   def update_defaults(cls, defaults):
     defaults.update({
-      'max_iters': 60000,
+      'max_iters': 50000,
       'output_format': 'npy',
       'periodic_y': True,
       'periodic_x': True,
       'checkpoint_file': './lkdsfj',
-      'checkpoint_every': 120,
+      'checkpoint_every': 200,
         })
 
   @classmethod

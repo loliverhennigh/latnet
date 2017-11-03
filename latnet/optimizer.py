@@ -19,7 +19,7 @@ class Optimizer:
   def compute_gradients(self, loss, params):
     self.gradients = tf.gradients(loss, params)
 
-  def adam_updates(self, params, mom1=0.9, mom2=0.999):
+  def adam_updates(self, params, global_step, mom1=0.9, mom2=0.999):
     ''' Adam optimizer '''
     updates = []
     t = tf.Variable(1., 'adam_t')
@@ -39,5 +39,6 @@ class Optimizer:
       updates.append(mg.assign(mg_t))
       updates.append(p.assign(p_t))
     updates.append(t.assign_add(1))
+    updates.append(global_step.assign_add(1))
     return tf.group(*updates)
 

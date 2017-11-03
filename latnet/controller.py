@@ -36,24 +36,28 @@ class LatNetController(object):
             choices=[], default='512x512')
       group.add_argument('--lattice_q', help='all mode', type=int,
             choices=[9], default=9)
-      group.add_argument('--seq_length', help='all mode', type=int,
-            choices=[], default=5)
+      group.add_argument('--seq_length', help='all mode', type=int, 
+                        default=5)
       group.add_argument('--batch_size', help='all mode', type=int,
             choices=[], default=2)
       group.add_argument('--optimizer', help='all mode', type=str,
             choices=[], default='adam')
       group.add_argument('--lr', help='all mode', type=float,
-            choices=[], default=0.0005)
+                        default=0.0015)
       group.add_argument('--gpu_fraction', help='all mode', type=float,
-            choices=[], default=0.85)
+                        default=0.85)
       group.add_argument('--num_simulations', help='all mode', type=int,
-            choices=[], default=2)
+                        default=2)
       group.add_argument('--max_queue', help='all mode', type=int,
             choices=[], default=100)
+      group.add_argument('--new_sim_epochs', help='all mode', type=int,
+            choices=[], default=100)
       group.add_argument('--nr_threads', help='all mode', type=int,
-            choices=[], default=2)
+            choices=[], default=5)
       group.add_argument('--train_iterations', help='all mode', type=int,
-            choices=[], default=10000)
+            choices=[], default=1000000)
+      group.add_argument('--eval_iterations', help='all mode', type=int,
+            choices=[], default=1000)
 
     def _finish_simulation(self, subdomains, summary_receiver):
       pass
@@ -95,7 +99,7 @@ class LatNetController(object):
         all_params = tf.trainable_variables()
         self.optimizer = Optimizer(self.config)
         self.optimizer.compute_gradients(self.total_loss, all_params)
-        self.train_op = self.optimizer.train_op(all_params)
+        self.train_op = self.optimizer.train_op(all_params, global_step)
 
         # start session 
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.8)
@@ -106,11 +110,10 @@ class LatNetController(object):
         # make saver
         graph_def = sess.graph.as_graph_def(add_shapes=True)
         self.saver = Saver(self.config, self.network.network_config, graph_def)
-        self.saver.load_checkpoint()
+        self.saver.load_checkpoint(sess)
 
         # construct dataset
         self.dataset = DataQueue(self.config, self._sailfish_sim)
-        self.dataset.create_dataset()
 
         # train
         for i in xrange(sess.run(global_step), self.config.train_iterations):
@@ -120,11 +123,43 @@ class LatNetController(object):
             print("current loss is " + str(l))
             print("current step is " + str(i))
 
-          if i % 100 == 0:
+          if i % 1000 == 0:
+            print("saving...")
             self.saver.save_summary(sess, self.dataset.minibatch(self.state, self.boundary), sess.run(global_step))
-            self.saver.save_checkpoint(sess, global_step)
+            self.saver.save_checkpoint(sess, int(sess.run(global_step)))
 
     def run(self, ignore_cmdline=False):
-      pass
 
+      # parse config
+      args = sys.argv[1:]
+      self.config = self._config_parser.parse(args)
+      
+      self.network = LatNet(self.config)
+
+      with tf.Graph().as_default():
+
+        # make inputs
+        self.inputs = Inputs(self.config)
+        self.state = self.inputs.state()
+        self.boundary = self.inputs.boundary()
+
+        # make network pipe
+        self.y_1, self.compressed_boundary, self.x_2, self.y_2 = self.network.continual_unroll(self.state, self.boundary)
+
+        # start session 
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=1.0)
+        sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+        init = tf.global_variables_initializer()
+        sess.run(init)
+
+        # make saver
+        graph_def = sess.graph.as_graph_def(add_shapes=True)
+        self.saver = Saver(self.config, self.network.network_config, graph_def)
+        self.saver.load_checkpoint()
+
+        # run simulation
+        y_1_g, small_boundary_mul_g, small_boundary_add_g = sess.run([self.y_1, self.small_boundary_mul, self.small_boundary_add], feed_dict=fd)
+        for i in xrange(self.config.eval_iterations):
+          _, l = sess.run([self.train_op, self.total_loss], 
+                          feed_dict=self.dataset.minibatch(self.state, self.boundary))
 
