@@ -14,28 +14,36 @@ from saver import Saver
 class LatNetController(object):
     """Controls the execution of a LN simulation."""
 
-    def __init__(self, latnet_sim=None, sailfish_sim=None):
+    def __init__(self, eval_sim=None, train_sim=None):
 
       self._config_parser = LatNetConfigParser()
       self._sailfish_sim = sailfish_sim
       self._latnet_sim = latnet_sim
-
      
-      group = self._config_parser.add_group('Basic stuff')
+      group = self._config_parser.add_group('Basic Stuff')
+      group.add_argument('--mode', help='all modes', type=str,
+            choices=['generate_data', 'train', 'eval'], default='train')
       group.add_argument('--sailfish_sim_dir', help='train mode', type=str,
             choices=[], default='/data/sailfish_sim/')
       group.add_argument('--latnet_network_dir', help='all mode', type=str,
             choices=[], default='./network_checkpoint')
       group.add_argument('--latnet_sim_dir', help='eval mode', type=str,
             choices=[], default='./latnet_simulation')
+
+      
+      group = self._config_parser.add_group('Network Details')
       group.add_argument('--network_name', help='all mode', type=str,
             choices=[], default='basic_network')
-      group.add_argument('--mode', help='all mode', type=str,
-            choices=['train', 'eval'], default='train')
-      group.add_argument('--shape', help='all mode', type=str,
-            choices=[], default='512x512')
-      group.add_argument('--lattice_q', help='all mode', type=int,
-            choices=[9], default=9)
+
+      group = self._config_parser.add_group('Simulation Details')
+      group.add_argument('--eval_iterations', help='all mode', type=int,
+            choices=[], default=1000)
+
+      group = self._config_parser.add_group('Saver Details')
+      group.add_argument('--save_freq', help='all mode', type=int, 
+                        default=1000)
+
+      group = self._config_parser.add_group('Train Details')
       group.add_argument('--seq_length', help='all mode', type=int, 
                         default=5)
       group.add_argument('--batch_size', help='all mode', type=int,
@@ -44,6 +52,10 @@ class LatNetController(object):
             choices=[], default='adam')
       group.add_argument('--lr', help='all mode', type=float,
                         default=0.0015)
+      group.add_argument('--train_iterations', help='all mode', type=int,
+            choices=[], default=1000000)
+
+      group = self._config_parser.add_group('Data Queue Details')
       group.add_argument('--gpu_fraction', help='all mode', type=float,
                         default=0.85)
       group.add_argument('--num_simulations', help='all mode', type=int,
@@ -54,26 +66,35 @@ class LatNetController(object):
             choices=[], default=100)
       group.add_argument('--nr_threads', help='all mode', type=int,
             choices=[], default=5)
-      group.add_argument('--train_iterations', help='all mode', type=int,
-            choices=[], default=1000000)
-      group.add_argument('--eval_iterations', help='all mode', type=int,
-            choices=[], default=1000)
+
+      group = self._config_parser.add_group('Input Details')
+      group.add_argument('--shape', help='all mode', type=str,
+            choices=[], default='512x512')
+      group.add_argument('--lattice_q', help='all mode', type=int,
+            choices=[9], default=9)
+
 
     def _finish_simulation(self, subdomains, summary_receiver):
-      pass
-
-    def save_config(self, subdomains):
       pass
 
     def _load_sim(self):
       pass
 
-    def train(self):
+    def run(self):
 
       # parse config
       args = sys.argv[1:]
       self.config = self._config_parser.parse(args)
-      
+     
+      if self.config.mode == "train":
+        self.train(config)
+      elif self.config.mode == "generate_data":
+        self.generate_data(config)
+      elif self.config.mode == "eval":
+        self.eval(config)
+
+    def train(self, config):
+
       self.network = LatNet(self.config)
 
       with tf.Graph().as_default():
@@ -123,17 +144,19 @@ class LatNetController(object):
             print("current loss is " + str(l))
             print("current step is " + str(i))
 
-          if i % 1000 == 0:
+          if i % self.config.save_feq == 0:
             print("saving...")
             self.saver.save_summary(sess, self.dataset.minibatch(self.state, self.boundary), sess.run(global_step))
             self.saver.save_checkpoint(sess, int(sess.run(global_step)))
 
-    def run(self, ignore_cmdline=False):
+    def generate_data(config):
 
-      # parse config
-      args = sys.argv[1:]
-      self.config = self._config_parser.parse(args)
-      
+      sailfish_sim = self.domain.create_sailfish_simulation()
+      ctrl = LBSimulationController(sailfish_sim)
+      ctrl.run()
+
+    def eval(config):
+
       self.network = LatNet(self.config)
 
       with tf.Graph().as_default():
@@ -162,4 +185,6 @@ class LatNetController(object):
         for i in xrange(self.config.eval_iterations):
           _, l = sess.run([self.train_op, self.total_loss], 
                           feed_dict=self.dataset.minibatch(self.state, self.boundary))
+
+
 

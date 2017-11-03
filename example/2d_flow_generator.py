@@ -52,9 +52,6 @@ class BoxSubdomain(Subdomain2D):
       print("y wall")
       walls = (hy == 0) | (hy == self.gy - 1) | walls
     # x bottom
-    #x_wall = np.random.randint(0,2) 
-    #if x_wall == 1:
-    #  walls = (hx == self.gx - 1) | walls
     self.set_node(walls, self.bc)
 
     self.set_node((hx == 0) & np.logical_not(walls),
@@ -85,7 +82,7 @@ class BoxSubdomain(Subdomain2D):
 
   def make_boundary(self, hx):
     boundary = (hx == -2)
-    all_vox_files = glob.glob('../../Flow-Sculpter/data/train/**/*.binvox')
+    all_vox_files = glob.glob('../data/train/**/*.binvox')
     num_file_try = np.random.randint(2, 6)
     for i in xrange(num_file_try):
       file_ind = np.random.randint(0, len(all_vox_files))
