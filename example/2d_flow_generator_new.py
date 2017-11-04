@@ -5,8 +5,7 @@ import sys
 # import latnet
 sys.path.append('../latnet')
 from domain import Domain
-from simulation import Simulation
-from controller import Controller
+from controller import LatNetController
 import utils.binvox_rw as binvox_rw
 import numpy as np
 import glob
@@ -32,62 +31,65 @@ def floodfill(image, x, y):
                     newedge.append((s, t))
         edge = newedge
 
+def make_boundary(hx):
+  boundary = (hx == -2)
+  all_vox_files = glob.glob('../../Flow-Sculpter/data/train/**/*.binvox')
+  num_file_try = np.random.randint(2, 6)
+  for i in xrange(num_file_try):
+    file_ind = np.random.randint(0, len(all_vox_files))
+    with open(all_vox_files[file_ind], 'rb') as f:
+      model = binvox_rw.read_as_3d_array(f)
+      model = model.data[:,:,model.dims[2]/2]
+    model = np.array(model, dtype=np.int)
+    model = np.pad(model, ((1,1),(1, 1)), 'constant', constant_values=0)
+    floodfill(model, 0, 0)
+    model = np.greater(model, -0.1)
+
+    pos_x = np.random.randint(1, hx.shape[0]-model.shape[0]-1)
+    pos_y = np.random.randint(1, hx.shape[1]-model.shape[1]-1)
+    boundary[pos_x:pos_x+model.shape[0], pos_y:pos_y+model.shape[0]] = model | boundary[pos_x:pos_x+model.shape[0], pos_y:pos_y+model.shape[0]]
+
+  return boundary
 
 class TrainDomain(Domain):
   max_v = 0.1
   vel = rand_vel()
 
-  def boundary_conditions(self, hx, hy):
-
-    # set boundary
-    walls = (hx == -2) # set to all false
+  def geometry_boundary_conditions(self, hx, hy, shape):
+    walls = (hx == -2)
     y_wall = np.random.randint(0,2)
     if y_wall == 0:
-      walls = (hy == 0) | (hy == self.gy - 1) | walls
+      walls = (hy == 0) | (hy == shape[0] - 1) | walls
     obj_boundary = self.make_boundary(hx)
-    self.boundary = walls | obj_boundary
+    boundary_where = walls | obj_boundary
+    return where_boundary
 
-    # set velocity
-    self.boundary_where_velocity = (hx == 0) & np.logical_not(walls)
-    #vel = np.expand_dims(np.array(self.boundary_where_velocity, dtype=np.float32), axis=-1)
-    #self.boundary_velocity = self.vel.reshape((1,1,2)) * vel
-    self.boundary_velocity = self.vel
+  def velocity_boundary_conditions(self, hx, hy, shape):
+    where_velocity = (hx == 0) & np.logical_not(walls)
+    velocity = self.vel
+    return where_velocity, velocity
+ 
+  def density_boundary_conditions(self, hx, hy, shape):
+    where_density = (hx == shape[0] - 1) & np.logical_not(walls)
+    density = 1.0
+    return where_density, density
 
-    # set open boundarys 
-    self.boundary_where_pressure = (hx == self.gx - 1) & np.logical_not(walls)
-    #pres = np.expand_dims(np.array(self.boundary_where_pressure, dtype=np.float32), axis=-1)
-    #self.boundary_pressure = pres 
-    self.boundary_pressure = 1.0
+  def velocity_initial_conditions(self, hx, hy, shape):
+    velocity = self.vel
+    return velocity
 
-  def initial_conditions(self, hx, hy):
-    self.init_pressure = np.zeros_like(hx) + 1.0
-    self.init_velocity = np.zeros_like(hx) + self.vel
+  def density_initial_conditions(self, hx, hy, shape):
+    rho = 1.0
+    return rho
 
-  def make_boundary(self, hx):
-    boundary = (hx == -2)
-    all_vox_files = glob.glob('../../Flow-Sculpter/data/train/**/*.binvox')
-    num_file_try = np.random.randint(2, 6)
-    for i in xrange(num_file_try):
-      file_ind = np.random.randint(0, len(all_vox_files))
-      with open(all_vox_files[file_ind], 'rb') as f:
-        model = binvox_rw.read_as_3d_array(f)
-        model = model.data[:,:,model.dims[2]/2]
-      model = np.array(model, dtype=np.int)
-      model = np.pad(model, ((1,1),(1, 1)), 'constant', constant_values=0)
-      floodfill(model, 0, 0)
-      model = np.greater(model, -0.1)
-
-      pos_x = np.random.randint(1, hx.shape[0]-model.shape[0]-1)
-      pos_y = np.random.randint(1, hx.shape[1]-model.shape[1]-1)
-      boundary[pos_x:pos_x+model.shape[0], pos_y:pos_y+model.shape[0]] = model | boundary[pos_x:pos_x+model.shape[0], pos_y:pos_y+model.shape[0]]
-
-    return boundary
+  def run_file(self):
+    return __file__
 
   def __init__(self, *args, **kwargs):
     super(TrainDomain, self).__init__(*args, **kwargs)
 
 if __name__ == '__main__':
-  sim = Controller(train_sim=TrainSimulation)
+  sim = LatNetController(train_sim=TrainDomain)
   sim.run()
     
 

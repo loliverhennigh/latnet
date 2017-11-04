@@ -10,13 +10,18 @@ from sailfish.lb_base import ForceObject
 from sailfish.lb_single import LBFluidSim
 from sailfish.sym import S
 
-def Domain():
+class Domain:
 
   def __init__(self, config):
 
-    self.nx = config.nx
-    self
+    shape = config.shape.split('x')
+    shape = map(int, shape)
+    self.shape = shape
 
+    self.sailfish_sim_dir = config.sailfish_sim_dir
+    self.max_iters = config.max_iters
+    self.lb_to_ln = config.lb_to_ln
+    self.visc = config.visc
 
   def initial_conditions(self, sim, hx, hy):
     pass
@@ -24,27 +29,64 @@ def Domain():
   def boundary_conditions(self, hx, hy):
     pass
 
+  def geometry_boundary_conditions(self, hx, hy, shape):
+    pass
+
+  def velocity_boundary_conditions(self, hx, hy, shape):
+    pass
+
+  def density_boundary_conditions(self, hx, hy, shape):
+    pass
+
+  def velocity_initial_conditions(self, hx, hy, shape):
+    pass
+
+  def density_initial_conditions(self, hx, hy, shape):
+    pass
+
   def create_sailfish_simulation(self):
 
-    boundary = self.boundary
-    boundary_where_velocity = self.boundary_where_velocity
-    boundary_velocity = self.boundary_velocity
-    boundary_where_pressure = self.boundary_where_pressure 
-    boundary_pressure = self.boundary_pressure 
+    # I think I can fix these problems with inheritence but screw it for now
+    # boundary conditions
+    geometry_boundary_conditions = self.geometry_boundary_conditions
+    velocity_boundary_conditions = self.velocity_boundary_conditions
+    density_boundary_conditions = self.density_boundary_conditions
+
+    # init conditions
+    velocity_initial_conditions = self.velocity_initial_conditions
+    density_initial_conditions = self.density_initial_conditions
+
+    # update defaults
+    max_iters = self.max_sim_iters
+    lb_to_ln = self.lb_to_ln
+    visc = self.visc
 
     class SaifishSubdomain(Subdomain2D):
       
       bc = NTFullBBWall
 
       def boundary_conditions(self, hx, hy):
+        # set boundarys
+        where_boundary = geometry_boundary_conditions(hx, hy, [self.gx, self.gy])
         self.set_node(boundary, self.bc)
-        self.set_node(boundary_where_velocity, NTEquilibriumVelocity(boundary_velocity))
-        self.set_node(boundary_where_pressure, NTEquilibriumDensity(boundary_pressure))
+
+        # set velocities
+        where_velocity, velocity = velocity_boundary_conditions(hx, hy, [self.gx, self.gy])
+        self.set_node(where_velocity, NTEquilibriumVelocity(velocity))
+
+        # set densitys
+        where_density, density = density_boundary_conditions(hx, hy, [self.gx, self.gy])
+        self.set_node(where_density, NTEquilibriumDensity(density))
 
       def initial_conditions(self, sim, hx, hy):
-        sim.rho[:] = 1.0
-        sim.vx[:] = boundary_velocity[0]
-        sim.vy[:] = boundary_velocity[1]
+        # set start density
+        rho = density_initial_conditions(hx, hy,  [self.gx, self.gy])
+        sim.rho[:] = rho
+
+        # set start velocity
+        vel = velocity_initial_conditions(hx, hy,  [self.gx, self.gy])
+        sim.vx[:] = vel[0]
+        sim.vy[:] = vel[1]
    
     class SailfishSimulation(LBFluidSim): 
       subdomain = SailfishSubdomain
@@ -52,17 +94,17 @@ def Domain():
       @classmethod
       def update_defaults(cls, defaults):
         defaults.update({
-          'max_iters': 50000,
+          'max_iters': max_iters,
           'output_format': 'npy',
           'periodic_y': True,
           'periodic_x': True,
-          'checkpoint_file': './lkdsfj',
-          'checkpoint_every': 120,
+          'checkpoint_file': sailfish_sim_dir,
+          'checkpoint_every': lb_to_ln,
           })
 
       @classmethod
       def modify_config(cls, config):
-        config.visc   = 0.1
+        config.visc   = visc
 
       def __init__(self, *args, **kwargs):
         super(SailfishSimulation, self).__init__(*args, **kwargs)

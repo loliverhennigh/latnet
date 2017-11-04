@@ -10,6 +10,7 @@ from loss import Loss
 from inputs import Inputs
 from optimizer import Optimizer
 from saver import Saver
+from domain import Domain
 
 class LatNetController(object):
     """Controls the execution of a LN simulation."""
@@ -17,27 +18,31 @@ class LatNetController(object):
     def __init__(self, eval_sim=None, train_sim=None):
 
       self._config_parser = LatNetConfigParser()
-      self._sailfish_sim = sailfish_sim
-      self._latnet_sim = latnet_sim
+      self._train_sim = train_sim
+      self._eval_sim = eval_sim
      
       group = self._config_parser.add_group('Basic Stuff')
       group.add_argument('--mode', help='all modes', type=str,
             choices=['generate_data', 'train', 'eval'], default='train')
       group.add_argument('--sailfish_sim_dir', help='train mode', type=str,
-            choices=[], default='/data/sailfish_sim/')
+                        default='/data/sailfish_sim/')
       group.add_argument('--latnet_network_dir', help='all mode', type=str,
-            choices=[], default='./network_checkpoint')
+                        default='./network_checkpoint')
       group.add_argument('--latnet_sim_dir', help='eval mode', type=str,
-            choices=[], default='./latnet_simulation')
+                        default='./latnet_simulation')
 
       
       group = self._config_parser.add_group('Network Details')
       group.add_argument('--network_name', help='all mode', type=str,
-            choices=[], default='basic_network')
+                        default='basic_network')
 
       group = self._config_parser.add_group('Simulation Details')
-      group.add_argument('--eval_iterations', help='all mode', type=int,
-            choices=[], default=1000)
+      group.add_argument('--visc', help='all mode', type=float,
+                        default=0.1)
+      group.add_argument('--max_iters', help='all mode', type=int,
+                        default=1000)
+      group.add_argument('--lb_to_ln', help='all mode', type=int,
+                        default=120)
 
       group = self._config_parser.add_group('Saver Details')
       group.add_argument('--save_freq', help='all mode', type=int, 
@@ -47,13 +52,13 @@ class LatNetController(object):
       group.add_argument('--seq_length', help='all mode', type=int, 
                         default=5)
       group.add_argument('--batch_size', help='all mode', type=int,
-            choices=[], default=2)
+                        default=2)
       group.add_argument('--optimizer', help='all mode', type=str,
-            choices=[], default='adam')
+                        default='adam')
       group.add_argument('--lr', help='all mode', type=float,
                         default=0.0015)
       group.add_argument('--train_iterations', help='all mode', type=int,
-            choices=[], default=1000000)
+                        default=1000000)
 
       group = self._config_parser.add_group('Data Queue Details')
       group.add_argument('--gpu_fraction', help='all mode', type=float,
@@ -87,11 +92,11 @@ class LatNetController(object):
       self.config = self._config_parser.parse(args)
      
       if self.config.mode == "train":
-        self.train(config)
+        self.train(self.config)
       elif self.config.mode == "generate_data":
-        self.generate_data(config)
+        self.generate_data(self.config)
       elif self.config.mode == "eval":
-        self.eval(config)
+        self.eval(self.config)
 
     def train(self, config):
 
@@ -134,7 +139,7 @@ class LatNetController(object):
         self.saver.load_checkpoint(sess)
 
         # construct dataset
-        self.dataset = DataQueue(self.config, self._sailfish_sim)
+        self.dataset = DataQueue(self.config, self._train_sim)
 
         # train
         for i in xrange(sess.run(global_step), self.config.train_iterations):
@@ -149,13 +154,13 @@ class LatNetController(object):
             self.saver.save_summary(sess, self.dataset.minibatch(self.state, self.boundary), sess.run(global_step))
             self.saver.save_checkpoint(sess, int(sess.run(global_step)))
 
-    def generate_data(config):
+    def generate_data(self, config):
 
-      sailfish_sim = self.domain.create_sailfish_simulation()
+      sailfish_sim = self._train_sim.create_sailfish_simulation()
       ctrl = LBSimulationController(sailfish_sim)
       ctrl.run()
 
-    def eval(config):
+    def eval(self, config):
 
       self.network = LatNet(self.config)
 
@@ -182,7 +187,7 @@ class LatNetController(object):
 
         # run simulation
         y_1_g, small_boundary_mul_g, small_boundary_add_g = sess.run([self.y_1, self.small_boundary_mul, self.small_boundary_add], feed_dict=fd)
-        for i in xrange(self.config.eval_iterations):
+        for i in xrange(self.config.max_iters):
           _, l = sess.run([self.train_op, self.total_loss], 
                           feed_dict=self.dataset.minibatch(self.state, self.boundary))
 

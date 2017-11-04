@@ -16,11 +16,11 @@ from Queue import Queue
 import threading
 
 class DataQueue:
-  def __init__(self, config, sailfish_sim):
+  def __init__(self, config, train_sim):
 
     # base dir where all the xml files are
     self.base_dir = config.sailfish_sim_dir
-    self.sailfish_sim = sailfish_sim
+    self.train_sim = train_sim
 
     # configs
     self.batch_size      = config.batch_size
@@ -81,7 +81,8 @@ class DataQueue:
         p.communicate()
         # possibly run simulation multiple times to ensure that enough states are created
         while True:
-          p = ps.subprocess.Popen((self.sailfish_sim + ' --checkpoint_file=' + save_dir + "/flow").split(' '), stdout=devnull, stderr=devnull)
+          print('./' + self.train_sim.script_name + ' --mode=generate_data --sailfish_sim_dir=' + save_dir + "/flow")
+          p = ps.subprocess.Popen(('./' + self.train_sim.script_name + ' --mode=generate_data --sailfish_sim_dir=' + save_dir + "/flow").split(' '), stdout=devnull, stderr=devnull)
           p.communicate()
           lat_file = glob.glob(save_dir + "/*.0.cpoint.npz")
           if len(lat_file) > self.seq_length:
