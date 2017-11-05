@@ -15,6 +15,18 @@ import shutil
 from Queue import Queue
 import threading
 
+def mobius_extract_pad(dat, pos, radius):
+  shape = dat.shape
+  pad_bottom_x = int(max(-(pos[0] - radius), 0))
+  pad_top_x = int(max(-(shape[0] - pos[0] + radius), 0))
+  pad_bottom_y = int(max(-(pos[1] - radius), 0))
+  pad_top_y = int(max(-(shape[1] - pos[1] + radius), 0))
+  dat = np.pad(dat, [[0,0], [pad_bottom_x, pad_top_x], [pad_bottom_y, pad_top_y], [0,0]], 'wrap')
+  new_pos_x = pos[0] + pad_bottom_x
+  new_pos_y = pos[1] + pad_bottom_y
+  dat_extract_pad = dat[:,pos[0]-radius:pos[0]+radius, pos[1]-radius:pos[1]+radius]
+  return dat_extract_pad
+
 class DataQueue:
   def __init__(self, config, train_sim):
 
@@ -32,9 +44,12 @@ class DataQueue:
     self.num_states      = 0
 
     # shape
-    shape = config.shape.split('x')
-    shape = map(int, shape)
-    self.shape = shape
+    sim_shape = config.sim_shape.split('x')
+    sim_shape = map(int, sim_shape)
+    self.sim_shape = sim_shape
+    input_shape = config.input_shape.split('x')
+    input_shape = map(int, input_shape)
+    self.input_shape = input_shape
  
     # lists to store the datasets
     self.geometries    = []
@@ -81,8 +96,9 @@ class DataQueue:
         p.communicate()
         # possibly run simulation multiple times to ensure that enough states are created
         while True:
-          print('./' + self.train_sim.script_name + ' --mode=generate_data --sailfish_sim_dir=' + save_dir + "/flow")
-          p = ps.subprocess.Popen(('./' + self.train_sim.script_name + ' --mode=generate_data --sailfish_sim_dir=' + save_dir + "/flow").split(' '), stdout=devnull, stderr=devnull)
+          print('./' + self.train_sim.script_name + ' --run_mode=generate_data --sailfish_sim_dir=' + save_dir + "/flow")
+          #p = ps.subprocess.Popen(('./' + self.train_sim.script_name + ' --mode=generate_data --sailfish_sim_dir=' + save_dir + "/flow").split(' '), stdout=devnull, stderr=devnull)
+          p = ps.subprocess.Popen(('./' + self.train_sim.script_name + ' --run_mode=generate_data --sailfish_sim_dir=' + save_dir + "/flow").split(' '))
           p.communicate()
           lat_file = glob.glob(save_dir + "/*.0.cpoint.npz")
           if len(lat_file) > self.seq_length:
@@ -93,28 +109,32 @@ class DataQueue:
 
   def data_worker(self):
     while True:
-      geometry_file, lat_files = self.queue.get()
+      geometry_file, lat_files, pos, padding_decrease_seq = self.queue.get()
 
       # load geometry file
       geometry_array = np.load(geometry_file)
-      geometry_array = np.expand_dims(geometry_array, axis=0)
+      geometry_array = geometry_array.astype(np.float32)
       geometry_array = geometry_array[:,1:-1,1:-1]
-
+      geometry_array = np.expand_dims(geometry_array, axis=0)
+      geometry_array = mobius_extract_pad(geometry_array, pos, self.input_shape[0]/2)
 
       # load flow file
-      lat_array = []
-      for lat_file in lat_files:
+      lat_out = []
+      lat_in = None
+      for i, lat_file in zip(lat_files):
         lat = np.load(lat_file)
-        lat = lat.f.dist0a[:,1:-1,1:self.shape[0]+1]
+        lat = lat.f.dist0a[:,1:-1,1:self.sim_shape[0]+1]
+        lat = lat.astype(np.float32)
         lat = np.swapaxes(lat, 0, 1)
         lat = np.swapaxes(lat, 1, 2)
         lat = np.expand_dims(lat, axis=0)
-        lat_array.append(lat)
-      lat_array = np.concatenate(lat_array, axis=0)
-      lat_array = lat_array.astype(np.float32)
+        if i == 0:
+          lat_in = mobius_extract_pad(lat, pos, self.input_shape[0]/2)
+        lat = mobius_extract_pad(lat, pos, self.input_shape[0]/2 - padding_decrease_seq[i])
+        lat_out.append(lat)
   
       # add to que
-      self.queue_batches.append((geometry_array, lat_array))
+      self.queue_batches.append((geometry_array, lat_in, lat_out))
       self.queue.task_done()
  
   def parse_data(self): 
@@ -145,7 +165,7 @@ class DataQueue:
       self.geometries.append(geometry_file)
       self.lat_states.append(lat_file)
 
-  def minibatch(self, state=None, boundary=None):
+  def minibatch(self, state_in=None, state_out=None, boundary=None, padding_decrease_seq=None):
 
     # check to see if new data is needed
     self.iteration += self.batch_size
@@ -158,7 +178,10 @@ class DataQueue:
     for i in xrange(self.max_queue - len(self.queue_batches) - self.queue.qsize()):
       sim_index = np.random.randint(0, self.num_simulations)
       sim_start_index = np.random.randint(0, len(self.lat_states[sim_index])-self.seq_length)
-      self.queue.put((self.geometries[sim_index], self.lat_states[sim_index][sim_start_index:sim_start_index+self.seq_length]))
+      rand_pos = [np.random.randint(0, self.sim_shape[0]), np.random.randint(0, self.sim_shape[1])]
+      self.queue.put((self.geometries[sim_index], 
+                      self.lat_states[sim_index][sim_start_index:sim_start_index+self.seq_length], 
+                      rand_pos, padding_decrease_seq))
    
     # possibly wait if data needs time to queue up
     while len(self.queue_batches) < self.batch_size:
@@ -167,14 +190,22 @@ class DataQueue:
 
     # generate batch of data in the form of a feed dict
     batch_boundary = []
-    batch_data = []
+    batch_state_in = []
+    batch_state_out = []
     for i in xrange(self.batch_size): 
       batch_boundary.append(self.queue_batches[0][0].astype(np.float32))
-      batch_data.append(self.queue_batches[0][1])
+      batch_state_in.append(self.queue_batches[0][1])
+      batch_state_out.append(self.queue_batches[0][2])
       self.queue_batches.pop(0)
+
+    # concate batches together
+    new_batch_state_out = []
+    for i in xrange(self.seq_length):
+      new_batch_state_out.append(np.stack(batch_state_out[:][i], axis=0))
+    batch_state_out = new_batch_state_out
+    batch_state_in = np.stack(batch_state_in, axis=0)
     batch_boundary = np.stack(batch_boundary, axis=0)
-    batch_data = np.stack(batch_data, axis=0)
-    return {boundary:batch_boundary, state:batch_data}
+    return {boundary:batch_boundary, state_in:batch_state_in, state_out:batch_state_out}
 
 """
 #dataset = Sailfish_data("../../data/", size=32, dim=3)

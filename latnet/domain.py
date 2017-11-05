@@ -10,16 +10,19 @@ from sailfish.lb_base import ForceObject
 from sailfish.lb_single import LBFluidSim
 from sailfish.sym import S
 
-class Domain:
+# import external librarys
+import numpy as np
+
+class Domain(object):
 
   def __init__(self, config):
 
-    shape = config.shape.split('x')
-    shape = map(int, shape)
-    self.shape = shape
+    sim_shape = config.sim_shape.split('x')
+    sim_shape = map(int, sim_shape)
+    self.sim_shape = sim_shape
 
     self.sailfish_sim_dir = config.sailfish_sim_dir
-    self.max_iters = config.max_iters
+    self.max_sim_iters = config.max_sim_iters
     self.lb_to_ln = config.lb_to_ln
     self.visc = config.visc
 
@@ -57,18 +60,20 @@ class Domain:
     density_initial_conditions = self.density_initial_conditions
 
     # update defaults
+    shape = self.sim_shape
+    sailfish_sim_dir = self.sailfish_sim_dir
     max_iters = self.max_sim_iters
     lb_to_ln = self.lb_to_ln
     visc = self.visc
 
-    class SaifishSubdomain(Subdomain2D):
+    class SailfishSubdomain(Subdomain2D):
       
       bc = NTFullBBWall
 
       def boundary_conditions(self, hx, hy):
         # set boundarys
         where_boundary = geometry_boundary_conditions(hx, hy, [self.gx, self.gy])
-        self.set_node(boundary, self.bc)
+        self.set_node(where_boundary, self.bc)
 
         # set velocities
         where_velocity, velocity = velocity_boundary_conditions(hx, hy, [self.gx, self.gy])
@@ -77,6 +82,12 @@ class Domain:
         # set densitys
         where_density, density = density_boundary_conditions(hx, hy, [self.gx, self.gy])
         self.set_node(where_density, NTEquilibriumDensity(density))
+
+        # save geometry
+        save_geometry = np.concatenate([np.array(np.expand_dims(where_boundary, axis=-1), dtype=np.float32),
+             np.array(velocity).reshape(1,1,2) * np.array(np.expand_dims(where_velocity, axis=-1), dtype=np.float32),
+                             density *  np.array(np.expand_dims(where_density, axis=-1), dtype=np.float32)], axis=-1)
+        np.save(sailfish_sim_dir + "_geometry.npy", save_geometry)
 
       def initial_conditions(self, sim, hx, hy):
         # set start density
@@ -91,6 +102,14 @@ class Domain:
     class SailfishSimulation(LBFluidSim): 
       subdomain = SailfishSubdomain
 
+      
+      @classmethod
+      def add_options(cls, group, dim):
+        group.add_argument('--sailfish_sim_dir', help='all modes', type=str,
+                              default='')
+        group.add_argument('--run_mode', help='all modes', type=str,
+                              default='')
+
       @classmethod
       def update_defaults(cls, defaults):
         defaults.update({
@@ -100,16 +119,21 @@ class Domain:
           'periodic_x': True,
           'checkpoint_file': sailfish_sim_dir,
           'checkpoint_every': lb_to_ln,
+          'lat_nx': shape[0],
+          'lat_ny': shape[1]
           })
 
       @classmethod
       def modify_config(cls, config):
         config.visc   = visc
+        config.mode   = "batch"
 
       def __init__(self, *args, **kwargs):
         super(SailfishSimulation, self).__init__(*args, **kwargs)
 
-    return SailfishSimulation 
+    ctrl = LBSimulationController(SailfishSimulation)
+
+    return ctrl
 
   def get_compressed_state(self, pos, radius):
     pass

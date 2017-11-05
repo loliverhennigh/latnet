@@ -22,7 +22,7 @@ class LatNetController(object):
       self._eval_sim = eval_sim
      
       group = self._config_parser.add_group('Basic Stuff')
-      group.add_argument('--mode', help='all modes', type=str,
+      group.add_argument('--run_mode', help='all modes', type=str,
             choices=['generate_data', 'train', 'eval'], default='train')
       group.add_argument('--sailfish_sim_dir', help='train mode', type=str,
                         default='/data/sailfish_sim/')
@@ -37,10 +37,12 @@ class LatNetController(object):
                         default='basic_network')
 
       group = self._config_parser.add_group('Simulation Details')
+      group.add_argument('--sim_shape', help='all mode', type=str,
+                        default='512x512')
       group.add_argument('--visc', help='all mode', type=float,
                         default=0.1)
-      group.add_argument('--max_iters', help='all mode', type=int,
-                        default=1000)
+      group.add_argument('--max_sim_iters', help='all mode', type=int,
+                        default=50000)
       group.add_argument('--lb_to_ln', help='all mode', type=int,
                         default=120)
 
@@ -66,15 +68,15 @@ class LatNetController(object):
       group.add_argument('--num_simulations', help='all mode', type=int,
                         default=2)
       group.add_argument('--max_queue', help='all mode', type=int,
-            choices=[], default=100)
+                        default=100)
       group.add_argument('--new_sim_epochs', help='all mode', type=int,
-            choices=[], default=100)
+                        default=100)
       group.add_argument('--nr_threads', help='all mode', type=int,
-            choices=[], default=5)
+                        default=5)
 
       group = self._config_parser.add_group('Input Details')
-      group.add_argument('--shape', help='all mode', type=str,
-            choices=[], default='512x512')
+      group.add_argument('--input_shape', help='all mode', type=str,
+                         default='256x256')
       group.add_argument('--lattice_q', help='all mode', type=int,
             choices=[9], default=9)
 
@@ -91,11 +93,11 @@ class LatNetController(object):
       args = sys.argv[1:]
       self.config = self._config_parser.parse(args)
      
-      if self.config.mode == "train":
+      if self.config.run_mode == "train":
         self.train(self.config)
-      elif self.config.mode == "generate_data":
+      elif self.config.run_mode == "generate_data":
         self.generate_data(self.config)
-      elif self.config.mode == "eval":
+      elif self.config.run_mode == "eval":
         self.eval(self.config)
 
     def train(self, config):
@@ -104,22 +106,21 @@ class LatNetController(object):
 
       with tf.Graph().as_default():
 
-
         # global step counter
         global_step = tf.get_variable('global_step', [], 
                           initializer=tf.constant_initializer(0), trainable=False)
 
         # make inputs
         self.inputs = Inputs(self.config)
-        self.state = self.inputs.state()
+        self.state_in, self.state_out = self.inputs.state_seq(self.network.state_padding_decrease_seq())
         self.boundary = self.inputs.boundary()
 
         # make network pipe
-        self.state_out = self.network.unroll(self.state, self.boundary)
+        self.pred_state_out = self.network.unroll(self.state_in, self.boundary)
 
         # make loss
         self.loss = Loss(self.config)
-        self.total_loss = self.loss.mse(self.state, self.state_out)
+        self.total_loss = self.loss.mse(self.state_out, self.pred_state_out)
 
         # make train op
         all_params = tf.trainable_variables()
@@ -156,8 +157,7 @@ class LatNetController(object):
 
     def generate_data(self, config):
 
-      sailfish_sim = self._train_sim.create_sailfish_simulation()
-      ctrl = LBSimulationController(sailfish_sim)
+      ctrl = self._train_sim(config).create_sailfish_simulation()
       ctrl.run()
 
     def eval(self, config):

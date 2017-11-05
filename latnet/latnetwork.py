@@ -11,6 +11,7 @@ class LatNet:
 
     self.network_dir  = config.latnet_network_dir
     self.network_name = config.network_name
+    self.seq_length = config.seq_length
 
     if self.network_name == "basic_network":
       import network_architectures.basic_network as net
@@ -25,6 +26,7 @@ class LatNet:
     self.compression_mapping          = tf.make_template('compression_mapping', net.compression_mapping)
     self.decoder_state                = tf.make_template('decoder_state', net.decoder_state)
     self.network_config               = net.CONFIGS
+    self.padding                      = net.PADDING
 
     self.unroll                       = tf.make_template('unroll', self._unroll)
     self.continual_unroll             = tf.make_template('continual_unroll', self._continual_unroll)
@@ -42,7 +44,7 @@ class LatNet:
     y_1 = self.compression_mapping_boundary(y_1, compressed_boundary)
 
     # unroll all
-    for i in xrange(state.get_shape()[1]):
+    for i in xrange(self.seq_length):
       # decode and add to list
       x_2 = self.decoder_state(y_1)
       x_out.append(x_2)
@@ -78,9 +80,16 @@ class LatNet:
 
     return y_1, compressed_boundary, x_2, y_2
 
-
-
-
+  def state_padding_decrease_seq(self):
+    # calculates the decrease in state size after unrolling the network
+    decrease = []
+    for i in xrange(self.seq_length-1):
+      decrease.append((self.padding['encoder_state_padding']
+              + (i+1)*self.padding['compression_mapping_boundary_padding']
+                  + i*self.padding['compression_mapping_padding']
+                    + self.padding['decoder_state_padding']))
+    print(decrease)
+    return decrease
 
 
 

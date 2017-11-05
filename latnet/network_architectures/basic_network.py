@@ -13,8 +13,8 @@ from nn import *
 # define network configs
 CONFIGS = {}
 
-# number of residual blocks before down sizing
-CONFIGS['nr_residual'] = 1
+# define network configs
+PADDING = {}
 
 # number of residual blocks in compression mapping
 CONFIGS['nr_residual_compression'] = 3
@@ -35,6 +35,10 @@ CONFIGS['filter_size']=12
 # final filter size
 CONFIGS['filter_size_compression']=128
 
+# encoder state padding
+PADDING['encoder_state_padding'] = 0
+
+# encoder state
 def encoder_state(x_i, name='state_'):
   # encoding peice
   filter_size = CONFIGS['filter_size']
@@ -45,6 +49,10 @@ def encoder_state(x_i, name='state_'):
   x_i = conv_layer(x_i, 1, 1, CONFIGS['filter_size_compression'], "final_down_conv")
   return x_i
 
+# encoder boundary padding
+PADDING['encoder_boundary_padding'] = 0
+
+# encoder boundary
 def encoder_boundary(x_i, name='boundary_'):
   # encoding peice
   filter_size = CONFIGS['filter_size']
@@ -55,14 +63,20 @@ def encoder_boundary(x_i, name='boundary_'):
   x_i = conv_layer(x_i, 1, 1, 2*CONFIGS['filter_size_compression'], "final_down_conv")
   return x_i
 
+# compression mapping boundary padding
+PADDING['compression_mapping_boundary_padding'] = 0
+
+# compression mapping boundary
 def compression_mapping_boundary(y_i, compressed_boundary):
   [compressed_boundary_mul, compressed_boundary_add] = tf.split(compressed_boundary, 
                                                       2, len(compressed_boundary.get_shape())-1)
   y_i = (y_i * compressed_boundary_mul) + compressed_boundary_add
   return y_i
 
-  
+# compression mapping padding
+PADDING['compression_mapping_padding'] = int(pow(2,CONFIGS['nr_downsamples']) * 2 * CONFIGS['nr_residual_compression'])
 
+# compression mapping
 def compression_mapping(y_i, name=''):
   for i in xrange(CONFIGS['nr_residual_compression']):
     y_i = res_block(y_i, 
@@ -74,6 +88,10 @@ def compression_mapping(y_i, name=''):
 
   return y_i
 
+# decoder state padding
+PADDING['decoder_state_padding'] = 0
+
+# decoder state
 def decoder_state(y_i, lattice_size=9, extract_type=None, extract_pos=64):
 
   for i in xrange(CONFIGS['nr_downsamples']):
