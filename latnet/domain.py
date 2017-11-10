@@ -26,8 +26,9 @@ class Domain(object):
     self.lb_to_ln = config.lb_to_ln
     self.visc = config.visc
 
-  def initial_conditions(self, sim, hx, hy):
-    pass
+    # hard set
+    self.max_lat_shape = [1024, 1024]
+    self.max_compressed_shape = [512, 512]
 
   def boundary_conditions(self, hx, hy):
     pass
@@ -135,7 +136,8 @@ class Domain(object):
 
     return ctrl
 
-  def get_compressed_state(self, pos, radius):
+  def compute_compressed_state(self, sess, encoder, state):
+     
     pass
 
   def get_state_input(self, pos, radius):
