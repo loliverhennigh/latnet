@@ -6,11 +6,11 @@ import shutil
 class SimRunner:
   # generates simulation data for training 
 
-  def __init__(self, save_dir, num_cpoints, lb_to_ln, max_iters):
+  def __init__(self, config, save_dir):
     self.save_dir = save_dir
-    self.num_cpoints = num_cpoints
-    self.lb_to_ln = lb_to_ln
-    self.max_iters = max_iters
+    self.num_cpoints = config.seq_length * 2
+    self.lb_to_ln = config.lb_to_ln
+    self.max_iters = config.max_sim_iters
     self.max_iters_till_next_cpoint = 1000 # hard set for now
 
   def last_cpoint(self):
@@ -57,11 +57,16 @@ class SimRunner:
     # run cmd
     with open(os.devnull, 'w') as devnull:
       p = ps.subprocess.Popen(cmd.split(' '), 
-                              stdout=devnull, stderr=devnull)
+                              stdout=devnull, stderr=devnull, 
+                              env=dict(os.environ, CUDA_VISIBLE_DEVICES='1'))
 
     # mv cpoints over
     if last_step is not None:
       self.clean_prev_cpoints()
+
+    # if no cpoints in dir then need to restart simulation
+    if len(glob(self.save_dir + "/*.0.cpoint.npz")):
+      self.generate_cpoint()
 
   def read_geometry(self, pos, radius):
     geometry_file = self.save_dir + "/flow_geometry.npy"
@@ -95,19 +100,21 @@ class SimRunner:
         state_out.append(state)
     return state_in, state_out  
 
-  def 
-
-  def _clean_prev_cpoints(self):
-    cpoints = glob(self.save_dir + "/*.0.cpoint.npz")
-    cpoints.sort()
-    #if len(cpoints) != 2*self.num_cpoints:
-    #  self.clean_save_dir()
-    else:
-      for i in xrange(self.num_cpoints):
+  def clean_prev_cpoints(self):
+    old_cpoints = glob(self.save_dir + "/*.0.cpoint.npz")
+    for c in old_cpoints:
+      with open(os.devnull, 'w') as devnull:
+        p = ps.subprocess.Popen(["rm", c], 
+                                 stdout=devnull, stderr=devnull)
+        p.communicate()
+    new_cpoints = glob(self.save_dir + "/store/*.0.cpoint.npz")
+    if len(new_cpoints) != self.num_cpoints:
+      for c in new_cpoints:
         with open(os.devnull, 'w') as devnull:
-          p = ps.subprocess.Popen(('rm ' + cpoints[i]).split(' '), 
-                               stdout=devnull, stderr=devnull)
-     
+          p = ps.subprocess.Popen(["mv", c, self.save_dir + "/"], 
+                                   stdout=devnull, stderr=devnull)
+          p.communicate()
+
   def clean_save_dir(self):
     shutil.rmtree(self.save_dir)
 
