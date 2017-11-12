@@ -31,14 +31,14 @@ class LatNet:
     self.unroll                       = tf.make_template('unroll', self._unroll)
     self.continual_unroll             = tf.make_template('continual_unroll', self._continual_unroll)
 
-  def _unroll(self, state, boundary):
+  def _unroll(self, state_in, boundary):
     # assumes state has seq length in second dim
     # store all out
     x_out = []
 
     # encode
-    y_1 = self.encoder_state(state[:,0])
-    compressed_boundary = self.encoder_boundary(boundary[:,0])
+    y_1 = self.encoder_state(state_in)
+    compressed_boundary = self.encoder_boundary(boundary)
 
     # apply boundary
     y_1 = self.compression_mapping_boundary(y_1, compressed_boundary)
@@ -56,12 +56,12 @@ class LatNet:
       y_1 = self.compression_mapping_boundary(y_1, compressed_boundary)
 
 
-    x_out = tf.stack(x_out)
-    perm = np.concatenate([np.array([1,0]), np.arange(2,len(x_2.get_shape())+1,1)], 0)
-    x_out = tf.transpose(x_out, perm=perm)
-    tf.summary.image('predicted_state_1', x_out[:,0,:,:,0:1])
-    tf.summary.image('predicted_state_2', x_out[:,0,:,:,1:2])
-    tf.summary.image('predicted_state_3', x_out[:,0,:,:,2:3])
+    #x_out = tf.stack(x_out)
+    #perm = np.concatenate([np.array([1,0]), np.arange(2,len(x_2.get_shape())+1,1)], 0)
+    #x_out = tf.transpose(x_out, perm=perm)
+    tf.summary.image('predicted_state_1', x_out[-1][:,:,:,0:1])
+    tf.summary.image('predicted_state_2', x_out[-1][:,:,:,1:2])
+    tf.summary.image('predicted_state_3', x_out[-1][:,:,:,2:3])
     return x_out
 
   def _continual_unroll(self, state, boundary):
@@ -83,7 +83,7 @@ class LatNet:
   def state_padding_decrease_seq(self):
     # calculates the decrease in state size after unrolling the network
     decrease = []
-    for i in xrange(self.seq_length-1):
+    for i in xrange(self.seq_length):
       decrease.append((self.padding['encoder_state_padding']
               + (i+1)*self.padding['compression_mapping_boundary_padding']
                   + i*self.padding['compression_mapping_padding']

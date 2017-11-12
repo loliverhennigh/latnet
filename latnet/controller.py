@@ -66,17 +66,17 @@ class LatNetController(object):
       group.add_argument('--gpu_fraction', help='all mode', type=float,
                         default=0.85)
       group.add_argument('--num_simulations', help='all mode', type=int,
-                        default=2)
+                        default=6)
       group.add_argument('--max_queue', help='all mode', type=int,
-                        default=100)
-      group.add_argument('--new_sim_epochs', help='all mode', type=int,
                         default=100)
       group.add_argument('--nr_threads', help='all mode', type=int,
                         default=5)
+      group.add_argument('--checkpoint_from', help='all mode', type=int,
+                        default=100)
 
       group = self._config_parser.add_group('Input Details')
       group.add_argument('--input_shape', help='all mode', type=str,
-                         default='256x256')
+                         default='512x512')
       group.add_argument('--lattice_q', help='all mode', type=int,
             choices=[9], default=9)
 
@@ -145,7 +145,7 @@ class LatNetController(object):
         # train
         for i in xrange(sess.run(global_step), self.config.train_iterations):
           _, l = sess.run([self.train_op, self.total_loss], 
-                          feed_dict=self.dataset.minibatch(self.state, self.boundary))
+                          feed_dict=self.dataset.minibatch(self.state_in, self.state_out, self.boundary, self.network.state_padding_decrease_seq()))
           if i % 100 == 0:
             print("current loss is " + str(l))
             print("current step is " + str(i))

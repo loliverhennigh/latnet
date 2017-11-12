@@ -110,6 +110,8 @@ class Domain(object):
                               default='')
         group.add_argument('--run_mode', help='all modes', type=str,
                               default='')
+        group.add_argument('--max_sim_iters', help='all modes', type=int,
+                              default=1000)
 
       @classmethod
       def update_defaults(cls, defaults):

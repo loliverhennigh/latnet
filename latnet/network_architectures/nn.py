@@ -92,9 +92,9 @@ def conv_layer(inputs, kernel_size, stride, num_features, idx, nonlinearity=None
     biases = _variable('biases',[num_features],initializer=tf.contrib.layers.xavier_initializer_conv2d())
 
     if length_input == 2:
-      conv = tf.nn.conv2d(inputs, weights, strides=[1, stride, stride, 1], padding='SAME')
+      conv = tf.nn.conv2d(inputs, weights, strides=[1, stride, stride, 1], padding='VALID')
     elif length_input == 3:
-      conv = tf.nn.conv3d(inputs, weights, strides=[1, stride, stride, stride, 1], padding='SAME')
+      conv = tf.nn.conv3d(inputs, weights, strides=[1, stride, stride, stride, 1], padding='VALID')
 
     conv = tf.nn.bias_add(conv, biases)
     if nonlinearity is not None:
@@ -179,7 +179,7 @@ def res_block(x, a=None, filter_size=16, nonlinearity=concat_elu, keep_p=1.0, st
   # determine if 2d or 3d trans conv is needed
   length_input = len(x.get_shape())
 
-  orig_x = x
+  orig_x = x[:,2:-2,2:-2]
   if normalize == "batch_norm":
     x = tcl.batch_norm(x)
   elif normalize == "layer_norm":

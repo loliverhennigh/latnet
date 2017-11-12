@@ -21,7 +21,7 @@ class DataQueue:
 
     # base dir where all the xml files are
     self.base_dir = config.sailfish_sim_dir
-    self.train_sim = train_sim
+    self.script_name = train_sim.script_name
 
     # configs
     self.batch_size      = config.batch_size
@@ -40,8 +40,8 @@ class DataQueue:
     # generate base dataset
     self.sim_runners = []
     for i in xrange(self.num_simulations):
-      self.sim_runners.append(SimRunner(config, self.base_dir + '/sim_' + str(i)))
-      self.sim_runners[0].generate_cpoint()
+      self.sim_runners.append(SimRunner(config, self.base_dir + 'sim_' + str(i), self.script_name))
+      self.sim_runners[i].generate_cpoint()
  
     # make queue
     self.max_queue = config.max_queue
@@ -54,14 +54,9 @@ class DataQueue:
       get_thread.daemon = True
       get_thread.start()
 
-    # create dataset
-    if os.path.isdir(self.base_dir):
-      shutil.rmtree(self.base_dir)
-    self.create_dataset(range(self.num_simulations))
-
   def data_worker(self):
     while True:
-      sim_runner = self.queue.get()
+      sim_runner, padding_decrease_seq = self.queue.get()
 
       # if there is a free gpu open then run simulation farther
       if self.free_gpu:
@@ -75,7 +70,7 @@ class DataQueue:
 
       # get geometry and lat data
       geometry_array = sim_runner.read_geometry(rand_pos, radius)
-      lat_in, lat_out = sim_runner.read_seq_states(self.seq_length, rand_pos, radius, self.padding_decrease_seq)
+      lat_in, lat_out = sim_runner.read_seq_states(self.seq_length, rand_pos, radius, padding_decrease_seq)
 
       # add to que
       self.queue_batches.append((geometry_array, lat_in, lat_out))
@@ -85,7 +80,7 @@ class DataQueue:
 
     # queue up data if needed
     for i in xrange(self.max_queue - len(self.queue_batches) - self.queue.qsize()):
-      sim_index = self.random.randint(0, self.num_simulations)
+      sim_index = np.random.randint(0, self.num_simulations)
       self.queue.put((self.sim_runners[sim_index], padding_decrease_seq))
    
     # possibly wait if data needs time to queue up

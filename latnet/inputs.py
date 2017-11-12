@@ -27,14 +27,14 @@ class Inputs:
       print(input_shape)
       state_out.append(tf.placeholder(tf.float32, [self.batch_size] + input_shape + [self.lattice_q]))
 
-    tf.summary.image('true_state_1', state[:,:,:,0:1])
-    tf.summary.image('true_state_2', state[:,:,:,1:2])
-    tf.summary.image('true_state_3', state[:,:,:,2:3])
+    tf.summary.image('true_state_1', state_in[:,:,:,0:1])
+    tf.summary.image('true_state_2', state_in[:,:,:,1:2])
+    tf.summary.image('true_state_3', state_in[:,:,:,2:3])
     return state_in, state_out
 
   def boundary(self):
     boundary = tf.placeholder(tf.float32, [self.batch_size] + self.input_shape + [self.boundary_depth])
-    tf.summary.image('true_boundary', boundary[:,0,:,:,0:1])
+    tf.summary.image('true_boundary', boundary[:,:,:,0:1])
     return boundary
     
     

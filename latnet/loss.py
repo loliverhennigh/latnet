@@ -8,7 +8,12 @@ class Loss:
     pass
 
   def mse(self, true, generated):
-    loss = tf.nn.l2_loss(true - generated)
+    if isinstance(true, list):
+      loss = 0.0
+      for i in xrange(len(true)):
+        loss += tf.nn.l2_loss(true[i] - generated[i])
+    else:
+      loss = tf.nn.l2_loss(true - generated)
     tf.summary.scalar('mse_loss', loss)
     return loss
 

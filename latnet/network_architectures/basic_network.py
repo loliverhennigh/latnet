@@ -17,7 +17,7 @@ CONFIGS = {}
 PADDING = {}
 
 # number of residual blocks in compression mapping
-CONFIGS['nr_residual_compression'] = 3
+CONFIGS['nr_residual_compression'] = 1
 
 # numper of downsamples
 CONFIGS['nr_downsamples'] = 4
@@ -68,6 +68,9 @@ PADDING['compression_mapping_boundary_padding'] = 0
 
 # compression mapping boundary
 def compression_mapping_boundary(y_i, compressed_boundary):
+  off_set = int(compressed_boundary.get_shape()[1] - y_i.get_shape()[1])/2
+  if off_set != 0:
+    compressed_boundary = compressed_boundary[:,off_set:-off_set,off_set:-off_set]
   [compressed_boundary_mul, compressed_boundary_add] = tf.split(compressed_boundary, 
                                                       2, len(compressed_boundary.get_shape())-1)
   y_i = (y_i * compressed_boundary_mul) + compressed_boundary_add
@@ -96,10 +99,10 @@ def decoder_state(y_i, lattice_size=9, extract_type=None, extract_pos=64):
 
   for i in xrange(CONFIGS['nr_downsamples']):
     filter_size = int(CONFIGS['filter_size']*pow(2,CONFIGS['nr_downsamples']-i-1))
-    y_i = transpose_conv_layer(y_i, 4, 2, filter_size, "up_conv_" + str(i), nonlinearity=nonlinearity)
-    y_i = conv_layer(y_i, 3, 1, filter_size, "conv_" + str(i), nonlinearity=nonlinearity)
+    y_i = transpose_conv_layer(y_i, 2, 2, filter_size, "up_conv_" + str(i), nonlinearity=nonlinearity)
+    y_i = conv_layer(y_i, 1, 1, filter_size, "conv_" + str(i), nonlinearity=nonlinearity)
 
-  y_i = conv_layer(y_i, 3, 1, lattice_size, "last_conv")
+  y_i = conv_layer(y_i, 1, 1, lattice_size, "last_conv")
   return tf.nn.tanh(y_i)
 
 
