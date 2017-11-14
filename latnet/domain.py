@@ -122,6 +122,8 @@ class Domain(object):
           'periodic_x': True,
           'checkpoint_file': sailfish_sim_dir,
           'checkpoint_every': lb_to_ln,
+          #'cuda-sched-yield': True,
+          #'cuda-minimize-cpu-usage': True,
           'lat_nx': shape[0],
           'lat_ny': shape[1]
           })

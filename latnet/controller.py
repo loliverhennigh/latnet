@@ -48,7 +48,7 @@ class LatNetController(object):
 
       group = self._config_parser.add_group('Saver Details')
       group.add_argument('--save_freq', help='all mode', type=int, 
-                        default=1000)
+                        default=500)
 
       group = self._config_parser.add_group('Train Details')
       group.add_argument('--seq_length', help='all mode', type=int, 
@@ -66,17 +66,19 @@ class LatNetController(object):
       group.add_argument('--gpu_fraction', help='all mode', type=float,
                         default=0.85)
       group.add_argument('--num_simulations', help='all mode', type=int,
-                        default=6)
+                        default=10)
       group.add_argument('--max_queue', help='all mode', type=int,
                         default=100)
       group.add_argument('--nr_threads', help='all mode', type=int,
-                        default=5)
+                        default=1)
       group.add_argument('--checkpoint_from', help='all mode', type=int,
                         default=100)
+      group.add_argument('--restore_from', help='all mode', type=str,
+                        default='')
 
       group = self._config_parser.add_group('Input Details')
       group.add_argument('--input_shape', help='all mode', type=str,
-                         default='512x512')
+                         default='256x256')
       group.add_argument('--lattice_q', help='all mode', type=int,
             choices=[9], default=9)
 
@@ -150,9 +152,9 @@ class LatNetController(object):
             print("current loss is " + str(l))
             print("current step is " + str(i))
 
-          if i % self.config.save_feq == 0:
+          if i % self.config.save_freq == 0:
             print("saving...")
-            self.saver.save_summary(sess, self.dataset.minibatch(self.state, self.boundary), sess.run(global_step))
+            self.saver.save_summary(sess, self.dataset.minibatch(self.state_in, self.state_out, self.boundary, self.network.state_padding_decrease_seq()), sess.run(global_step))
             self.saver.save_checkpoint(sess, int(sess.run(global_step)))
 
     def generate_data(self, config):

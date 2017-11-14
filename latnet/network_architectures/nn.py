@@ -78,6 +78,16 @@ def mobius_pad(inputs):
   inputs_mobius = tf.concat(axis=2, values=[inputs_mobius[:,:,-1:], inputs_mobius, inputs_mobius[:,:,0:1]])
   return inputs_mobius
 
+def simple_conv_2d(x, k):
+  """A simplified 2D convolution operation"""
+  y = tf.nn.conv2d(x, k, [1, 1, 1, 1], padding='VALID')
+  return y
+
+def simple_conv_3d(x, k):
+  """A simplified 3D convolution operation"""
+  y = tf.nn.conv3d(x, k, [1, 1, 1, 1, 1], padding='VALID')
+  return y
+
 def conv_layer(inputs, kernel_size, stride, num_features, idx, nonlinearity=None):
   with tf.variable_scope('{0}_conv'.format(idx)) as scope:
     input_channels = inputs.get_shape()[-1]
@@ -100,6 +110,20 @@ def conv_layer(inputs, kernel_size, stride, num_features, idx, nonlinearity=None
     if nonlinearity is not None:
       conv = nonlinearity(conv)
     return conv
+
+def simple_trans_conv_2d(x, k):
+  """A simplified 2D trans convolution operation"""
+  output_shape = tf.stack([tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2], tf.shape(k)[2]]) 
+  y = tf.nn.conv2d_transpose(x, k, output_shape, [1, 1, 1, 1], padding='SAME')
+  y = tf.reshape(y, [int(x.get_shape()[0]), int(x.get_shape()[1]), int(x.get_shape()[2]), int(k.get_shape()[2])])
+  return y
+
+def simple_trans_conv_3d(x, k):
+  """A simplified 3D trans convolution operation"""
+  output_shape = tf.stack([tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2], tf.shape(x)[3], tf.shape(k)[3]]) 
+  y = tf.nn.conv3d_transpose(x, k, output_shape, [1, 1, 1, 1, 1], padding='SAME')
+  y = tf.reshape(y, [int(x.get_shape()[0]), int(x.get_shape()[1]), int(x.get_shape()[2]), int(x.get_shape()[3]), int(k.get_shape()[3])])
+  return y
 
 def transpose_conv_layer(inputs, kernel_size, stride, num_features, idx, nonlinearity=None):
   with tf.variable_scope('{0}_trans_conv'.format(idx)) as scope:

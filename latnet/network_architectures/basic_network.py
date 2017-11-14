@@ -44,7 +44,8 @@ def encoder_state(x_i, name='state_'):
   filter_size = CONFIGS['filter_size']
   for i in xrange(CONFIGS['nr_downsamples']):
     filter_size = filter_size*2
-    x_i = conv_layer(x_i, 2, 2, filter_size, "down_conv_" + str(i))
+    x_i = conv_layer(x_i, 1, 1, filter_size, "conv_" + str(i), nonlinearity=nonlinearity)
+    x_i = conv_layer(x_i, 2, 2, filter_size, "down_conv_" + str(i), nonlinearity=nonlinearity)
 
   x_i = conv_layer(x_i, 1, 1, CONFIGS['filter_size_compression'], "final_down_conv")
   return x_i
@@ -58,7 +59,8 @@ def encoder_boundary(x_i, name='boundary_'):
   filter_size = CONFIGS['filter_size']
   for i in xrange(CONFIGS['nr_downsamples']):
     filter_size = filter_size*2
-    x_i = conv_layer(x_i, 2, 2, filter_size, "down_conv_" + str(i))
+    x_i = conv_layer(x_i, 1, 1, filter_size, "conv_" + str(i), nonlinearity=nonlinearity)
+    x_i = conv_layer(x_i, 2, 2, filter_size, "down_conv_" + str(i), nonlinearity=nonlinearity)
 
   x_i = conv_layer(x_i, 1, 1, 2*CONFIGS['filter_size_compression'], "final_down_conv")
   return x_i

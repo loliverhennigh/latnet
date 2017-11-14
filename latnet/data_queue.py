@@ -37,40 +37,32 @@ class DataQueue:
     input_shape = map(int, input_shape)
     self.input_shape = input_shape
 
-    # generate base dataset
-    self.sim_runners = []
-    for i in xrange(self.num_simulations):
-      self.sim_runners.append(SimRunner(config, self.base_dir + 'sim_' + str(i), self.script_name))
-      self.sim_runners[i].generate_cpoint()
- 
     # make queue
     self.max_queue = config.max_queue
     self.queue = Queue() # to stop halting when putting on the queue
     self.queue_batches = []
 
-    # Start threads
-    for i in xrange(config.nr_threads):
-      get_thread = threading.Thread(target=self.data_worker)
-      get_thread.daemon = True
-      get_thread.start()
+    # generate base dataset and start queues
+    self.sim_runners = []
+    print("generating dataset")
+    for i in tqdm(xrange(self.num_simulations)):
+      sim = SimRunner(config, self.base_dir + 'sim_' + str(i), self.script_name) 
+      sim.generate_cpoint()
+      thr = threading.Thread(target= (lambda: self.data_worker(sim)))
+      thr.daemon = True
+      thr.start()
 
-  def data_worker(self):
+  def data_worker(self, sim):
     while True:
-      sim_runner, padding_decrease_seq = self.queue.get()
-
-      # if there is a free gpu open then run simulation farther
-      if self.free_gpu:
-        self.free_gpu = False
-        sim_runner.generate_cpoint() 
-      self.free_gpu = True
+      padding_decrease_seq = self.queue.get()
 
       # select random piece to grab from data
       rand_pos = [np.random.randint(0, self.sim_shape[0]), np.random.randint(0, self.sim_shape[1])]
       radius = self.input_shape[0]/2
 
       # get geometry and lat data
-      geometry_array = sim_runner.read_geometry(rand_pos, radius)
-      lat_in, lat_out = sim_runner.read_seq_states(self.seq_length, rand_pos, radius, padding_decrease_seq)
+      geometry_array = sim.read_geometry(rand_pos, radius)
+      lat_in, lat_out = sim.read_seq_states(self.seq_length, rand_pos, radius, padding_decrease_seq)
 
       # add to que
       self.queue_batches.append((geometry_array, lat_in, lat_out))
@@ -80,8 +72,7 @@ class DataQueue:
 
     # queue up data if needed
     for i in xrange(self.max_queue - len(self.queue_batches) - self.queue.qsize()):
-      sim_index = np.random.randint(0, self.num_simulations)
-      self.queue.put((self.sim_runners[sim_index], padding_decrease_seq))
+      self.queue.put(padding_decrease_seq)
    
     # possibly wait if data needs time to queue up
     while len(self.queue_batches) < self.batch_size:
@@ -101,9 +92,16 @@ class DataQueue:
     # concate batches together
     new_batch_state_out = []
     for i in xrange(self.seq_length):
-      new_batch_state_out.append(np.stack(batch_state_out[:][i], axis=0))
+      new_batch_state_out.append(np.stack([x[i] for x in batch_state_out], axis=0))
     batch_state_out = new_batch_state_out
     batch_state_in = np.stack(batch_state_in, axis=0)
     batch_boundary = np.stack(batch_boundary, axis=0)
-    return {boundary:batch_boundary, state_in:batch_state_in, state_out:batch_state_out}
+
+    # make feed dict
+    feed_dict = {}
+    feed_dict[boundary] = batch_boundary
+    feed_dict[state_in] = batch_state_in
+    for i in xrange(self.seq_length):
+      feed_dict[state_out[i]] = batch_state_out[i]
+    return feed_dict
 

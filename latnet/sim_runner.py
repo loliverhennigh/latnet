@@ -17,6 +17,14 @@ class SimRunner:
     self.max_iters_till_next_cpoint = 5000 # hard set for now
     self.script_name = script_name
 
+    sim_shape = config.sim_shape.split('x')
+    sim_shape = map(int, sim_shape)
+    self.sim_shape = sim_shape
+
+    # hard set for now
+    self.max_times_called = 100*self.num_cpoints
+    self.times_called = 0
+
   def last_cpoint(self):
     cpoints = glob.glob(self.save_dir + "/*.0.cpoint.npz")
     cpoints.sort()
@@ -60,7 +68,7 @@ class SimRunner:
       num_run_iters = last_step + iters_till_next_cpoint + (self.num_cpoints * self.lb_to_ln)
       if num_run_iters < self.max_iters:
         cmd += ' --checkpoint_from=' + str(last_step + iters_till_next_cpoint)
-        cmd += ' --restore_from=' + last_cpoint
+        cmd += ' --restore_from=' + last_cpoint[:-13]
         cmd += ' --max_sim_iters=' + str(num_run_iters)
       else:
         self.clean_save_dir()
@@ -72,31 +80,34 @@ class SimRunner:
       cmd += ' --checkpoint_from=' + str(iters_till_next_cpoint)
  
     # run cmd
-    #with open(os.devnull, 'w') as devnull:
-    #  p = ps.subprocess.Popen(cmd.split(' '), 
-    #                          stdout=devnull, stderr=devnull, 
-    #                          env=dict(os.environ, CUDA_VISIBLE_DEVICES='1'))
-    print(cmd)
-    p = ps.subprocess.Popen(cmd.split(' '), 
-                            env=dict(os.environ, CUDA_VISIBLE_DEVICES='1'))
-    p.communicate()
+    with open(os.devnull, 'w') as devnull:
+      p = ps.subprocess.Popen(cmd.split(' '), 
+                              stdout=devnull, stderr=devnull, 
+                              env=dict(os.environ, CUDA_VISIBLE_DEVICES='1'))
+      p.communicate()
 
     # mv cpoints over
-    #if last_step is not None:
     self.clean_prev_cpoints()
 
     # if no cpoints in dir then need to restart simulation
-    if len(glob.glob(self.save_dir + "/*.0.cpoint.npz")):
+    if len(glob.glob(self.save_dir + "/*.0.cpoint.npz")) != self.num_cpoints:
       self.generate_cpoint()
 
   def read_geometry(self, pos, radius):
+
+    # if read geometry too many times generate new data
+    self.times_called += 1
+    if self.times_called > self.max_times_called:
+      self.generate_cpoint()
+      self.times_called = 0
+
     geometry_file = self.save_dir + "/flow_geometry.npy"
     geometry_array = None
     if os.path.isfile(geometry_file):
       geometry_array = np.load(geometry_file)
       geometry_array = geometry_array.astype(np.float32)
-      geometry_array = geometry_array[:,1:-1,1:-1]
-      geometry_array = np.expand_dims(geometry_array, axis=0)
+      geometry_array = geometry_array[1:-1,1:-1]
+      #geometry_array = np.expand_dims(geometry_array, axis=0)
       geometry_array = mobius_extract_pad(geometry_array, pos, radius)
     return geometry_array
 
@@ -107,14 +118,14 @@ class SimRunner:
     state_files = glob.glob(self.save_dir + "/*.0.cpoint.npz")
     state_files.sort()
     if len(state_files) >= seq_length:
-      start_pos = np.random.randint(0, len(state_files) - self.seq_length)
+      start_pos = np.random.randint(0, len(state_files) - seq_length)
       for i in xrange(seq_length):
         state = np.load(state_files[i])
         state = state.f.dist0a[:,1:-1,1:self.sim_shape[0]+1]
         state = state.astype(np.float32)
         state = np.swapaxes(state, 0, 1)
         state = np.swapaxes(state, 1, 2)
-        state = np.expand_dims(state, axis=0)
+        #state = np.expand_dims(state, axis=0)
         if i == 0:
           state_in = mobius_extract_pad(state, pos, radius)
         state = mobius_extract_pad(state, pos, radius - padding_decrease_seq[i])
@@ -130,7 +141,6 @@ class SimRunner:
         p.communicate()
 
   def clean_prev_cpoints(self):
-    print("AAAAAAAAAAAA")
     old_cpoints = glob.glob(self.save_dir + "/*.0.cpoint.npz")
     for c in old_cpoints:
       with open(os.devnull, 'w') as devnull:
@@ -138,22 +148,21 @@ class SimRunner:
                                  stdout=devnull, stderr=devnull)
         p.communicate()
     new_cpoints = glob.glob(self.save_dir + "/store/*.0.cpoint.npz")
-    if len(new_cpoints) != self.num_cpoints:
+    if len(new_cpoints) == self.num_cpoints:
       for c in new_cpoints:
         #with open(os.devnull, 'w') as devnull:
         #  p = ps.subprocess.Popen(["mv", c, self.save_dir + "/"], 
         #                           stdout=devnull, stderr=devnull)
         #  p.communicate()
-        print(["mv", c, self.save_dir + "/"])
         p = ps.subprocess.Popen(["mv", c, self.save_dir + "/"])
         p.communicate()
-    # move geometry
-    with open(os.devnull, 'w') as devnull:
-      #p = ps.subprocess.Popen(["mv", self.save_dir + "/store/flow_geometry.npy", self.save_dir + "/"], 
-      #                         stdout=devnull, stderr=devnull)
-      #p.communicate()
-      p = ps.subprocess.Popen(["mv", self.save_dir + "/store/flow_geometry.npy", self.save_dir + "/"])
-      p.communicate()
+      # move geometry
+      with open(os.devnull, 'w') as devnull:
+        #p = ps.subprocess.Popen(["mv", self.save_dir + "/store/flow_geometry.npy", self.save_dir + "/"], 
+        #                         stdout=devnull, stderr=devnull)
+        #p.communicate()
+        p = ps.subprocess.Popen(["mv", self.save_dir + "/store/flow_geometry.npy", self.save_dir + "/"])
+        p.communicate()
 
   def clean_save_dir(self):
     shutil.rmtree(self.save_dir)
@@ -168,13 +177,13 @@ class SimRunner:
 def mobius_extract_pad(dat, pos, radius):
   shape = dat.shape
   pad_bottom_x = int(max(-(pos[0] - radius), 0))
-  pad_top_x = int(max(-(shape[0] - pos[0] + radius), 0))
+  pad_top_x = int(max(-(shape[0] - pos[0]) + radius, 0)) + 1
   pad_bottom_y = int(max(-(pos[1] - radius), 0))
-  pad_top_y = int(max(-(shape[1] - pos[1] + radius), 0))
-  dat = np.pad(dat, [[0,0], [pad_bottom_x, pad_top_x], [pad_bottom_y, pad_top_y], [0,0]], 'wrap')
+  pad_top_y = int(max(-(shape[1] - pos[1]) + radius, 0)) + 1
+  dat = np.pad(dat, [[pad_bottom_x, pad_top_x], [pad_bottom_y, pad_top_y], [0,0]], 'wrap')
   new_pos_x = pos[0] + pad_bottom_x
   new_pos_y = pos[1] + pad_bottom_y
-  dat_extract_pad = dat[:,pos[0]-radius:pos[0]+radius, pos[1]-radius:pos[1]+radius]
+  dat_extract_pad = dat[new_pos_x-radius:new_pos_x+radius, new_pos_y-radius:new_pos_y+radius]
   return dat_extract_pad
 
 

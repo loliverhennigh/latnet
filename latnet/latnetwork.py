@@ -3,6 +3,7 @@ import tensorflow as tf
 import numpy as np
 
 from saver import Saver
+import lattice as lat
 
 
 class LatNet:
@@ -55,13 +56,10 @@ class LatNet:
       # apply boundary
       y_1 = self.compression_mapping_boundary(y_1, compressed_boundary)
 
+    # make image summary
+    for i in xrange(self.seq_length):
+      tf.summary.image('predicted_state_out_vel_', lat.vel_to_norm(lat.lattice_to_vel(x_out[i])))
 
-    #x_out = tf.stack(x_out)
-    #perm = np.concatenate([np.array([1,0]), np.arange(2,len(x_2.get_shape())+1,1)], 0)
-    #x_out = tf.transpose(x_out, perm=perm)
-    tf.summary.image('predicted_state_1', x_out[-1][:,:,:,0:1])
-    tf.summary.image('predicted_state_2', x_out[-1][:,:,:,1:2])
-    tf.summary.image('predicted_state_3', x_out[-1][:,:,:,2:3])
     return x_out
 
   def _continual_unroll(self, state, boundary):
@@ -88,7 +86,6 @@ class LatNet:
               + (i+1)*self.padding['compression_mapping_boundary_padding']
                   + i*self.padding['compression_mapping_padding']
                     + self.padding['decoder_state_padding']))
-    print(decrease)
     return decrease
 
 
