@@ -25,6 +25,7 @@ class Inputs:
     state_out = []
     for i in xrange(self.seq_length):
       input_shape = [x - 2*state_padding_decrease_seq[i] for x in self.input_shape]
+      print(input_shape)
       state_out.append(tf.placeholder(tf.float32, [self.batch_size] + input_shape + [self.lattice_q]))
       tf.summary.image('true_state_out_vel_' + str(i), lat.vel_to_norm(lat.lattice_to_vel(state_out[i])))
 

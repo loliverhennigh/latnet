@@ -213,7 +213,7 @@ def res_block(x, a=None, filter_size=16, nonlinearity=concat_elu, keep_p=1.0, st
   if stride == 1:
     x = conv_layer(x, 3, stride, filter_size, name + '_conv_1')
   elif stride == 2:
-    x = conv_layer(x, 4, stride, filter_size, name + '_conv_1')
+    x = conv_layer(x, 2, stride, filter_size, name + '_conv_1')
   else:
     print("stride > 2 is not supported")
     exit()

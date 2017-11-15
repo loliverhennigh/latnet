@@ -35,8 +35,11 @@ CONFIGS['filter_size']=12
 # final filter size
 CONFIGS['filter_size_compression']=128
 
-# encoder state padding
-PADDING['encoder_state_padding'] = 0
+# decoder state padding
+decoder_state_padding = 2
+for i in xrange(CONFIGS['nr_downsamples']):
+  decoder_state_padding += 2*pow(2, i)
+PADDING['encoder_state_padding'] = decoder_state_padding
 
 # encoder state
 def encoder_state(x_i, name='state_'):
@@ -44,14 +47,20 @@ def encoder_state(x_i, name='state_'):
   filter_size = CONFIGS['filter_size']
   for i in xrange(CONFIGS['nr_downsamples']):
     filter_size = filter_size*2
-    x_i = conv_layer(x_i, 1, 1, filter_size, "conv_" + str(i), nonlinearity=nonlinearity)
-    x_i = conv_layer(x_i, 2, 2, filter_size, "down_conv_" + str(i), nonlinearity=nonlinearity)
+    x_i = res_block(x_i, 
+                    filter_size=CONFIGS['filter_size_compression'], 
+                    nonlinearity=nonlinearity, 
+                    stride=2, 
+                    gated=CONFIGS['gated'], 
+                    name="res_" + str(i))
+    if x_i.get_shape()[1] % 2 == 1:
+      x_i = x_i[:,:-1,:-1]
 
   x_i = conv_layer(x_i, 1, 1, CONFIGS['filter_size_compression'], "final_down_conv")
   return x_i
 
 # encoder boundary padding
-PADDING['encoder_boundary_padding'] = 0
+PADDING['encoder_boundary_padding'] = PADDING['encoder_state_padding']
 
 # encoder boundary
 def encoder_boundary(x_i, name='boundary_'):
@@ -59,8 +68,17 @@ def encoder_boundary(x_i, name='boundary_'):
   filter_size = CONFIGS['filter_size']
   for i in xrange(CONFIGS['nr_downsamples']):
     filter_size = filter_size*2
-    x_i = conv_layer(x_i, 1, 1, filter_size, "conv_" + str(i), nonlinearity=nonlinearity)
-    x_i = conv_layer(x_i, 2, 2, filter_size, "down_conv_" + str(i), nonlinearity=nonlinearity)
+    x_i = res_block(x_i, 
+                    filter_size=CONFIGS['filter_size_compression'], 
+                    nonlinearity=nonlinearity, 
+                    stride=2, 
+                    gated=CONFIGS['gated'], 
+                    name="res_" + str(i))
+    if x_i.get_shape()[1] % 2 == 1:
+      x_i = x_i[:,:-1,:-1]
+
+    #x_i = conv_layer(x_i, 3, 1, filter_size, "conv_" + str(i), nonlinearity=nonlinearity)
+    #x_i = conv_layer(x_i, 2, 2, filter_size, "down_conv_" + str(i), nonlinearity=nonlinearity)
 
   x_i = conv_layer(x_i, 1, 1, 2*CONFIGS['filter_size_compression'], "final_down_conv")
   return x_i
@@ -94,7 +112,10 @@ def compression_mapping(y_i, name=''):
   return y_i
 
 # decoder state padding
-PADDING['decoder_state_padding'] = 0
+decoder_state_padding = 1
+for i in xrange(CONFIGS['nr_downsamples']):
+  decoder_state_padding += 2*pow(2, i)
+PADDING['decoder_state_padding'] = decoder_state_padding
 
 # decoder state
 def decoder_state(y_i, lattice_size=9, extract_type=None, extract_pos=64):
@@ -102,9 +123,14 @@ def decoder_state(y_i, lattice_size=9, extract_type=None, extract_pos=64):
   for i in xrange(CONFIGS['nr_downsamples']):
     filter_size = int(CONFIGS['filter_size']*pow(2,CONFIGS['nr_downsamples']-i-1))
     y_i = transpose_conv_layer(y_i, 2, 2, filter_size, "up_conv_" + str(i), nonlinearity=nonlinearity)
-    y_i = conv_layer(y_i, 1, 1, filter_size, "conv_" + str(i), nonlinearity=nonlinearity)
+    y_i = res_block(y_i, 
+                    filter_size=CONFIGS['filter_size_compression'],
+                    nonlinearity=nonlinearity,
+                    stride=1,
+                    gated=CONFIGS['gated'],
+                    name="res_" + str(i))
 
-  y_i = conv_layer(y_i, 1, 1, lattice_size, "last_conv")
+  y_i = conv_layer(y_i, 3, 1, lattice_size, "last_conv")
   return tf.nn.tanh(y_i)
 
 
