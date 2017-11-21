@@ -27,7 +27,7 @@ CONFIGS['nonlinearity']="relu"
 nonlinearity = set_nonlinearity(CONFIGS['nonlinearity'])
 
 # gated res blocks
-CONFIGS['gated']=True
+CONFIGS['gated']=False
 
 # filter size for first res block. the rest of the filters are 2x every downsample
 CONFIGS['filter_size']=12
@@ -48,7 +48,7 @@ def encoder_state(x_i, name='state_'):
   for i in xrange(CONFIGS['nr_downsamples']):
     filter_size = filter_size*2
     x_i = res_block(x_i, 
-                    filter_size=CONFIGS['filter_size_compression'], 
+                    filter_size=filter_size,
                     nonlinearity=nonlinearity, 
                     stride=2, 
                     gated=CONFIGS['gated'], 
@@ -69,7 +69,7 @@ def encoder_boundary(x_i, name='boundary_'):
   for i in xrange(CONFIGS['nr_downsamples']):
     filter_size = filter_size*2
     x_i = res_block(x_i, 
-                    filter_size=CONFIGS['filter_size_compression'], 
+                    filter_size=filter_size,
                     nonlinearity=nonlinearity, 
                     stride=2, 
                     gated=CONFIGS['gated'], 
@@ -114,7 +114,7 @@ def compression_mapping(y_i, name=''):
 # decoder state padding
 decoder_state_padding = 1
 for i in xrange(CONFIGS['nr_downsamples']):
-  decoder_state_padding += 2*pow(2, i)
+  decoder_state_padding += 3*pow(2, i)
 PADDING['decoder_state_padding'] = decoder_state_padding
 
 # decoder state
@@ -122,7 +122,7 @@ def decoder_state(y_i, lattice_size=9, extract_type=None, extract_pos=64):
 
   for i in xrange(CONFIGS['nr_downsamples']):
     filter_size = int(CONFIGS['filter_size']*pow(2,CONFIGS['nr_downsamples']-i-1))
-    y_i = transpose_conv_layer(y_i, 2, 2, filter_size, "up_conv_" + str(i), nonlinearity=nonlinearity)
+    y_i = transpose_conv_layer(y_i, 4, 2, filter_size, "up_conv_" + str(i), nonlinearity=nonlinearity)
     y_i = res_block(y_i, 
                     filter_size=CONFIGS['filter_size_compression'],
                     nonlinearity=nonlinearity,

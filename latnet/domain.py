@@ -84,6 +84,12 @@ class Domain(object):
         where_density, density = density_boundary_conditions(hx, hy, [self.gx, self.gy])
         self.set_node(where_density, NTEquilibriumDensity(density))
 
+        # restore from old dir
+        if restore_geometry:
+          restore_geometry = np.load(sailfish_sim_dir[-10] + "flow_geometry.npy")
+          where_boundary = restore_geometry[:,:,0].astype(np.bool)
+          
+
         # save geometry
         save_geometry = np.concatenate([np.array(np.expand_dims(where_boundary, axis=-1), dtype=np.float32),
              np.array(velocity).reshape(1,1,2) * np.array(np.expand_dims(where_velocity, axis=-1), dtype=np.float32),

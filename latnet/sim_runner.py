@@ -4,6 +4,8 @@ import psutil as ps
 import shutil
 import os
 
+import lattice
+
 import numpy as np
 
 class SimRunner:
@@ -22,7 +24,7 @@ class SimRunner:
     self.sim_shape = sim_shape
 
     # hard set for now
-    self.max_times_called = 100*self.num_cpoints
+    self.max_times_called = 100000*self.num_cpoints
     self.times_called = 0
 
   def last_cpoint(self):
@@ -80,11 +82,16 @@ class SimRunner:
       cmd += ' --checkpoint_from=' + str(iters_till_next_cpoint)
  
     # run cmd
+    """
     with open(os.devnull, 'w') as devnull:
       p = ps.subprocess.Popen(cmd.split(' '), 
                               stdout=devnull, stderr=devnull, 
                               env=dict(os.environ, CUDA_VISIBLE_DEVICES='1'))
       p.communicate()
+    """
+    p = ps.subprocess.Popen(cmd.split(' '), 
+                            env=dict(os.environ, CUDA_VISIBLE_DEVICES='1'))
+    p.communicate()
 
     # mv cpoints over
     self.clean_prev_cpoints()
@@ -117,6 +124,7 @@ class SimRunner:
     state_in = None
     state_files = glob.glob(self.save_dir + "/*.0.cpoint.npz")
     state_files.sort()
+    subtract_weights = lattice.get_weights_numpy(9).reshape(1,1,9)
     if len(state_files) >= seq_length:
       start_pos = np.random.randint(0, len(state_files) - seq_length)
       for i in xrange(seq_length):
@@ -125,6 +133,7 @@ class SimRunner:
         state = state.astype(np.float32)
         state = np.swapaxes(state, 0, 1)
         state = np.swapaxes(state, 1, 2)
+        state = state - subtract_weights
         #state = np.expand_dims(state, axis=0)
         if i == 0:
           state_in = mobius_extract_pad(state, pos, radius)

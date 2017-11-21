@@ -22,6 +22,8 @@ class LatNetController(object):
       self._eval_sim = eval_sim
      
       group = self._config_parser.add_group('Basic Stuff')
+      group.add_argument('--mode', help='runtime mode', type=str,
+            choices=['batch', 'visualization', 'benchmark'], default='batch'),
       group.add_argument('--run_mode', help='all modes', type=str,
             choices=['generate_data', 'train', 'eval'], default='train')
       group.add_argument('--sailfish_sim_dir', help='train mode', type=str,
@@ -58,7 +60,7 @@ class LatNetController(object):
       group.add_argument('--optimizer', help='all mode', type=str,
                         default='adam')
       group.add_argument('--lr', help='all mode', type=float,
-                        default=0.0015)
+                        default=0.0004)
       group.add_argument('--train_iterations', help='all mode', type=int,
                         default=1000000)
 

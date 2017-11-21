@@ -155,8 +155,10 @@ def transpose_conv_layer(inputs, kernel_size, stride, num_features, idx, nonline
     shape = int_shape(inputs)
     if  length_input == 2:
       conv = tf.reshape(conv, [shape[0], shape[1]*stride, shape[2]*stride, num_features])
+      conv = conv[:,1:-1,1:-1]
     if  length_input == 3:
       conv = tf.reshape(conv, [shape[0], shape[1]*stride, shape[2]*stride, shape[3]*stride, num_features])
+      conv = conv[:,1:-1,1:-1,1:-1]
     return conv
 
 def fc_layer(inputs, hiddens, idx, nonlinearity=None, flat = False):
@@ -193,9 +195,9 @@ def upsampleing_resize(x, filter_size, name="upsample"):
 def avg_pool(x):
   length_input = len(x.get_shape()) - 2
   if length_input == 2:
-    x = tf.nn.avg_pool(x, [1,2,2,1], [1,2,2,1], padding='SAME')
+    x = tf.nn.avg_pool(x, [1,2,2,1], [1,2,2,1], padding='VALID')
   if length_input == 3:
-    x = tf.nn.avg_pool3d(x, [1,2,2,2,1], [1,2,2,2,1], padding='SAME')
+    x = tf.nn.avg_pool3d(x, [1,2,2,2,1], [1,2,2,2,1], padding='VALID')
   return x
 
 def res_block(x, a=None, filter_size=16, nonlinearity=concat_elu, keep_p=1.0, stride=1, gated=True, name="resnet", begin_nonlinearity=True, normalize=None):
@@ -245,9 +247,9 @@ def res_block(x, a=None, filter_size=16, nonlinearity=concat_elu, keep_p=1.0, st
 
   if int(orig_x.get_shape()[2]) > int(x.get_shape()[2]):
     if length_input == 4:
-      orig_x = tf.nn.avg_pool(orig_x, [1,2,2,1], [1,2,2,1], padding='SAME')
+      orig_x = tf.nn.avg_pool(orig_x, [1,2,2,1], [1,2,2,1], padding='VALID')
     elif length_input == 5:
-      orig_x = tf.nn.avg_pool3d(orig_x, [1,2,2,2,1], [1,2,2,2,1], padding='SAME')
+      orig_x = tf.nn.avg_pool3d(orig_x, [1,2,2,2,1], [1,2,2,2,1], padding='VALID')
 
   # pad it
   out_filter = filter_size
