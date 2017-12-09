@@ -25,6 +25,7 @@ class Domain(object):
     self.max_sim_iters = config.max_sim_iters
     self.lb_to_ln = config.lb_to_ln
     self.visc = config.visc
+    self.restore_geometry = config.restore_geometry
 
     # hard set
     self.max_lat_shape = [1024, 1024]
@@ -66,29 +67,41 @@ class Domain(object):
     max_iters = self.max_sim_iters
     lb_to_ln = self.lb_to_ln
     visc = self.visc
+    restore_geometry = self.restore_geometry
 
     class SailfishSubdomain(Subdomain2D):
       
       bc = NTFullBBWall
 
       def boundary_conditions(self, hx, hy):
+
+        # restore from old dir or make new geometry
+        if restore_geometry:
+          print("AAAAAAAAAA")
+          print(sailfish_sim_dir)
+          print(sailfish_sim_dir[:-10] + "flow_geometry.npy")
+          restore_boundary_conditions = np.load(sailfish_sim_dir[:-10] + "flow_geometry.npy")
+          where_boundary = restore_boundary_conditions[:,:,0].astype(np.bool)
+          where_velocity = restore_boundary_conditions[:,:,1].astype(np.bool)
+          print(where_velocity.shape)
+          print(hx.shape)
+          velocity = (restore_boundary_conditions[0,0,1], restore_boundary_conditions[0,0,2])
+          where_density  = restore_boundary_conditions[:,:,3].astype(np.bool)
+          density = 1.0
+        else:
+          where_boundary = geometry_boundary_conditions(hx, hy, [self.gx, self.gy])
+          print(where_boundary.shape)
+          where_velocity, velocity = velocity_boundary_conditions(hx, hy, [self.gx, self.gy])
+          where_density, density = density_boundary_conditions(hx, hy, [self.gx, self.gy])
+
         # set boundarys
-        where_boundary = geometry_boundary_conditions(hx, hy, [self.gx, self.gy])
         self.set_node(where_boundary, self.bc)
 
         # set velocities
-        where_velocity, velocity = velocity_boundary_conditions(hx, hy, [self.gx, self.gy])
         self.set_node(where_velocity, NTEquilibriumVelocity(velocity))
 
         # set densitys
-        where_density, density = density_boundary_conditions(hx, hy, [self.gx, self.gy])
         self.set_node(where_density, NTEquilibriumDensity(density))
-
-        # restore from old dir
-        if restore_geometry:
-          restore_geometry = np.load(sailfish_sim_dir[-10] + "flow_geometry.npy")
-          where_boundary = restore_geometry[:,:,0].astype(np.bool)
-          
 
         # save geometry
         save_geometry = np.concatenate([np.array(np.expand_dims(where_boundary, axis=-1), dtype=np.float32),
@@ -118,6 +131,8 @@ class Domain(object):
                               default='')
         group.add_argument('--max_sim_iters', help='all modes', type=int,
                               default=1000)
+        group.add_argument('--restore_geometry', help='all modes', type=bool,
+                              default=False)
 
       @classmethod
       def update_defaults(cls, defaults):

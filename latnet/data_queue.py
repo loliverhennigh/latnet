@@ -7,7 +7,7 @@ from tqdm import *
 import sys
 import os.path
 import gc
-import skfmm
+#import skfmm
 import time
 import psutil as ps
 import shutil

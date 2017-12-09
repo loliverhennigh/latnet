@@ -47,6 +47,9 @@ class LatNetController(object):
                         default=50000)
       group.add_argument('--lb_to_ln', help='all mode', type=int,
                         default=120)
+      group.add_argument('--restore_geometry', help='all mode', type=bool,
+                        default=False)
+
 
       group = self._config_parser.add_group('Saver Details')
       group.add_argument('--save_freq', help='all mode', type=int, 
@@ -66,7 +69,7 @@ class LatNetController(object):
 
       group = self._config_parser.add_group('Data Queue Details')
       group.add_argument('--gpu_fraction', help='all mode', type=float,
-                        default=0.85)
+                        default=0.3)
       group.add_argument('--num_simulations', help='all mode', type=int,
                         default=10)
       group.add_argument('--max_queue', help='all mode', type=int,

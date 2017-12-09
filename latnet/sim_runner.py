@@ -71,6 +71,7 @@ class SimRunner:
       if num_run_iters < self.max_iters:
         cmd += ' --checkpoint_from=' + str(last_step + iters_till_next_cpoint)
         cmd += ' --restore_from=' + last_cpoint[:-13]
+        cmd += ' --restore_geometry=True'
         cmd += ' --max_sim_iters=' + str(num_run_iters)
       else:
         self.clean_save_dir()
