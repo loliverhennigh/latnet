@@ -24,7 +24,7 @@ class SimRunner:
     self.sim_shape = sim_shape
 
     # hard set for now
-    self.max_times_called = 100000*self.num_cpoints
+    self.max_times_called = 1000*self.num_cpoints
     self.times_called = 0
 
   def last_cpoint(self):

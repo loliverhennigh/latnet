@@ -12,6 +12,7 @@ from sailfish.sym import S
 
 # import external librarys
 import numpy as np
+import matplotlib.pyplot as plt
 
 class Domain(object):
 
@@ -78,19 +79,14 @@ class Domain(object):
         # restore from old dir or make new geometry
         if restore_geometry:
           print("AAAAAAAAAA")
-          print(sailfish_sim_dir)
-          print(sailfish_sim_dir[:-10] + "flow_geometry.npy")
           restore_boundary_conditions = np.load(sailfish_sim_dir[:-10] + "flow_geometry.npy")
           where_boundary = restore_boundary_conditions[:,:,0].astype(np.bool)
           where_velocity = restore_boundary_conditions[:,:,1].astype(np.bool)
-          print(where_velocity.shape)
-          print(hx.shape)
-          velocity = (restore_boundary_conditions[0,0,1], restore_boundary_conditions[0,0,2])
+          velocity = (restore_boundary_conditions[-1,-1,1], restore_boundary_conditions[-1,-1,2])
           where_density  = restore_boundary_conditions[:,:,3].astype(np.bool)
           density = 1.0
         else:
           where_boundary = geometry_boundary_conditions(hx, hy, [self.gx, self.gy])
-          print(where_boundary.shape)
           where_velocity, velocity = velocity_boundary_conditions(hx, hy, [self.gx, self.gy])
           where_density, density = density_boundary_conditions(hx, hy, [self.gx, self.gy])
 
@@ -105,7 +101,7 @@ class Domain(object):
 
         # save geometry
         save_geometry = np.concatenate([np.array(np.expand_dims(where_boundary, axis=-1), dtype=np.float32),
-             np.array(velocity).reshape(1,1,2) * np.array(np.expand_dims(where_velocity, axis=-1), dtype=np.float32),
+             np.array(velocity).reshape(1,1,2) * np.expand_dims(where_velocity, axis=-1).astype(np.float32),
                              density *  np.array(np.expand_dims(where_density, axis=-1), dtype=np.float32)], axis=-1)
         np.save(sailfish_sim_dir + "_geometry.npy", save_geometry)
 

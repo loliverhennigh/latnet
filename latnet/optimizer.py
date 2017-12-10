@@ -40,5 +40,10 @@ class Optimizer:
       updates.append(p.assign(p_t))
     updates.append(t.assign_add(1))
     updates.append(global_step.assign_add(1))
+
+    # make moving average
+    ema = tf.train.ExponentialMovingAverage(decay=.9995)
+    updates.append(tf.group(ema.apply(params)))
+    
     return tf.group(*updates)
 
