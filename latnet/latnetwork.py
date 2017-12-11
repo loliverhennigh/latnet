@@ -30,7 +30,7 @@ class LatNet:
     self.padding                      = net.PADDING
 
     self.unroll                       = tf.make_template('unroll', self._unroll)
-    self.continual_unroll             = tf.make_template('continual_unroll', self._continual_unroll)
+    self.single_unroll             = tf.make_template('unroll', self._single_unroll)
 
   def _unroll(self, state_in, boundary):
     # assumes state has seq length in second dim
@@ -62,21 +62,24 @@ class LatNet:
 
     return x_out
 
-  def _continual_unroll(self, state, boundary, compressed_state, compressed_boundary):
+  def _single_unroll(self, state, boundary, 
+                compressed_state, compressed_boundary, 
+                decoder_compressed_state, decoder_compressed_boundary):
     # encode
-    compressed_state_out = self.encoder_state(state)
-    compressed_boundary_out = self.encoder_boundary(boundary)
-
-    # apply boundary
-    compressed_state_iter = self.compression_mapping_boundary(compressed_state, compressed_boundary)
-
-    # decode and add to list
-    decom = self.decoder_state(compressed_state)
+    compressed_state_from_state = self.encoder_state(state)
+    compressed_boundary_from_boundary = self.encoder_boundary(boundary)
 
     # compression mapping
-    y_2 = self.compression_mapping(y_1_boundary)
+    compressed_state_from_compressed_state = self.compression_mapping_boundary(compressed_state, compressed_boundary)
+    compressed_state_from_compressed_state = self.compression_mapping(compressed_state_from_compressed_state)
 
-    return compressed_state_out, compressed_boundary_out, state_out, 
+    # decode and add to list
+    compressed_state_store = self.compression_mapping_boundary(decoder_compressed_state, decoder_compressed_boundary)
+    state_from_compressed_state = self.decoder_state(compressed_state_store)
+
+    return (compressed_state_from_state, compressed_boundary_from_boundary, 
+           compressed_state_from_compressed_state,
+           state_from_compressed_state)
 
   def state_padding_decrease_seq(self):
     # calculates the decrease in state size after unrolling the network
@@ -90,6 +93,12 @@ class LatNet:
 
   def state_padding_decrease(self):
     return self.padding['encoder_state_padding']
+
+  def compressed_state_padding_decrease(self):
+    return self.padding['compression_mapping_padding']/self.network_config['nr_downsamples']
+
+  def decompressed_state_padding_decrease(self):
+    return int(self.padding['decoder_state_padding']/self.network_config['nr_downsamples'])
 
   def compressed_filter_size(self):
     return self.network_config['filter_size_compression']

@@ -75,7 +75,7 @@ class DataQueue:
       self.queue.put(padding_decrease_seq)
    
     # possibly wait if data needs time to queue up
-    while len(self.queue_batches) < self.batch_size:
+    while len(self.queue_batches) < 2*self.batch_size: # added times two to make sure enough
       print("spending time waiting for queue")
       time.sleep(1.01)
 

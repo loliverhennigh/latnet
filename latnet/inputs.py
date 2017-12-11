@@ -11,6 +11,7 @@ class Inputs:
     input_shape = config.input_shape.split('x')
     input_shape = map(int, input_shape)
     self.input_shape = input_shape
+
     compressed_shape = config.compressed_shape.split('x')
     compressed_shape = map(int, compressed_shape)
     self.compressed_shape = compressed_shape
@@ -51,5 +52,11 @@ class Inputs:
     
   def compressed_state(self, filter_size, padding=0): 
     compressed_shape = [x + 2*padding for x in self.compressed_shape]
-    boundary = tf.placeholder(tf.float32, [self.batch_size] + compressed_shape + [filter_size])
-    return compressed_shape
+    compressed_state = tf.placeholder(tf.float32, [self.batch_size] + compressed_shape + [filter_size])
+    return compressed_state
+    
+  def compressed_boundary(self, filter_size, padding=0): 
+    compressed_shape = [x + 2*padding for x in self.compressed_shape]
+    compressed_boundary = tf.placeholder(tf.float32, [self.batch_size] + compressed_shape + [filter_size])
+    return compressed_boundary
+

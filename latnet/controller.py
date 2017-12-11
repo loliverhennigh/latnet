@@ -179,14 +179,24 @@ class LatNetController(object):
         # make inputs
         self.inputs = Inputs(self.config)
         self.state = self.inputs.state(self.network.state_padding_decrease())
-        self.compressed_state = self.inputs.compressed_state(self.network.compressed_filter_size(),0)
+        self.compressed_state = self.inputs.compressed_state(self.network.network_config['filter_size_compression'],
+                                           self.network.compressed_state_padding_decrease())
+        self.decoder_compressed_state = self.inputs.compressed_state(self.network.network_config['filter_size_compression'],
+                                           self.network.decompressed_state_padding_decrease())
         self.boundary = self.inputs.boundary(self.network.state_padding_decrease())
+        self.compressed_boundary = self.inputs.compressed_boundary(2*self.network.network_config['filter_size_compression'],
+                                           self.network.compressed_state_padding_decrease())
+        self.decoder_compressed_boundary = self.inputs.compressed_boundary(2*self.network.network_config['filter_size_compression'],
+                                           self.network.decompressed_state_padding_decrease())
 
         # make network pipe
-        self.compressed_state_from_state = self.network.encoder_state(self.state)
-        self.compressed_boundary_from_boundary = self.network.encoder_boundary(self.boundary)
-        #self.compressed_state_from_compressed_state = self.network.(self.boundary)
-        #self.y_1, self.compressed_boundary, self.x_2, self.y_2 = self.network.continual_unroll(self.state, self.boundary)
+        ( self.compressed_state_from_state, self.compressed_boundary_from_boundary, 
+          self.compressed_state_from_compressed_state,
+          self.state_from_compressed_state) = self.network.single_unroll(self.state,
+                                              self.boundary, self.compressed_state,
+                                              self.compressed_boundary,
+                                              self.decoder_compressed_state,
+                                              self.decoder_compressed_boundary)
 
         # start session 
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
@@ -201,9 +211,33 @@ class LatNetController(object):
 
         # run simulation
         self.domain = self._eval_sim(config)
-        compressed_boundary = self.domain.compute_compressed_boundary(sess, self.compressed_boundary_from_boundary, self.boundary, self.network.state_padding_decrease())
-        time.sleep(1000.01)
 
-        print(compressed_boundary.shape)
+        # compute compressed state
+        compressed_state = self.domain.compute_compressed_state(sess, 
+                                self.compressed_state_from_state, 
+                                self.state, self.network.state_padding_decrease())
+
+        # compute compressed boundary
+        compressed_boundary = self.domain.compute_compressed_boundary(sess, 
+                                   self.compressed_boundary_from_boundary, 
+                                   self.boundary, self.network.state_padding_decrease())
+
+        # perform simulation on compressed state
+        for i in xrange(2):
+          compressed_state = self.domain.compute_compressed_mapping(sess, 
+                                      self.compressed_state_from_compressed_state, 
+                                      self.compressed_state, self.compressed_boundary,
+                                      compressed_state, compressed_boundary, 
+                                      self.network.compressed_state_padding_decrease())
+
+        decompressed_state = self.domain.compute_decompressed_state(sess,
+                                  self.state_from_compressed_state,
+                                  self.compressed_state, self.compressed_boundary,
+                                  compressed_state, compressed_boundary, 
+                                  self.decompressed_state_padding_decrease())
+
+        plt.imshow(decompressed_state[0,:,:,0])
+        plt.show()
+
 
 
