@@ -51,15 +51,16 @@ class Saver:
         paths.append(root[len(self.network_dir)+1:])
     return paths
 
-  def load_checkpoint(self, sess):
+  def load_checkpoint(self, sess, maybe_remove_prev=True):
     ckpt = tf.train.get_checkpoint_state(self.checkpoint_path)
     if ckpt is not None:
       print("init from " + ckpt.model_checkpoint_path)
       try:
         self.saver.restore(sess, ckpt.model_checkpoint_path)
       except:
-        tf.gfile.DeleteRecursively(self.checkpoint_path)
-        tf.gfile.MakeDirs(self.checkpoint_path)
+        if maybe_remove_prev:
+          tf.gfile.DeleteRecursively(self.checkpoint_path)
+          tf.gfile.MakeDirs(self.checkpoint_path)
         print("there was a problem using variables in checkpoint, random init will be used instead")
 
   def save_checkpoint(self, sess, global_step):

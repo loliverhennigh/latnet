@@ -62,21 +62,21 @@ class LatNet:
 
     return x_out
 
-  def _continual_unroll(self, state, boundary):
+  def _continual_unroll(self, state, boundary, compressed_state, compressed_boundary):
     # encode
-    y_1 = self.encoder_state(state)
-    compressed_boundary = self.encode_boundary(boundary)
+    compressed_state_out = self.encoder_state(state)
+    compressed_boundary_out = self.encoder_boundary(boundary)
 
     # apply boundary
-    y_1_boundary = self.compression_mapping_boundary(y_1, compressed_boundary)
+    compressed_state_iter = self.compression_mapping_boundary(compressed_state, compressed_boundary)
 
     # decode and add to list
-    x_2 = self.decoder_state(y_1_boundary)
+    decom = self.decoder_state(compressed_state)
 
     # compression mapping
     y_2 = self.compression_mapping(y_1_boundary)
 
-    return y_1, compressed_boundary, x_2, y_2
+    return compressed_state_out, compressed_boundary_out, state_out, 
 
   def state_padding_decrease_seq(self):
     # calculates the decrease in state size after unrolling the network
@@ -87,6 +87,14 @@ class LatNet:
                   + i*self.padding['compression_mapping_padding']
                     + self.padding['decoder_state_padding']))
     return decrease
+
+  def state_padding_decrease(self):
+    return self.padding['encoder_state_padding']
+
+  def compressed_filter_size(self):
+    return self.network_config['filter_size_compression']
+
+
 
 
 

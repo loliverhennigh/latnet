@@ -47,6 +47,7 @@ def encoder_state(x_i, name='state_'):
   filter_size = CONFIGS['filter_size']
   for i in xrange(CONFIGS['nr_downsamples']):
     filter_size = filter_size*2
+    print(x_i)
     print(x_i.get_shape())
     x_i = res_block(x_i, 
                     filter_size=filter_size,

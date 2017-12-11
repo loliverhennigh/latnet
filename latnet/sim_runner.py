@@ -5,6 +5,7 @@ import shutil
 import os
 
 import lattice
+import utils.padding_utils as padding_utils
 
 import numpy as np
 
@@ -115,8 +116,7 @@ class SimRunner:
       geometry_array = np.load(geometry_file)
       geometry_array = geometry_array.astype(np.float32)
       geometry_array = geometry_array[1:-1,1:-1]
-      #geometry_array = np.expand_dims(geometry_array, axis=0)
-      geometry_array = mobius_extract_pad(geometry_array, pos, radius)
+      geometry_array = padding_utils.mobius_extract_pad(geometry_array, pos, radius)
     return geometry_array
 
   def read_seq_states(self, seq_length, pos, radius, padding_decrease_seq):
@@ -135,10 +135,9 @@ class SimRunner:
         state = np.swapaxes(state, 0, 1)
         state = np.swapaxes(state, 1, 2)
         state = state - subtract_weights
-        #state = np.expand_dims(state, axis=0)
         if i == 0:
-          state_in = mobius_extract_pad(state, pos, radius)
-        state = mobius_extract_pad(state, pos, radius - padding_decrease_seq[i])
+          state_in = padding_utils.mobius_extract_pad(state, pos, radius)
+        state = padding_utils.mobius_extract_pad(state, pos, radius - padding_decrease_seq[i])
         state_out.append(state)
     return state_in, state_out  
 
@@ -182,19 +181,6 @@ class SimRunner:
       p = ps.subprocess.Popen(('mkdir -p ' + self.save_dir + "/store").split(' '), 
                                stdout=devnull, stderr=devnull)
       p.communicate()
-
-
-def mobius_extract_pad(dat, pos, radius):
-  shape = dat.shape
-  pad_bottom_x = int(max(-(pos[0] - radius), 0))
-  pad_top_x = int(max(-(shape[0] - pos[0]) + radius, 0)) + 1
-  pad_bottom_y = int(max(-(pos[1] - radius), 0))
-  pad_top_y = int(max(-(shape[1] - pos[1]) + radius, 0)) + 1
-  dat = np.pad(dat, [[pad_bottom_x, pad_top_x], [pad_bottom_y, pad_top_y], [0,0]], 'wrap')
-  new_pos_x = pos[0] + pad_bottom_x
-  new_pos_y = pos[1] + pad_bottom_y
-  dat_extract_pad = dat[new_pos_x-radius:new_pos_x+radius, new_pos_y-radius:new_pos_y+radius]
-  return dat_extract_pad
 
 
 

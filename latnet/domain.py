@@ -1,6 +1,9 @@
 
 import sys
 
+# import latnet files
+import utils
+
 # import sailfish
 sys.path.append('../sailfish')
 from sailfish.subdomain import Subdomain2D
@@ -13,6 +16,9 @@ from sailfish.sym import S
 # import external librarys
 import numpy as np
 import matplotlib.pyplot as plt
+import math
+from tqdm import *
+
 
 class Domain(object):
 
@@ -22,15 +28,19 @@ class Domain(object):
     sim_shape = map(int, sim_shape)
     self.sim_shape = sim_shape
 
+    input_shape = config.input_shape.split('x')
+    input_shape = map(int, input_shape)
+    self.input_shape = input_shape
+
+    compressed_shape = config.compressed_shape.split('x')
+    compressed_shape = map(int, compressed_shape)
+    self.compressed_shape = compressed_shape
+
     self.sailfish_sim_dir = config.sailfish_sim_dir
     self.max_sim_iters = config.max_sim_iters
     self.lb_to_ln = config.lb_to_ln
     self.visc = config.visc
     self.restore_geometry = config.restore_geometry
-
-    # hard set
-    self.max_lat_shape = [1024, 1024]
-    self.max_compressed_shape = [512, 512]
 
   def boundary_conditions(self, hx, hy):
     pass
@@ -49,6 +59,12 @@ class Domain(object):
 
   def density_initial_conditions(self, hx, hy, shape):
     pass
+
+  def make_geometry_input(self, where_boundary, velocity, where_velocity, density, where_density):
+    input_geometry = np.concatenate([np.expand_dims(where_boundary, axis=-1).astype(np.float32),
+                                     np.array(velocity).reshape(1,1,2) * np.expand_dims(where_velocity, axis=-1).astype(np.float32),
+                                     density *  np.expand_dims(where_density, axis=-1).astype(np.float32)], axis=-1)
+    return input_geometry
 
   def create_sailfish_simulation(self):
 
@@ -70,6 +86,9 @@ class Domain(object):
     visc = self.visc
     restore_geometry = self.restore_geometry
 
+    # inportant func
+    make_geometry_input = self.make_geometry_input
+
     class SailfishSubdomain(Subdomain2D):
       
       bc = NTFullBBWall
@@ -78,7 +97,6 @@ class Domain(object):
 
         # restore from old dir or make new geometry
         if restore_geometry:
-          print("AAAAAAAAAA")
           restore_boundary_conditions = np.load(sailfish_sim_dir[:-10] + "flow_geometry.npy")
           where_boundary = restore_boundary_conditions[:,:,0].astype(np.bool)
           where_velocity = restore_boundary_conditions[:,:,1].astype(np.bool)
@@ -100,9 +118,7 @@ class Domain(object):
         self.set_node(where_density, NTEquilibriumDensity(density))
 
         # save geometry
-        save_geometry = np.concatenate([np.array(np.expand_dims(where_boundary, axis=-1), dtype=np.float32),
-             np.array(velocity).reshape(1,1,2) * np.expand_dims(where_velocity, axis=-1).astype(np.float32),
-                             density *  np.array(np.expand_dims(where_density, axis=-1), dtype=np.float32)], axis=-1)
+        save_geometry = make_geometry_input(where_boundary, velocity, where_velocity, density, where_density)
         np.save(sailfish_sim_dir + "_geometry.npy", save_geometry)
 
       def initial_conditions(self, sim, hx, hy):
@@ -157,9 +173,30 @@ class Domain(object):
 
     return ctrl
 
-  def compute_compressed_state(self, sess, encoder, state):
-     
-    pass
+  def compute_compressed_boundary(self, sess, encoder, boundary, padding):
+
+    self.input_lattice_subdomains = (int(math.ceil(self.sim_shape[0]/float(self.input_shape[0]))), 
+                                     int(math.ceil(self.sim_shape[1]/float(self.input_shape[1]))))
+
+    compressed_state = []
+    for i in tqdm(xrange(self.input_lattice_subdomains[0])):
+      compressed_state_store = []
+      for j in xrange(self.input_lattice_subdomains[1]):
+        h = np.mgrid[i*self.input_shape[0] - padding:(i+1)*self.input_shape[0] + padding,
+                     j*self.input_shape[1] - padding:(j+1)*self.input_shape[1] + padding]
+        hx = np.mod(h[1], self.sim_shape[0])
+        hy = np.mod(h[0], self.sim_shape[1])
+        where_boundary = self.geometry_boundary_conditions(hx, hy, self.sim_shape)
+        where_velocity, velocity = self.velocity_boundary_conditions(hx, hy, self.sim_shape)
+        where_density, density = self.density_boundary_conditions(hx, hy, self.sim_shape)
+        input_geometry = self.make_geometry_input(where_boundary, velocity, where_velocity, density, where_density)
+        compressed_state_store.append(sess.run(encoder, feed_dict={boundary:np.expand_dims(input_geometry, axis=0)}))
+
+      compressed_state.append(np.concatenate(compressed_state_store, axis=2))
+
+    compressed_state = np.concatenate(compressed_state, axis=1)
+
+    return compressed_state
 
   def get_state_input(self, pos, radius):
     pass
@@ -176,4 +213,8 @@ class Domain(object):
   def extract_state(self, pos, radius, sess, blaa):
     pass
 
+class SubDomain(object):
+  # probably add more to this class later :/
+  def __init__(self, pos):
+    self.pos = pos
 

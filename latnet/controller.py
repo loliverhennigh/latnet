@@ -41,6 +41,7 @@ class LatNetController(object):
       group = self._config_parser.add_group('Simulation Details')
       group.add_argument('--sim_shape', help='all mode', type=str,
                         default='512x512')
+
       group.add_argument('--visc', help='all mode', type=float,
                         default=0.1)
       group.add_argument('--max_sim_iters', help='all mode', type=int,
@@ -73,7 +74,7 @@ class LatNetController(object):
       group.add_argument('--num_simulations', help='all mode', type=int,
                         default=10)
       group.add_argument('--max_queue', help='all mode', type=int,
-                        default=100)
+                        default=30)
       group.add_argument('--nr_threads', help='all mode', type=int,
                         default=1)
       group.add_argument('--checkpoint_from', help='all mode', type=int,
@@ -84,6 +85,8 @@ class LatNetController(object):
       group = self._config_parser.add_group('Input Details')
       group.add_argument('--input_shape', help='all mode', type=str,
                          default='256x256')
+      group.add_argument('--compressed_shape', help='all mode', type=str,
+                         default='64x64')
       group.add_argument('--lattice_q', help='all mode', type=int,
             choices=[9], default=9)
 
@@ -175,14 +178,18 @@ class LatNetController(object):
 
         # make inputs
         self.inputs = Inputs(self.config)
-        self.state = self.inputs.state()
-        self.boundary = self.inputs.boundary()
+        self.state = self.inputs.state(self.network.state_padding_decrease())
+        self.compressed_state = self.inputs.compressed_state(self.network.compressed_filter_size(),0)
+        self.boundary = self.inputs.boundary(self.network.state_padding_decrease())
 
         # make network pipe
-        self.y_1, self.compressed_boundary, self.x_2, self.y_2 = self.network.continual_unroll(self.state, self.boundary)
+        self.compressed_state_from_state = self.network.encoder_state(self.state)
+        self.compressed_boundary_from_boundary = self.network.encoder_boundary(self.boundary)
+        #self.compressed_state_from_compressed_state = self.network.(self.boundary)
+        #self.y_1, self.compressed_boundary, self.x_2, self.y_2 = self.network.continual_unroll(self.state, self.boundary)
 
         # start session 
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=1.0)
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
         sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
         init = tf.global_variables_initializer()
         sess.run(init)
@@ -190,13 +197,13 @@ class LatNetController(object):
         # make saver
         graph_def = sess.graph.as_graph_def(add_shapes=True)
         self.saver = Saver(self.config, self.network.network_config, graph_def)
-        self.saver.load_checkpoint()
+        self.saver.load_checkpoint(sess, maybe_remove_prev=False)
 
         # run simulation
-        y_1_g, small_boundary_mul_g, small_boundary_add_g = sess.run([self.y_1, self.small_boundary_mul, self.small_boundary_add], feed_dict=fd)
-        for i in xrange(self.config.max_iters):
-          _, l = sess.run([self.train_op, self.total_loss], 
-                          feed_dict=self.dataset.minibatch(self.state, self.boundary))
+        self.domain = self._eval_sim(config)
+        compressed_boundary = self.domain.compute_compressed_boundary(sess, self.compressed_boundary_from_boundary, self.boundary, self.network.state_padding_decrease())
+        time.sleep(1000.01)
 
+        print(compressed_boundary.shape)
 
 
