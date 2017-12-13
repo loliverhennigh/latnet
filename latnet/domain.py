@@ -22,11 +22,14 @@ from tqdm import *
 
 class Domain(object):
 
-  def __init__(self, config):
+  def __init__(self, config, nr_downsamples=0): # once network config is in correctly will just need config
 
     sim_shape = config.sim_shape.split('x')
     sim_shape = map(int, sim_shape)
     self.sim_shape = sim_shape
+
+    self.compressed_sim_shape = [sim_shape[0]/np.power(2, nr_downsamples), 
+                                 sim_shape[1]/np.power(2, nr_downsamples)]
 
     input_shape = config.input_shape.split('x')
     input_shape = map(int, input_shape)
@@ -35,7 +38,6 @@ class Domain(object):
     compressed_shape = config.compressed_shape.split('x')
     compressed_shape = map(int, compressed_shape)
     self.compressed_shape = compressed_shape
-    print(self.compressed_shape)
 
     self.sailfish_sim_dir = config.sailfish_sim_dir
     self.max_sim_iters = config.max_sim_iters
@@ -188,6 +190,9 @@ class Domain(object):
       compressed_state.append(np.concatenate(compressed_state_store, axis=2))
     compressed_state = np.concatenate(compressed_state, axis=1)
 
+    # trim edges
+    compressed_state = compressed_state[:,:self.compressed_sim_shape[0],:self.compressed_sim_shape[1]]
+
     return compressed_state
 
   def compute_compressed_boundary(self, sess, encoder, boundary, padding):
@@ -212,12 +217,15 @@ class Domain(object):
       compressed_boundary.append(np.concatenate(compressed_boundary_store, axis=2))
 
     compressed_boundary = np.concatenate(compressed_boundary, axis=1)
+    
+    # trim edges
+    compressed_boundary = compressed_boundary[:,:self.compressed_sim_shape[0],:self.compressed_sim_shape[1]]
 
     return compressed_boundary
 
   def compute_compressed_mapping(self, sess, compression_mapping, compressed_state, compressed_boundary, np_compressed_state, np_compressed_boundary, padding):
 
-    compressed_shape = np_compressed_state.shape
+    compressed_shape = np_compressed_state.shape[1:3]
     self.input_lattice_subdomains = (int(math.ceil(compressed_shape[0]/float(self.compressed_shape[0]))), 
                                      int(math.ceil(compressed_shape[1]/float(self.compressed_shape[1]))))
 
@@ -226,34 +234,46 @@ class Domain(object):
       compressed_state_store = []
       for j in xrange(self.input_lattice_subdomains[1]):
         pos = (i*self.compressed_shape[0], j*self.compressed_shape[1])
-        compressed_state_ij    = padding_utils.mobius_extract_pad(np_compressed_state,    pos, self.compressed_shape[0]/2+padding, has_batch=True)
-        compressed_boundary_ij = padding_utils.mobius_extract_pad(np_compressed_boundary, pos, self.compressed_shape[0]/2+padding, has_batch=True)
+        plt.imshow(np_compressed_state[0,:,:,0])
+        plt.show()
+        compressed_state_ij    = padding_utils.mobius_extract_pad_2(np_compressed_state,    pos, self.compressed_shape, padding, has_batch=True)
+        plt.imshow(compressed_state_ij[0,:,:,0])
+        plt.show()
+        compressed_boundary_ij = padding_utils.mobius_extract_pad_2(np_compressed_boundary, pos, self.compressed_shape, padding, has_batch=True)
         compressed_state_store.append(sess.run(compression_mapping, feed_dict={compressed_state:compressed_state_ij, compressed_boundary:compressed_boundary_ij}))
 
-      np_compressed_state_out.append(np.concatenate(compressed_boundary_store, axis=2))
+      np_compressed_state_out.append(np.concatenate(compressed_state_store, axis=2))
 
-    np_compressed_state = np.concatenate(np_compressed_boundary_out, axis=1)
+    np_compressed_state = np.concatenate(np_compressed_state_out, axis=1)
+
+    # trim edges
+    np_compressed_state = np_compressed_state[:,:self.compressed_sim_shape[0],:self.compressed_sim_shape[1]]
 
     return np_compressed_state
 
   def compute_decompressed_state(self, sess, decoder, compressed_state, compressed_boundary, np_compressed_state, np_compressed_boundary, padding):
 
-    compressed_shape = compressed_state.shape
+    compressed_shape = np_compressed_state.shape[1:3]
     self.input_lattice_subdomains = (int(math.ceil(compressed_shape[0]/float(self.compressed_shape[0]))), 
                                      int(math.ceil(compressed_shape[1]/float(self.compressed_shape[1]))))
+
 
     np_state_out = []
     for i in tqdm(xrange(self.input_lattice_subdomains[0])):
       state_store = []
       for j in xrange(self.input_lattice_subdomains[1]):
+        print("CALLED")
         pos = (i*self.compressed_shape[0], j*self.compressed_shape[1])
-        compressed_state_ij    = padding_utils.mobius_extract_pad(np_compressed_state,    pos, self.compressed_shape[0]/2+padding, has_batch=True)
-        compressed_boundary_ij = padding_utils.mobius_extract_pad(np_compressed_boundary, pos, self.compressed_shape[0]/2+padding, has_batch=True)
-        compressed_state_store.append(sess.run(decoder, feed_dict={compressed_state:compressed_state_ij, compressed_boundary:compressed_boundary_ij}))
+        compressed_state_ij    = padding_utils.mobius_extract_pad_2(np_compressed_state,    pos, self.compressed_shape, padding, has_batch=True)
+        compressed_boundary_ij = padding_utils.mobius_extract_pad_2(np_compressed_boundary, pos, self.compressed_shape, padding, has_batch=True)
+        state_store.append(sess.run(decoder, feed_dict={compressed_state:compressed_state_ij, compressed_boundary:compressed_boundary_ij}))
 
       np_state_out.append(np.concatenate(state_store, axis=2))
 
     np_state = np.concatenate(np_state_out, axis=1)
+
+    # trim edges
+    #np_state = np_state[:,:self.sim_shape[0],:self.sim_shape[1]]
 
     return np_state
 

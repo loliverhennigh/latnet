@@ -11,6 +11,9 @@ from inputs import Inputs
 from optimizer import Optimizer
 from saver import Saver
 from domain import Domain
+from lattice import *
+
+import matplotlib.pyplot as plt
 
 class LatNetController(object):
     """Controls the execution of a LN simulation."""
@@ -64,7 +67,7 @@ class LatNetController(object):
       group.add_argument('--optimizer', help='all mode', type=str,
                         default='adam')
       group.add_argument('--lr', help='all mode', type=float,
-                        default=0.0001)
+                        default=0.0004)
       group.add_argument('--train_iterations', help='all mode', type=int,
                         default=1000000)
 
@@ -197,6 +200,7 @@ class LatNetController(object):
                                               self.compressed_boundary,
                                               self.decoder_compressed_state,
                                               self.decoder_compressed_boundary)
+        print(self.state_from_compressed_state.get_shape())
 
         # start session 
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
@@ -210,7 +214,7 @@ class LatNetController(object):
         self.saver.load_checkpoint(sess, maybe_remove_prev=False)
 
         # run simulation
-        self.domain = self._eval_sim(config)
+        self.domain = self._eval_sim(config, self.network.network_config['nr_downsamples'])
 
         # compute compressed state
         compressed_state = self.domain.compute_compressed_state(sess, 
@@ -222,22 +226,32 @@ class LatNetController(object):
                                    self.compressed_boundary_from_boundary, 
                                    self.boundary, self.network.state_padding_decrease())
 
+        decompressed_state = self.domain.compute_decompressed_state(sess,
+                                  self.state_from_compressed_state,
+                                  self.decoder_compressed_state, self.decoder_compressed_boundary,
+                                  compressed_state, compressed_boundary, 
+                                  self.network.decompressed_state_padding_decrease())
+
+        plt.imshow(decompressed_state[0,:,:,0])
+        plt.show()
+
         # perform simulation on compressed state
-        for i in xrange(2):
+        for i in xrange(1000):
           compressed_state = self.domain.compute_compressed_mapping(sess, 
                                       self.compressed_state_from_compressed_state, 
                                       self.compressed_state, self.compressed_boundary,
                                       compressed_state, compressed_boundary, 
                                       self.network.compressed_state_padding_decrease())
 
-        decompressed_state = self.domain.compute_decompressed_state(sess,
-                                  self.state_from_compressed_state,
-                                  self.compressed_state, self.compressed_boundary,
-                                  compressed_state, compressed_boundary, 
-                                  self.decompressed_state_padding_decrease())
+          if i % 10 == 0:
+            decompressed_state = self.domain.compute_decompressed_state(sess,
+                                      self.state_from_compressed_state,
+                                      self.decoder_compressed_state, self.decoder_compressed_boundary,
+                                      compressed_state, compressed_boundary, 
+                                      self.network.decompressed_state_padding_decrease())
 
-        plt.imshow(decompressed_state[0,:,:,0])
-        plt.show()
+            plt.imshow(decompressed_state[0,:,:,2])
+            plt.show()
 
 
 

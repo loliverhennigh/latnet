@@ -95,10 +95,12 @@ class LatNet:
     return self.padding['encoder_state_padding']
 
   def compressed_state_padding_decrease(self):
-    return self.padding['compression_mapping_padding']/self.network_config['nr_downsamples']
+    print(self.padding['compression_mapping_padding'],pow(2,self.network_config['nr_downsamples']))
+    return int(self.padding['compression_mapping_padding']/pow(2,self.network_config['nr_downsamples']))
 
   def decompressed_state_padding_decrease(self):
-    return int(self.padding['decoder_state_padding']/self.network_config['nr_downsamples'])
+    print(self.padding['decoder_state_padding'],pow(2,self.network_config['nr_downsamples']))
+    return int(self.padding['decoder_state_padding']/pow(2,self.network_config['nr_downsamples']))
 
   def compressed_filter_size(self):
     return self.network_config['filter_size_compression']

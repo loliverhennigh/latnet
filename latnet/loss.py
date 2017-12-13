@@ -8,6 +8,8 @@ class Loss:
     pass
 
   def mse(self, true, generated):
+    print(true)
+    print(generated)
     if isinstance(true, list):
       loss = 0.0
       for i in xrange(len(true)):
