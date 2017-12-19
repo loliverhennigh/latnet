@@ -7,6 +7,9 @@ import os
 import lattice
 import utils.padding_utils as padding_utils
 
+
+import matplotlib.pyplot as plt
+
 import numpy as np
 
 class SimRunner:
@@ -116,7 +119,7 @@ class SimRunner:
       geometry_array = np.load(geometry_file)
       geometry_array = geometry_array.astype(np.float32)
       geometry_array = geometry_array[1:-1,1:-1]
-      geometry_array = padding_utils.mobius_extract_pad_2(geometry_array, pos, size=[2*radius,2*radius], padding=0)
+      geometry_array = padding_utils.mobius_extract_pad_2(geometry_array, pos, size=2*[2*radius], padding=0)
     return geometry_array
 
   def read_seq_states(self, seq_length, pos, radius, padding_decrease_seq):
@@ -136,9 +139,10 @@ class SimRunner:
         state = np.swapaxes(state, 1, 2)
         state = state - subtract_weights
         if i == 0:
-          state_in = padding_utils.mobius_extract_pad_2(state, pos, size=[2*radius, 2*radius], padding=0)
-        state = padding_utils.mobius_extract_pad(state, pos, radius - padding_decrease_seq[i])
-        state = padding_utils.mobius_extract_pad_2(state, pos, size=[2*(radius - padding_decrease_seq[i)), 2*(radius - padding_decrease_seq[i])], padding=0)
+          state_in = padding_utils.mobius_extract_pad_2(state, pos, size=2*[2*radius], padding=0)
+        state = padding_utils.mobius_extract_pad_2(state, pos, size=2*[2*radius], padding=padding_decrease_seq[i])
+        plt.imshow(state[:,:,2])
+        plt.show()
         state_out.append(state)
     return state_in, state_out  
 
