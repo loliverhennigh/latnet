@@ -17,10 +17,10 @@ class SimRunner:
 
   def __init__(self, config, save_dir, script_name):
     self.save_dir = save_dir
-    self.num_cpoints = config.seq_length * 2
+    self.num_cpoints = config.seq_length * 20
     self.lb_to_ln = config.lb_to_ln
-    self.max_iters = config.max_sim_iters
-    self.max_iters_till_next_cpoint = 5000 # hard set for now
+    self.max_iters = config.max_sim_iters - np.random.randint(0, 20000)
+    self.max_iters_till_next_cpoint = 100 # hard set for now
     self.script_name = script_name
 
     sim_shape = config.sim_shape.split('x')
@@ -28,7 +28,7 @@ class SimRunner:
     self.sim_shape = sim_shape
 
     # hard set for now
-    self.max_times_called = 1000*self.num_cpoints
+    self.max_times_called = 10*self.num_cpoints
     self.times_called = 0
 
   def last_cpoint(self):
@@ -119,7 +119,7 @@ class SimRunner:
       geometry_array = np.load(geometry_file)
       geometry_array = geometry_array.astype(np.float32)
       geometry_array = geometry_array[1:-1,1:-1]
-      geometry_array = padding_utils.mobius_extract_pad_2(geometry_array, pos, size=2*[2*radius], padding=0)
+      geometry_array = padding_utils.mobius_extract_pad_2(geometry_array, pos, size=2*[2*radius], pad_length=0)
     return geometry_array
 
   def read_seq_states(self, seq_length, pos, radius, padding_decrease_seq):
@@ -139,10 +139,10 @@ class SimRunner:
         state = np.swapaxes(state, 1, 2)
         state = state - subtract_weights
         if i == 0:
-          state_in = padding_utils.mobius_extract_pad_2(state, pos, size=2*[2*radius], padding=0)
-        state = padding_utils.mobius_extract_pad_2(state, pos, size=2*[2*radius], padding=padding_decrease_seq[i])
-        plt.imshow(state[:,:,2])
-        plt.show()
+          state_in = padding_utils.mobius_extract_pad_2(state, pos, size=2*[2*radius], pad_length=0)
+        state = padding_utils.mobius_extract_pad_2(state, pos, size=2*[2*radius], pad_length=-padding_decrease_seq[i])
+        #plt.imshow(state[:,:,2])
+        #plt.savefig("test" + str(i) + ".png")
         state_out.append(state)
     return state_in, state_out  
 

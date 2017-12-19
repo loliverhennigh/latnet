@@ -57,7 +57,7 @@ class LatNetController(object):
 
       group = self._config_parser.add_group('Saver Details')
       group.add_argument('--save_freq', help='all mode', type=int, 
-                        default=500)
+                        default=100)
 
       group = self._config_parser.add_group('Train Details')
       group.add_argument('--seq_length', help='all mode', type=int, 
