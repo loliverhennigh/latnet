@@ -16,6 +16,8 @@ class LatNet:
 
     if self.network_name == "basic_network":
       import network_architectures.basic_network as net
+    elif self.network_name == "advanced_network":
+      import network_architectures.advanced_network as net
     else:
       print("network name not found")
       exit()

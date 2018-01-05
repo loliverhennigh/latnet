@@ -17,7 +17,7 @@ class SimRunner:
 
   def __init__(self, config, save_dir, script_name):
     self.save_dir = save_dir
-    self.num_cpoints = config.seq_length * 20
+    self.num_cpoints = config.seq_length * 200
     self.lb_to_ln = config.lb_to_ln
     self.max_iters = config.max_sim_iters - np.random.randint(0, 20000)
     self.max_iters_till_next_cpoint = 100 # hard set for now
@@ -28,7 +28,7 @@ class SimRunner:
     self.sim_shape = sim_shape
 
     # hard set for now
-    self.max_times_called = 10*self.num_cpoints
+    self.max_times_called = np.random.randint(20,100)*self.num_cpoints
     self.times_called = 0
 
   def last_cpoint(self):

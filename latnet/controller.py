@@ -39,7 +39,7 @@ class LatNetController(object):
       
       group = self._config_parser.add_group('Network Details')
       group.add_argument('--network_name', help='all mode', type=str,
-                        default='basic_network')
+                        default='advanced_network')
 
       group = self._config_parser.add_group('Simulation Details')
       group.add_argument('--sim_shape', help='all mode', type=str,

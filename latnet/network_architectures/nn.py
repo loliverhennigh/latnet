@@ -155,10 +155,10 @@ def transpose_conv_layer(inputs, kernel_size, stride, num_features, idx, nonline
     shape = int_shape(inputs)
     if  length_input == 2:
       conv = tf.reshape(conv, [shape[0], shape[1]*stride, shape[2]*stride, num_features])
-      #conv = conv[:,1:-1,1:-1]
+      conv = conv[:,1:-1,1:-1]
     if  length_input == 3:
       conv = tf.reshape(conv, [shape[0], shape[1]*stride, shape[2]*stride, shape[3]*stride, num_features])
-      #conv = conv[:,1:-1,1:-1,1:-1]
+      conv = conv[:,1:-1,1:-1,1:-1]
     return conv
 
 def fc_layer(inputs, hiddens, idx, nonlinearity=None, flat = False):

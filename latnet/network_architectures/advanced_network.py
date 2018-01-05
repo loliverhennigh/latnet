@@ -17,7 +17,7 @@ CONFIGS = {}
 PADDING = {}
 
 # number of residual blocks in compression mapping
-CONFIGS['nr_residual_compression'] = 1
+CONFIGS['nr_residual_compression'] = 2
 
 # numper of downsamples
 CONFIGS['nr_downsamples'] = 4
@@ -39,6 +39,7 @@ CONFIGS['filter_size_compression']=128
 decoder_state_padding = 2
 for i in xrange(CONFIGS['nr_downsamples']):
   decoder_state_padding += 2*pow(2, i)
+print(decoder_state_padding)
 PADDING['encoder_state_padding'] = decoder_state_padding
 
 # encoder state
@@ -131,6 +132,7 @@ def decoder_state(y_i, lattice_size=9, extract_type=None, extract_pos=64):
                     name="res_" + str(i))
 
   y_i = conv_layer(y_i, 3, 1, lattice_size, "last_conv")
+  print(y_i.get_shape())
   return tf.nn.tanh(y_i)
 
 
