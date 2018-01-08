@@ -146,8 +146,7 @@ def lattice_to_vel(lattice):
   dims = len(lattice.get_shape())-1
   Lveloc_shape = list(map(int, Lveloc.get_shape()))
   Lveloc = tf.reshape(Lveloc, dims*[1] + Lveloc_shape)
-  lattice_shape = list(map(int, lattice.get_shape()))
-  lattice = tf.reshape(lattice, lattice_shape + [1])
+  lattice = tf.expand_dims(lattice, -1)
   velocity = tf.reduce_sum(Lveloc * lattice, axis=dims)
   return velocity
 
