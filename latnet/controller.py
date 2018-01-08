@@ -200,7 +200,6 @@ class LatNetController(object):
                                               self.compressed_boundary,
                                               self.decoder_compressed_state,
                                               self.decoder_compressed_boundary)
-        print(self.state_from_compressed_state.get_shape())
 
         # start session 
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
@@ -232,8 +231,11 @@ class LatNetController(object):
                                   compressed_state, compressed_boundary, 
                                   self.network.decompressed_state_padding_decrease())
 
+        print(self.state_from_compressed_state.get_shape())
+        print(decompressed_state.shape)
         plt.imshow(decompressed_state[0,:,:,0])
         plt.show()
+        exit()
 
         # perform simulation on compressed state
         for i in xrange(1000):
@@ -250,6 +252,7 @@ class LatNetController(object):
                                       compressed_state, compressed_boundary, 
                                       self.network.decompressed_state_padding_decrease())
 
+            print(decompressed_state.shape)
             plt.imshow(decompressed_state[0,:,:,2])
             plt.show()
 

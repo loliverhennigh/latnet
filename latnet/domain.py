@@ -158,8 +158,6 @@ class Domain(object):
           'periodic_x': True,
           'checkpoint_file': sailfish_sim_dir,
           'checkpoint_every': lb_to_ln,
-          #'cuda-sched-yield': True,
-          #'cuda-minimize-cpu-usage': True,
           'lat_nx': shape[0],
           'lat_ny': shape[1]
           })
@@ -234,11 +232,39 @@ class Domain(object):
       compressed_state_store = []
       for j in xrange(self.input_lattice_subdomains[1]):
         pos = (i*self.compressed_shape[0], j*self.compressed_shape[1])
-        plt.imshow(np_compressed_state[0,:,:,0])
-        plt.show()
+        #plt.imshow(np_compressed_state[0,:,:,0])
+        #plt.show()
         compressed_state_ij    = padding_utils.mobius_extract_pad_2(np_compressed_state,    pos, self.compressed_shape, padding, has_batch=True)
-        plt.imshow(compressed_state_ij[0,:,:,0])
-        plt.show()
+        #plt.imshow(compressed_state_ij[0,:,:,0])
+        #plt.show()
+        compressed_boundary_ij = padding_utils.mobius_extract_pad_2(np_compressed_boundary, pos, self.compressed_shape, padding, has_batch=True)
+        compressed_state_store.append(sess.run(compression_mapping, feed_dict={compressed_state:compressed_state_ij, compressed_boundary:compressed_boundary_ij}))
+
+      np_compressed_state_out.append(np.concatenate(compressed_state_store, axis=2))
+
+    np_compressed_state = np.concatenate(np_compressed_state_out, axis=1)
+
+    # trim edges
+    np_compressed_state = np_compressed_state[:,:self.compressed_sim_shape[0],:self.compressed_sim_shape[1]]
+
+    return np_compressed_state
+
+  def compute_compressed_boundary_mapping(self, sess, compression_mapping, compressed_state, compressed_boundary, np_compressed_state, np_compressed_boundary, padding):
+
+    compressed_shape = np_compressed_state.shape[1:3]
+    self.input_lattice_subdomains = (int(math.ceil(compressed_shape[0]/float(self.compressed_shape[0]))), 
+                                     int(math.ceil(compressed_shape[1]/float(self.compressed_shape[1]))))
+
+    np_compressed_state_out = []
+    for i in tqdm(xrange(self.input_lattice_subdomains[0])):
+      compressed_state_store = []
+      for j in xrange(self.input_lattice_subdomains[1]):
+        pos = (i*self.compressed_shape[0], j*self.compressed_shape[1])
+        #plt.imshow(np_compressed_state[0,:,:,0])
+        #plt.show()
+        compressed_state_ij    = padding_utils.mobius_extract_pad_2(np_compressed_state,    pos, self.compressed_shape, padding, has_batch=True)
+        #plt.imshow(compressed_state_ij[0,:,:,0])
+        #plt.show()
         compressed_boundary_ij = padding_utils.mobius_extract_pad_2(np_compressed_boundary, pos, self.compressed_shape, padding, has_batch=True)
         compressed_state_store.append(sess.run(compression_mapping, feed_dict={compressed_state:compressed_state_ij, compressed_boundary:compressed_boundary_ij}))
 
