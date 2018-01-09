@@ -71,13 +71,6 @@ def _variable(name, shape, initializer):
   _activation_summary(var)
   return var
 
-def mobius_pad(inputs):
-  #inputs_mobius = tf.concat(axis=1, values=[tf.zeros_like(inputs[:,-1:]), inputs, tf.zeros_like(inputs[:,0:1])]) 
-  inputs_mobius = tf.concat(axis=1, values=[inputs[:,-1:], inputs, inputs[:,0:1]]) 
-  #inputs_mobius = tf.concat(axis=2, values=[tf.zeros_like(inputs_mobius[:,:,-1:]), inputs_mobius, tf.zeros_like(inputs_mobius[:,:,0:1])])
-  inputs_mobius = tf.concat(axis=2, values=[inputs_mobius[:,:,-1:], inputs_mobius, inputs_mobius[:,:,0:1]])
-  return inputs_mobius
-
 def simple_conv_2d(x, k):
   """A simplified 2D convolution operation"""
   y = tf.nn.conv2d(x, k, [1, 1, 1, 1], padding='VALID')
