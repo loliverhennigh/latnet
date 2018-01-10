@@ -4,7 +4,7 @@ import numpy as np
 from nn import *
 
 
-class ShapeConvert:
+class ShapeConverter:
   # This class allows the shape and pos to be converted from one position 
   # in the computational graph to another. For example, suppose you have 
   # a desired piece of the compressed state to extract and you need to know
@@ -92,6 +92,10 @@ class ShapeConvert:
     self.concat_function_in_out(in_out_helper)
     self.concat_function_out_in(out_in_helper)
 
+  def add_res_block(self, stride):
+    self.add_conv(3, stride)
+    self.add_trans_conv(3, 1)
+
   def concat_function_in_out(self, func):
     old_in_out_subdomain = self.in_out_subdomain
     self.in_out_subdomain = lambda x: func(old_in_out_subdomain(x))
@@ -99,6 +103,9 @@ class ShapeConvert:
   def concat_function_out_in(self, func):
     old_out_in_subdomain = self.out_in_subdomain
     self.out_in_subdomain = lambda x: old_out_in_subdomain(func(x))
+
+  #def concat_shape_converter(self, shape_converter):
+
 
 class SubDomain:
   # This class 
@@ -128,8 +135,9 @@ class SubDomain:
     self.pos  = [x*2 for x in self.pos ]
     self.size = [x*2 for x in self.size]
 
+"""
 # quick test
-s = ShapeConvert()
+s = ShapeConverter()
 s.add_conv(2,2)
 s.add_conv(3,1)
 s.add_conv(2,2)
@@ -146,6 +154,7 @@ s.out_in_subdomain(out_in_subdomain)
 print(out_in_subdomain.pos)
 print(out_in_subdomain.size)
 #print(s.in_out_subdomain(subdomain))
+"""
 
 
 

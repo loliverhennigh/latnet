@@ -6,8 +6,6 @@ import tensorflow as tf
 import tensorflow.contrib.layers as tcl
 import numpy as np
 
-#import BasicConvLSTMCell 
-
 FLAGS = tf.app.flags.FLAGS
 
 def int_shape(x):
@@ -81,12 +79,12 @@ def simple_conv_3d(x, k):
   y = tf.nn.conv3d(x, k, [1, 1, 1, 1, 1], padding='VALID')
   return y
 
-def conv_layer(inputs, kernel_size, stride, num_features, idx, nonlinearity=None):
+def conv_layer(x, kernel_size, stride, num_features, idx, nonlinearity=None):
   with tf.variable_scope('{0}_conv'.format(idx)) as scope:
-    input_channels = inputs.get_shape()[-1]
+    input_channels = x.get_shape()[-1]
  
     # determine dim
-    length_input = len(inputs.get_shape()) - 2
+    length_input = len(x.get_shape()) - 2
     if length_input not in [2, 3]:
       print("conv layer does not support non 2d or 3d inputs")
       exit()
@@ -94,12 +92,9 @@ def conv_layer(inputs, kernel_size, stride, num_features, idx, nonlinearity=None
     weights = _variable('weights', shape=length_input*[kernel_size] + [input_channels,num_features],initializer=tf.contrib.layers.xavier_initializer_conv2d())
     biases = _variable('biases',[num_features],initializer=tf.contrib.layers.xavier_initializer_conv2d())
 
-    if length_input == 2:
-      conv = tf.nn.conv2d(inputs, weights, strides=[1, stride, stride, 1], padding='VALID')
-    elif length_input == 3:
-      conv = tf.nn.conv3d(inputs, weights, strides=[1, stride, stride, stride, 1], padding='VALID')
-
+    conv = tf.nn.convolution(x, weights, strides=[1] + length_input*[stride] + [1], padding='VALID')
     conv = tf.nn.bias_add(conv, biases)
+
     if nonlinearity is not None:
       conv = nonlinearity(conv)
     return conv

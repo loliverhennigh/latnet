@@ -5,6 +5,8 @@ import numpy as np
 from saver import Saver
 import lattice as lat
 
+from network_architectures.shape_converter import ShapeConverter
+
 
 class LatNet:
 
@@ -35,7 +37,6 @@ class LatNet:
     self.single_unroll             = tf.make_template('unroll', self._single_unroll)
 
   def _unroll(self, state_in, boundary):
-    # assumes state has seq length in second dim
     # store all out
     x_out = []
 
@@ -44,7 +45,7 @@ class LatNet:
     compressed_boundary = self.encoder_boundary(boundary)
 
     # apply boundary
-    y_1 = self.compression_mapping_boundary(y_1, compressed_boundary)
+    y_1, = self.compression_mapping_boundary(y_1, compressed_boundary)
 
     # unroll all
     for i in xrange(self.seq_length):

@@ -160,6 +160,11 @@ def vel_to_norm(velocity):
                             tf.square(velocity[:,:,:,:,2:3]))
   return velocity_norm
 
+def lattice_to_norm(lattice):
+  velocity = lattice_to_vel(lattice)
+  norm = vel_to_norm(velocity)
+  return norm
+
 def lattice_to_rho(lattice):
   dims = len(lattice.get_shape())-1
   rho = tf.reduce_sum(lattice, axis=dims)
