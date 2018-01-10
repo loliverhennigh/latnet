@@ -36,81 +36,83 @@ CONFIGS['filter_size']=12
 CONFIGS['filter_size_compression']=128
 
 # encoder state
-def encoder_state(tensor, shape_converter=None, name='state_'):
-
-  # TODO this code can be cleaned
-  x_i = tensor.tf_tensor
-  shape_converter = tensor.shape_converter
+def encoder_state(pipe):
 
   # encoding peice
   filter_size = CONFIGS['filter_size']
   for i in xrange(CONFIGS['nr_downsamples']):
+    if i == 0:
+      begin_nonlinearity = False
+    else:
+      begin_nonlinearity = True
     filter_size = filter_size*2
-    x_i = res_block(x_i, 
-                    filter_size=filter_size,
-                    nonlinearity=nonlinearity, 
-                    stride=2, 
-                    gated=CONFIGS['gated'], 
-                    name="res_" + str(i))
-    shape_converter.add_res_block(stride=2)
+    pipe.res_block(in_name="state", out_name="state",
+                   filter_size=filter_size,
+                   nonlinearity=nonlinearity, 
+                   stride=2, 
+                   gated=CONFIGS['gated'], 
+                   begin_nonlinearity=begin_nonlinearity, 
+                   weight_name="res_" + str(i))
 
-  x_i = conv_layer(x_i, 1, 1, CONFIGS['filter_size_compression'], "final_down_conv")
-  shape_converter.add_conv(kernel_size=1, stride=1)
-  tensor.tf_tensor = x_i 
-  tensor.shape_converter = shape_converter
-  return tensor
+  pipe.conv_layer(in_name="state", out_name="cstate",
+                  kernel_size=1, stride=1, 
+                  filter_size=CONFIGS['filter_size_compression'], 
+                  weight_name="final_down_conv")
+  return pipe
 
 # encoder boundary
-def encoder_boundary(x_i, shape_converter, name='boundary_'):
+def encoder_boundary(pipe):
+
   # encoding peice
   filter_size = CONFIGS['filter_size']
   for i in xrange(CONFIGS['nr_downsamples']):
+    if i == 0:
+      begin_nonlinearity = False
+    else:
+      begin_nonlinearity = True
     filter_size = filter_size*2
-    x_i = res_block(x_i, 
-                    filter_size=filter_size,
-                    nonlinearity=nonlinearity, 
-                    stride=2, 
-                    gated=CONFIGS['gated'], 
-                    name="res_" + str(i))
-  if shape_converter is not None:
-    shape_converter.add_res_block(stride=2)
+    pipe.res_block(in_name="boundary", out_name="boundary",
+                   filter_size=filter_size,
+                   nonlinearity=nonlinearity, 
+                   stride=2, 
+                   gated=CONFIGS['gated'], 
+                   begin_nonlinearity=begin_nonlinearity, 
+                   weight_name="res_" + str(i))
 
-  x_i = conv_layer(x_i, 1, 1, 2*CONFIGS['filter_size_compression'], "final_down_conv")
-  if shape_converter is not None:
-  shape_converter.add_conv(kernel_size=1, stride=1)
-  tensor.tf_tensor = x_i 
-  tensor.shape_converter = shape_converter
-  return x_i, shape_converter
+  pipe.conv_layer(in_name="boundary", out_name="cboundary",
+                  kernel_size=1, stride=1, 
+                  filter_size=CONFIGS['filter_size_compression'], 
+                  weight_name="final_down_conv")
+  return pipe
 
 # compression mapping boundary
-def compression_mapping_boundary(y_i, compressed_boundary, shape_converter):
-  off_set = int(compressed_boundary.get_shape()[1] - y_i.get_shape()[1])/2
-  if off_set != 0:
-    compressed_boundary = compressed_boundary[:,off_set:-off_set,off_set:-off_set]
-  [compressed_boundary_mul, compressed_boundary_add] = tf.split(compressed_boundary, 
-                                                      2, len(compressed_boundary.get_shape())-1)
-  y_i = (y_i * compressed_boundary_mul) + compressed_boundary_add
-  tensor.tf_tensor = x_i 
-  tensor.shape_converter = shape_converter
-  return y_i, shape_converter
+def compression_mapping_boundary(pipe):
+  # split tensor
+  pipe.split_tensor("cboundary", "cboundary_add", "cboundary_mask", 2, -1)
+
+  # normalize cboundary_mask between 0 and 1
+  pipe.nonlinearity("cboundary_mask", "sigmoid")
+
+  # apply image mask
+  pipe.image_combinde("cstate", "cboundary_add", "cboundary_mask", "cstate")
 
 # compression mapping
-def compression_mapping(y_i, shape_converter, name=''):
+def compression_mapping(pipe):
   for i in xrange(CONFIGS['nr_residual_compression']):
-    y_i = res_block(y_i, 
-                    filter_size=CONFIGS['filter_size_compression'], 
-                    nonlinearity=nonlinearity, 
-                    stride=1, 
-                    gated=CONFIGS['gated'], 
-                    name="res_" + str(i))
-    shape_converter.add_res_block(stride=1)
-
-  tensor.tf_tensor = x_i 
-  tensor.shape_converter = shape_converter
-  return y_i, shape_converter
+    if i == 0:
+      begin_nonlinearity = False
+    else:
+      begin_nonlinearity = True
+    pipe.res_block(in_name="cstate", out_name="cstate", 
+                   filter_size=CONFIGS['filter_size_compression'], 
+                   nonlinearity=nonlinearity, 
+                   stride=1, 
+                   gated=CONFIGS['gated'], 
+                   begin_nonlinearity=begin_nonlinearity, 
+                   weight_name="res_" + str(i))
 
 # decoder state
-def decoder_state(y_i, shape_converter, lattice_size=9, extract_type=None, extract_pos=64):
+def decoder_state(pipe, lattice_size=9):
 
   for i in xrange(CONFIGS['nr_downsamples']):
     filter_size = int(CONFIGS['filter_size']*pow(2,CONFIGS['nr_downsamples']-i-1))

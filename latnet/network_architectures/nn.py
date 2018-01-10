@@ -35,6 +35,10 @@ def set_nonlinearity(name):
     return tf.nn.crelu
   elif name == 'relu':
     return tf.nn.relu
+  elif name == 'sigmoid':
+    return tf.nn.sigmoid
+  elif name == 'tanh':
+    return tf.nn.tanh
   else:
     raise('nonlinearity ' + name + ' is not supported')
 
@@ -79,8 +83,8 @@ def simple_conv_3d(x, k):
   y = tf.nn.conv3d(x, k, [1, 1, 1, 1, 1], padding='VALID')
   return y
 
-def conv_layer(x, kernel_size, stride, num_features, idx, nonlinearity=None):
-  with tf.variable_scope('{0}_conv'.format(idx)) as scope:
+def conv_layer(x, kernel_size, stride, num_features, name, nonlinearity=None):
+  with tf.variable_scope(name) as scope:
     input_channels = x.get_shape()[-1]
  
     # determine dim
@@ -113,34 +117,34 @@ def simple_trans_conv_3d(x, k):
   y = tf.reshape(y, [int(x.get_shape()[0]), int(x.get_shape()[1]), int(x.get_shape()[2]), int(x.get_shape()[3]), int(k.get_shape()[3])])
   return y
 
-def transpose_conv_layer(inputs, kernel_size, stride, num_features, idx, nonlinearity=None):
-  with tf.variable_scope('{0}_trans_conv'.format(idx)) as scope:
-    input_channels = inputs.get_shape()[-1]
+def transpose_conv_layer(x, kernel_size, stride, num_features, name, nonlinearity=None):
+  with tf.variable_scope(name) as scope:
+    input_channels = x.get_shape()[-1]
      
     # determine dim
-    length_input = len(inputs.get_shape()) - 2
-    batch_size = tf.shape(inputs)[0]
+    length_input = len(x.get_shape()) - 2
+    batch_size = tf.shape(x)[0]
     if length_input not in [2, 3]:
       print("transpose conv layer does not support non 2d or 3d inputs")
       exit()
 
     weights = _variable('weights', shape=length_input*[kernel_size] + [num_features,input_channels],initializer=tf.contrib.layers.xavier_initializer_conv2d())
     biases = _variable('biases',[num_features],initializer=tf.contrib.layers.xavier_initializer_conv2d())
-    batch_size = tf.shape(inputs)[0]
+    batch_size = tf.shape(x)[0]
 
     if length_input == 2:
-      output_shape = tf.stack([tf.shape(inputs)[0], tf.shape(inputs)[1]*stride, tf.shape(inputs)[2]*stride, num_features]) 
-      conv = tf.nn.conv2d_transpose(inputs, weights, output_shape, strides=[1,stride,stride,1], padding='SAME')
+      output_shape = tf.stack([tf.shape(x)[0], tf.shape(x)[1]*stride, tf.shape(x)[2]*stride, num_features]) 
+      conv = tf.nn.conv2d_transpose(x, weights, output_shape, strides=[1,stride,stride,1], padding='SAME')
     elif length_input == 3:
-      output_shape = tf.stack([tf.shape(inputs)[0], tf.shape(inputs)[1]*stride, tf.shape(inputs)[2]*stride, tf.shape(inputs)[3]*stride, num_features]) 
-      conv = tf.nn.conv3d_transpose(inputs, weights, output_shape, strides=[1,stride,stride,stride,1], padding='SAME')
+      output_shape = tf.stack([tf.shape(x)[0], tf.shape(x)[1]*stride, tf.shape(x)[2]*stride, tf.shape(x)[3]*stride, num_features]) 
+      conv = tf.nn.conv3d_transpose(x, weights, output_shape, strides=[1,stride,stride,stride,1], padding='SAME')
 
     conv = tf.nn.bias_add(conv, biases)
     if nonlinearity is not None:
       conv = nonlinearity(conv)
 
     #reshape (transpose conv causes output to have ? size)
-    shape = int_shape(inputs)
+    shape = int_shape(x)
     if  length_input == 2:
       conv = tf.reshape(conv, [shape[0], shape[1]*stride, shape[2]*stride, num_features])
       conv = conv[:,1:-1,1:-1]
@@ -149,19 +153,19 @@ def transpose_conv_layer(inputs, kernel_size, stride, num_features, idx, nonline
       conv = conv[:,1:-1,1:-1,1:-1]
     return conv
 
-def fc_layer(inputs, hiddens, idx, nonlinearity=None, flat = False):
-  with tf.variable_scope('{0}_fc'.format(idx)) as scope:
-    input_shape = inputs.get_shape().as_list()
+def fc_layer(x, hiddens, name, nonlinearity=None, flat = False):
+  with tf.variable_scope(name) as scope:
+    input_shape = x.get_shape().as_list()
     if flat:
       dim = input_shape[1]*input_shape[2]*input_shape[3]
-      inputs_processed = tf.reshape(inputs, [-1,dim])
+      inputs_processed = tf.reshape(x, [-1,dim])
     else:
       dim = input_shape[1]
-      inputs_processed = inputs
+      inputs_processed = x 
     
     weights = _variable('weights', shape=[dim,hiddens],initializer=tf.contrib.layers.xavier_initializer())
     biases = _variable('biases', [hiddens], initializer=tf.contrib.layers.xavier_initializer())
-    output = tf.add(tf.matmul(inputs_processed,weights),biases,name=str(idx)+'_fc')
+    output = tf.add(tf.matmul(inputs_processed,weights),biases,name=name)
     if nonlinearity is not None:
       output = nonlinearity(output)
     return output
@@ -188,7 +192,13 @@ def avg_pool(x):
     x = tf.nn.avg_pool3d(x, [1,2,2,2,1], [1,2,2,2,1], padding='VALID')
   return x
 
-def res_block(x, a=None, filter_size=16, nonlinearity=concat_elu, keep_p=1.0, stride=1, gated=True, name="resnet", begin_nonlinearity=True, normalize=None):
+def res_block(x, a=None, 
+              filter_size=16, 
+              nonlinearity=concat_elu, 
+              keep_p=1.0, stride=1, 
+              gated=True, name="resnet", 
+              begin_nonlinearity=True, 
+              normalize=None):
             
   # determine if 2d or 3d trans conv is needed
   length_input = len(x.get_shape())
