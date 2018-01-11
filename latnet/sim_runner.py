@@ -19,8 +19,7 @@ class SimRunner:
     self.save_dir = save_dir
     self.num_cpoints = config.seq_length * 20
     self.lb_to_ln = config.lb_to_ln
-    self.max_iters = config.max_sim_iters - np.random.randint(0, 20000)
-    self.max_iters_till_next_cpoint = 100 # hard set for now
+    self.max_sim_iters = config.max_sim_iters
     self.script_name = script_name
 
     sim_shape = config.sim_shape.split('x')
@@ -28,7 +27,7 @@ class SimRunner:
     self.sim_shape = sim_shape
 
     # hard set for now
-    self.max_times_called = np.random.randint(20,100)*self.num_cpoints
+    self.max_times_called = np.random.randint(20,100)*(self.num_cpoints/config.seq_length)
     self.times_called = 0
 
   def last_cpoint(self):
@@ -55,9 +54,6 @@ class SimRunner:
     # clean store dir
     self.clean_store_dir()
 
-    # iters till next cpoint save
-    iters_till_next_cpoint = np.random.randint(0, self.max_iters_till_next_cpoint)
-
     # base cmd
     cmd = ('./' + self.script_name 
          + ' --run_mode=generate_data'
@@ -71,20 +67,20 @@ class SimRunner:
 
     # add iteration till next cpoint and possible restor cpoint
     if last_step is not None:
-      num_run_iters = last_step + iters_till_next_cpoint + (self.num_cpoints * self.lb_to_ln)
-      if num_run_iters < self.max_iters:
-        cmd += ' --checkpoint_from=' + str(last_step + iters_till_next_cpoint)
+      num_run_iters = last_step + (self.num_cpoints * self.lb_to_ln)
+      if num_run_iters < self.max_sim_iters:
+        cmd += ' --checkpoint_from=' + str(last_step)
         cmd += ' --restore_from=' + last_cpoint[:-13]
         cmd += ' --restore_geometry=True'
         cmd += ' --max_sim_iters=' + str(num_run_iters)
       else:
         self.clean_save_dir()
         self.make_sim_dir()
-        cmd += ' --max_sim_iters=' + str(iters_till_next_cpoint + (self.num_cpoints * self.lb_to_ln))
-        cmd += ' --checkpoint_from=' + str(iters_till_next_cpoint)
+        cmd += ' --max_sim_iters=' + str(self.num_cpoints * self.lb_to_ln)
+        cmd += ' --checkpoint_from=' + str(0)
     else:
-      cmd += ' --max_sim_iters=' + str(iters_till_next_cpoint + (self.num_cpoints * self.lb_to_ln))
-      cmd += ' --checkpoint_from=' + str(iters_till_next_cpoint)
+      cmd += ' --max_sim_iters=' + str(self.num_cpoints * self.lb_to_ln)
+      cmd += ' --checkpoint_from=' + str(0)
  
     # run cmd
     """
@@ -105,7 +101,7 @@ class SimRunner:
     if len(glob.glob(self.save_dir + "/*.0.cpoint.npz")) != self.num_cpoints:
       self.generate_cpoint()
 
-  def read_geometry(self, pos, radius):
+  def read_data(self, state_subdomain, geometry_subdomain, seq_state_subdomain):
 
     # if read geometry too many times generate new data
     self.times_called += 1
@@ -113,38 +109,45 @@ class SimRunner:
       self.generate_cpoint()
       self.times_called = 0
 
-    geometry_file = self.save_dir + "/flow_geometry.npy"
-    geometry_array = None
-    if os.path.isfile(geometry_file):
-      geometry_array = np.load(geometry_file)
-      geometry_array = geometry_array.astype(np.float32)
-      geometry_array = geometry_array[1:-1,1:-1]
-      geometry_array = padding_utils.mobius_extract_pad_2(geometry_array, pos, size=2*[2*radius], pad_length=0)
-    return geometry_array
 
-  def read_seq_states(self, seq_length, pos, radius, padding_decrease_seq):
+    # read state
+    state_files = glob.glob(self.save_dir + "/*.0.cpoint.npz")
+    ind = np.random.randint(0, len(state_files) - seq_length)
+    state = self.read_state(ind, state_subdomain)
+
+    # read geometry
+    geometry = self.read_geometry(geometry_subdomain)
+
+    # read seq states
+    seq_state = []
+    for i in xrange(self.seq_length):
+      seq_state.append(self.read_state(ind + i, seq_state_subdomain[i])
+
+    return state, geometry, seq_state
+
+  def read_geometry(self, subdomain):
+    geometry_file = self.save_dir + "/flow_geometry.npy"
+    geometry = None
+    if os.path.isfile(geometry_file):
+      geometry = np.load(geometry_file)
+      geometry = geometry.astype(np.float32)
+      geometry = geometry[1:-1,1:-1]
+      geometry = padding_utils.mobius_extract(geometry, subdomain)
+    return geometry
+
+  def read_states(self, ind, subdomain):
     # load flow file
-    state_out = []
-    state_in = None
     state_files = glob.glob(self.save_dir + "/*.0.cpoint.npz")
     state_files.sort()
     subtract_weights = lattice.get_weights_numpy(9).reshape(1,1,9)
-    if len(state_files) >= seq_length:
-      start_pos = np.random.randint(0, len(state_files) - seq_length)
-      for i in xrange(seq_length):
-        state = np.load(state_files[i])
-        state = state.f.dist0a[:,1:-1,1:self.sim_shape[0]+1]
-        state = state.astype(np.float32)
-        state = np.swapaxes(state, 0, 1)
-        state = np.swapaxes(state, 1, 2)
-        state = state - subtract_weights
-        if i == 0:
-          state_in = padding_utils.mobius_extract_pad_2(state, pos, size=2*[2*radius], pad_length=0)
-        state = padding_utils.mobius_extract_pad_2(state, pos, size=2*[2*radius], pad_length=-padding_decrease_seq[i])
-        #plt.imshow(state[:,:,2])
-        #plt.savefig("test" + str(i) + ".png")
-        state_out.append(state)
-    return state_in, state_out  
+    state = np.load(state_files[ind])
+    state = state.f.dist0a[:,1:-1,1:self.sim_shape[0]+1]
+    state = state.astype(np.float32)
+    state = np.swapaxes(state, 0, 1)
+    state = np.swapaxes(state, 1, 2)
+    state = state - subtract_weights
+    state = padding_utils.mobius_extract(state, subdomain)
+    return state
 
   def clean_store_dir(self):
     files = glob.glob(self.save_dir + "/store/*")

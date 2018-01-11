@@ -17,6 +17,7 @@ from sailfish.sym import S
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+import itertools
 from tqdm import *
 
 
@@ -28,16 +29,14 @@ class Domain(object):
     sim_shape = map(int, sim_shape)
     self.sim_shape = sim_shape
 
-    self.compressed_sim_shape = [sim_shape[0]/np.power(2, nr_downsamples), 
-                                 sim_shape[1]/np.power(2, nr_downsamples)]
+    downsample_factor = pow(2, nr_downsamples)
+    self.sim_cshape = [x/downsample_factor for x in sim_shape] 
 
     input_shape = config.input_shape.split('x')
     input_shape = map(int, input_shape)
     self.input_shape = input_shape
 
-    compressed_shape = config.compressed_shape.split('x')
-    compressed_shape = map(int, compressed_shape)
-    self.compressed_shape = compressed_shape
+    self.input_cshape = [64,64] # hard set for now
 
     self.sailfish_sim_dir = config.sailfish_sim_dir
     self.max_sim_iters = config.max_sim_iters
@@ -174,152 +173,85 @@ class Domain(object):
 
     return ctrl
 
-  def compute_compressed_state(self, sess, encoder, state, padding):
+  def state_to_cstate(self, encoder, encoder_shape_converter):
 
-    self.input_lattice_subdomains = (int(math.ceil(self.sim_shape[0]/float(self.input_shape[0]))), 
-                                     int(math.ceil(self.sim_shape[1]/float(self.input_shape[1]))))
-    compressed_state = []
-    for i in tqdm(xrange(self.input_lattice_subdomains[0])):
-      compressed_state_store = []
-      for j in xrange(self.input_lattice_subdomains[1]):
-        # hard set to zero for now
-        zero_state = np.zeros([1] + [self.input_shape[0]+2*padding] +  [self.input_shape[1]+2*padding] + [9])
-        compressed_state_store.append(sess.run(encoder, feed_dict={state:zero_state}))
-      compressed_state.append(np.concatenate(compressed_state_store, axis=2))
-    compressed_state = np.concatenate(compressed_state, axis=1)
+    nr_subdomains = [math.ceil(x/float(y)) for x, y in zip(self.sim_cshape, self.input_cshape)]
+    cstate = []
+    for i, j in itertools.product(nr_subdomains[0], nr_subdomains[1]):
+      pos = [i * self.input_cshape[0], j * self.input_cshape[1]]
+      subdomain = SubDomain(pos, self.input_cshape)
+      input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
+      zero_state = np.zeros([1] + input_subdomain.size + [9]) # TODO make correct start vel
+      cstate.append(encoder(zero_state))
 
-    # trim edges
-    compressed_state = compressed_state[:,:self.compressed_sim_shape[0],:self.compressed_sim_shape[1]]
+    # list to full tensor
+    cstate = numpy_utils.stack_grid(cstate, nr_subdomains, has_batch=True)
 
-    return compressed_state
+    # trim edges TODO add smarter padding making this unnessasary
+    cstate = cstate[:,:self.sim_cshape[0],:self.sim_cshape[1]]
 
-  def compute_compressed_boundary(self, sess, encoder, boundary, padding):
+    return cstate
 
-    self.input_lattice_subdomains = (int(math.ceil(self.sim_shape[0]/float(self.input_shape[0]))), 
-                                     int(math.ceil(self.sim_shape[1]/float(self.input_shape[1]))))
+  def boundary_to_cboundary(self, encoder, encoder_shape_converter):
 
-    compressed_boundary = []
-    for i in tqdm(xrange(self.input_lattice_subdomains[0])):
-      compressed_boundary_store = []
-      for j in xrange(self.input_lattice_subdomains[1]):
-        h = np.mgrid[i*self.input_shape[0] - padding:(i+1)*self.input_shape[0] + padding,
-                     j*self.input_shape[1] - padding:(j+1)*self.input_shape[1] + padding]
-        hx = np.mod(h[1], self.sim_shape[0])
-        hy = np.mod(h[0], self.sim_shape[1])
-        where_boundary = self.geometry_boundary_conditions(hx, hy, self.sim_shape)
-        where_velocity, velocity = self.velocity_boundary_conditions(hx, hy, self.sim_shape)
-        where_density, density = self.density_boundary_conditions(hx, hy, self.sim_shape)
-        input_geometry = self.make_geometry_input(where_boundary, velocity, where_velocity, density, where_density)
-        compressed_boundary_store.append(sess.run(encoder, feed_dict={boundary:np.expand_dims(input_geometry, axis=0)}))
+    nr_subdomains = [math.ceil(x/float(y)) for x, y in zip(self.sim_cshape, self.input_cshape)]
+    cboundary = []
+    for i, j in itertools.product(nr_subdomains[0], nr_subdomains[1]):
+      pos = [i * self.input_cshape[0], j * self.input_cshape[1]]
+      subdomain = SubDomain(pos, self.input_cshape)
+      input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
+      h = np.mgrid[input_subdomain.pos[0]:input_subdomain.pos[0] + input_subdomain.size[0],
+                   input_subdomain.pos[1]:input_subdomain.pos[1] + input_subdomain.size[1]]
+      hx = np.mod(h[1], self.sim_shape[0])
+      hy = np.mod(h[0], self.sim_shape[1])
+      where_boundary = self.geometry_boundary_conditions(hx, hy, self.sim_shape)
+      where_velocity, velocity = self.velocity_boundary_conditions(hx, hy, self.sim_shape)
+      where_density, density = self.density_boundary_conditions(hx, hy, self.sim_shape)
+      input_geometry = self.make_geometry_input(where_boundary, velocity, where_velocity, density, where_density)
+      cboundary.append(encoder(input_geometry))
 
-      compressed_boundary.append(np.concatenate(compressed_boundary_store, axis=2))
+    # list to full tensor
+    cboundary = numpy_utils.stack_grid(cboundary, nr_subdomains, has_batch=True)
 
-    compressed_boundary = np.concatenate(compressed_boundary, axis=1)
-    
-    # trim edges
-    compressed_boundary = compressed_boundary[:,:self.compressed_sim_shape[0],:self.compressed_sim_shape[1]]
+    # trim edges TODO add smarter padding making this unnessasary
+    cboundary = cboundary[:,:self.sim_cshape[0],:self.sim_cshape[1]]
 
-    return compressed_boundary
+    return cboundary
 
-  def compute_compressed_mapping(self, sess, compression_mapping, compressed_state, compressed_boundary, np_compressed_state, np_compressed_boundary, padding):
+  def cstate_to_cstate(self, cmapping, cmapping_shape_converter, cstate, cboundary):
 
-    compressed_shape = np_compressed_state.shape[1:3]
-    self.input_lattice_subdomains = (int(math.ceil(compressed_shape[0]/float(self.compressed_shape[0]))), 
-                                     int(math.ceil(compressed_shape[1]/float(self.compressed_shape[1]))))
+    nr_subdomains = [math.ceil(x/float(y)) for x, y in zip(self.sim_cshape, self.input_cshape)]
+    new_cstate = []
+    for i, j in itertools.product(nr_subdomains[0], nr_subdomains[1]):
+      pos = [i * self.input_cshape[0], j * self.input_cshape[1]]
+      subdomain = SubDomain(pos, self.input_cshape)
+      input_subdomain = cmapping_shape_converter.out_in_subdomain(subdomain)
+      new_cstate.append(cmapping(numpy_utils.mobius_extract(cstate, input_subdomain, has_batch=True),
+                                 numpy_utils.mobius_extract(cboundary, input_subdomain, has_batch=True )))
 
-    np_compressed_state_out = []
-    for i in tqdm(xrange(self.input_lattice_subdomains[0])):
-      compressed_state_store = []
-      for j in xrange(self.input_lattice_subdomains[1]):
-        pos = (i*self.compressed_shape[0], j*self.compressed_shape[1])
-        #plt.imshow(np_compressed_state[0,:,:,0])
-        #plt.show()
-        compressed_state_ij    = padding_utils.mobius_extract_pad_2(np_compressed_state,    pos, self.compressed_shape, padding, has_batch=True)
-        #plt.imshow(compressed_state_ij[0,:,:,0])
-        #plt.show()
-        compressed_boundary_ij = padding_utils.mobius_extract_pad_2(np_compressed_boundary, pos, self.compressed_shape, padding, has_batch=True)
-        compressed_state_store.append(sess.run(compression_mapping, feed_dict={compressed_state:compressed_state_ij, compressed_boundary:compressed_boundary_ij}))
+    # list to full tensor
+    new_cstate = numpy_utils.stack_grid(new_cstate, nr_subdomains, has_batch=True)
 
-      np_compressed_state_out.append(np.concatenate(compressed_state_store, axis=2))
+    # trim edges TODO add smarter padding making this unnessasary
+    new_cstate = new_cstate[:,:self.sim_cshape[0],:self.sim_cshape[1]]
 
-    np_compressed_state = np.concatenate(np_compressed_state_out, axis=1)
+    return new_cstate
 
-    # trim edges
-    np_compressed_state = np_compressed_state[:,:self.compressed_sim_shape[0],:self.compressed_sim_shape[1]]
+  def cstate_to_state(self, decoder, decoder_shape_converter, cstate):
 
-    return np_compressed_state
+    nr_subdomains = [math.ceil(x/float(y)) for x, y in zip(self.sim_shape, self.input_shape)]
+    state = []
+    for i, j in itertools.product(nr_subdomains[0], nr_subdomains[1]):
+      pos = [i * self.input_shape[0], j * self.input_shape[1]]
+      subdomain = SubDomain(pos, self.input_shape)
+      input_subdomain = decoder_shape_converter.out_in_subdomain(subdomain)
+      state.append(decoder(numpy_utils.mobius_extract(cstate, input_subdomain, has_batch=True)))
 
-  def compute_compressed_boundary_mapping(self, sess, compression_mapping, compressed_state, compressed_boundary, np_compressed_state, np_compressed_boundary, padding):
+    # list to full tensor
+    state = numpy_utils.stack_grid(state, nr_subdomains, has_batch=True)
 
-    compressed_shape = np_compressed_state.shape[1:3]
-    self.input_lattice_subdomains = (int(math.ceil(compressed_shape[0]/float(self.compressed_shape[0]))), 
-                                     int(math.ceil(compressed_shape[1]/float(self.compressed_shape[1]))))
+    # trim edges TODO add smarter padding making this unnessasary
+    state = state[:,:self.sim_shape[0],:self.sim_shape[1]]
 
-    np_compressed_state_out = []
-    for i in tqdm(xrange(self.input_lattice_subdomains[0])):
-      compressed_state_store = []
-      for j in xrange(self.input_lattice_subdomains[1]):
-        pos = (i*self.compressed_shape[0], j*self.compressed_shape[1])
-        #plt.imshow(np_compressed_state[0,:,:,0])
-        #plt.show()
-        compressed_state_ij    = padding_utils.mobius_extract_pad_2(np_compressed_state,    pos, self.compressed_shape, padding, has_batch=True)
-        #plt.imshow(compressed_state_ij[0,:,:,0])
-        #plt.show()
-        compressed_boundary_ij = padding_utils.mobius_extract_pad_2(np_compressed_boundary, pos, self.compressed_shape, padding, has_batch=True)
-        compressed_state_store.append(sess.run(compression_mapping, feed_dict={compressed_state:compressed_state_ij, compressed_boundary:compressed_boundary_ij}))
-
-      np_compressed_state_out.append(np.concatenate(compressed_state_store, axis=2))
-
-    np_compressed_state = np.concatenate(np_compressed_state_out, axis=1)
-
-    # trim edges
-    np_compressed_state = np_compressed_state[:,:self.compressed_sim_shape[0],:self.compressed_sim_shape[1]]
-
-    return np_compressed_state
-
-  def compute_decompressed_state(self, sess, decoder, compressed_state, compressed_boundary, np_compressed_state, np_compressed_boundary, padding):
-
-    compressed_shape = np_compressed_state.shape[1:3]
-    self.input_lattice_subdomains = (int(math.ceil(compressed_shape[0]/float(self.compressed_shape[0]))), 
-                                     int(math.ceil(compressed_shape[1]/float(self.compressed_shape[1]))))
-
-
-    np_state_out = []
-    for i in tqdm(xrange(self.input_lattice_subdomains[0])):
-      state_store = []
-      for j in xrange(self.input_lattice_subdomains[1]):
-        print("CALLED")
-        pos = (i*self.compressed_shape[0], j*self.compressed_shape[1])
-        compressed_state_ij    = padding_utils.mobius_extract_pad_2(np_compressed_state,    pos, self.compressed_shape, padding, has_batch=True)
-        compressed_boundary_ij = padding_utils.mobius_extract_pad_2(np_compressed_boundary, pos, self.compressed_shape, padding, has_batch=True)
-        state_store.append(sess.run(decoder, feed_dict={compressed_state:compressed_state_ij, compressed_boundary:compressed_boundary_ij}))
-
-      np_state_out.append(np.concatenate(state_store, axis=2))
-
-    np_state = np.concatenate(np_state_out, axis=1)
-
-    # trim edges
-    #np_state = np_state[:,:self.sim_shape[0],:self.sim_shape[1]]
-
-    return np_state
-
-  def get_state_input(self, pos, radius):
-    pass
-
-  def get_boundary_input(self, pos, radius):
-    pass
-
-  def generate_compressed_state(self, sess, blaa):
-    pass
-
-  def update_compressed_state(self, sess, blaa):
-    pass
-
-  def extract_state(self, pos, radius, sess, blaa):
-    pass
-
-class SubDomain(object):
-  # probably add more to this class later :/
-  def __init__(self, pos):
-    self.pos = pos
+    return state
 

@@ -17,7 +17,7 @@ from Queue import Queue
 import threading
 
 class DataQueue:
-  def __init__(self, config, train_sim):
+  def __init__(self, config, train_sim, shape_converter):
 
     # base dir where all the xml files are
     self.base_dir = config.sailfish_sim_dir
@@ -54,25 +54,30 @@ class DataQueue:
 
   def data_worker(self, sim):
     while True:
-      padding_decrease_seq = self.queue.get()
+      self.queue.get()
 
       # select random piece to grab from data
       rand_pos = [np.random.randint(0, self.sim_shape[0]), np.random.randint(0, self.sim_shape[1])]
-      radius = self.input_shape[0]/2
+      state_subdomain = SubDomain(rand_pos, self.input_shape)
+      geometry_subdomain = SubDomain(rand_pos, self.input_shape)
+      seq_state_subdomain = []
+      for i in xrange(self.seq_length):
+        seq_state_subdomian = self.shape_converters['state', 'true_state_' + str(i)].in_out_subdomain(state_subdomain)
 
       # get geometry and lat data
-      geometry_array = sim.read_geometry(rand_pos, radius)
-      lat_in, lat_out = sim.read_seq_states(self.seq_length, rand_pos, radius, padding_decrease_seq)
+      state, geometry, seq_state = sim.read_data(state_subdomain,
+                                                 geometry_subdomain,
+                                                 seq_state_subdomain)
 
       # add to que
-      self.queue_batches.append((geometry_array, lat_in, lat_out))
+      self.queue_batches.append((state, geometry, seq_state))
       self.queue.task_done()
  
-  def minibatch(self, state_in=None, state_out=None, boundary=None, padding_decrease_seq=None):
+  def minibatch(self):
 
     # queue up data if needed
     for i in xrange(self.max_queue - len(self.queue_batches) - self.queue.qsize()):
-      self.queue.put(padding_decrease_seq)
+      self.queue.put()
    
     # possibly wait if data needs time to queue up
     while len(self.queue_batches) < 2*self.batch_size: # added times two to make sure enough
@@ -80,28 +85,28 @@ class DataQueue:
       time.sleep(1.01)
 
     # generate batch of data in the form of a feed dict
-    batch_boundary = []
-    batch_state_in = []
-    batch_state_out = []
+    batch_state = []
+    batch_geometry = []
+    batch_seq_state = []
     for i in xrange(self.batch_size): 
-      batch_boundary.append(self.queue_batches[0][0].astype(np.float32))
-      batch_state_in.append(self.queue_batches[0][1])
-      batch_state_out.append(self.queue_batches[0][2])
+      batch_state.append(self.queue_batches[0][0])
+      batch_geometry.append(self.queue_batches[0][1])
+      batch_seq_state.append(self.queue_batches[0][2])
       self.queue_batches.pop(0)
 
     # concate batches together
-    new_batch_state_out = []
+    batch_state = np.stack(batch_state, axis=0)
+    batch_geometry = np.stack(batch_geometry, axis=0)
+    new_batch_seq_state = []
     for i in xrange(self.seq_length):
-      new_batch_state_out.append(np.stack([x[i] for x in batch_state_out], axis=0))
-    batch_state_out = new_batch_state_out
-    batch_state_in = np.stack(batch_state_in, axis=0)
-    batch_boundary = np.stack(batch_boundary, axis=0)
+      new_batch_seq_state.append(np.stack([x[i] for x in batch_seq_state], axis=0))
+    batch_seq_state = new_batch_seq_state
 
     # make feed dict
     feed_dict = {}
-    feed_dict[boundary] = batch_boundary
-    feed_dict[state_in] = batch_state_in
+    feed_dict['state'] = batch_state
+    feed_dict['boundary'] = batch_goemetry
     for i in xrange(self.seq_length):
-      feed_dict[state_out[i]] = batch_state_out[i]
+      feed_dict['true_state_' + str(i)] = batch_seq_state
     return feed_dict
 

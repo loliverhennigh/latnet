@@ -121,71 +121,22 @@ class LatNetController(object):
 
         # unroll train_unroll
         self.network.train_unroll()
+        self.network.init()
  
         # construct dataset
-        self.dataset = DataQueue(self.config, self._train_sim)
+        self.dataset = DataQueue(self.config, self._train_sim, self.network.train_shape_converter())
 
-        for i in xrange(10000):
+        while True:
           feed_dict = self.dataset.minibatch()
-          self.train_step()
- 
-
-        # global step counter
-        global_step = tf.get_variable('global_step', [], 
-                          initializer=tf.constant_initializer(0), trainable=False)
-
-        # make inputs
-        self.inputs = Inputs(self.config)
-        state_in = self.inputs.state()
-        boundary = self.inputs.boundary()
-        pipe_in = Pipe(state_in.update(boundary))
-        
-        seq_state_out = self.inputs.state_seq(self.network.state_padding_decrease_seq())
-
-        # make network pipe
-        self.pred_state_out = self.network.unroll(self.state_in, self.boundary)
-
-        # make loss
-        self.loss = Loss(self.config)
-        self.total_loss = self.loss.mse(self.state_out, self.pred_state_out)
-
-        # make train op
-        all_params = tf.trainable_variables()
-        self.optimizer = Optimizer(self.config)
-        self.optimizer.compute_gradients(self.total_loss, all_params)
-        self.train_op = self.optimizer.train_op(all_params, global_step)
-
-        # start session 
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.8)
-        sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
-        init = tf.global_variables_initializer()
-        sess.run(init)
-
-        # make saver
-        graph_def = sess.graph.as_graph_def(add_shapes=True)
-        self.saver = Saver(self.config, self.network.network_config, graph_def)
-        self.saver.load_checkpoint(sess)
-
-        # construct dataset
-        self.dataset = DataQueue(self.config, self._train_sim)
-
-        # train
-        for i in xrange(sess.run(global_step), self.config.train_iterations):
-          _, l = sess.run([self.train_op, self.total_loss], 
-                          feed_dict=self.dataset.minibatch(self.state_in, self.state_out, self.boundary, self.network.state_padding_decrease_seq()))
-          if i % 100 == 0:
-            print("current loss is " + str(l))
-            print("current step is " + str(i))
-
-          if i % self.config.save_freq == 0:
-            print("saving...")
-            self.saver.save_summary(sess, self.dataset.minibatch(self.state_in, self.state_out, self.boundary, self.network.state_padding_decrease_seq()), sess.run(global_step))
-            self.saver.save_checkpoint(sess, int(sess.run(global_step)))
+          self.train_step(feed_dict)
+          #if finished:
+          #  print("finished training")
+          #  break
 
     def generate_data(self, config):
 
-      ctrl = self._train_sim(config).create_sailfish_simulation()
-      ctrl.run()
+      sailfish_ctrl = self._train_sim(config).create_sailfish_simulation()
+      sailfish_ctrl.run()
 
     def eval(self, config):
 
@@ -194,61 +145,18 @@ class LatNetController(object):
       with tf.Graph().as_default():
 
         # unroll network
-        self.eval_unroll()
-
-        
-
-        # make inputs
-        self.inputs = Inputs(self.config)
-        self.state = self.inputs.state(self.network.state_padding_decrease())
-        self.compressed_state = self.inputs.compressed_state(self.network.network_config['filter_size_compression'],
-                                           self.network.compressed_state_padding_decrease())
-        self.decoder_compressed_state = self.inputs.compressed_state(self.network.network_config['filter_size_compression'],
-                                           self.network.decompressed_state_padding_decrease())
-        self.boundary = self.inputs.boundary(self.network.state_padding_decrease())
-        self.compressed_boundary = self.inputs.compressed_boundary(2*self.network.network_config['filter_size_compression'],
-                                           self.network.compressed_state_padding_decrease())
-        self.decoder_compressed_boundary = self.inputs.compressed_boundary(2*self.network.network_config['filter_size_compression'],
-                                           self.network.decompressed_state_padding_decrease())
-
-        # make network pipe
-        ( self.compressed_state_from_state, self.compressed_boundary_from_boundary, 
-          self.compressed_state_from_compressed_state,
-          self.state_from_compressed_state) = self.network.single_unroll(self.state,
-                                              self.boundary, self.compressed_state,
-                                              self.compressed_boundary,
-                                              self.decoder_compressed_state,
-                                              self.decoder_compressed_boundary)
-
-        # start session 
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
-        sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
-        init = tf.global_variables_initializer()
-        sess.run(init)
-
-        # make saver
-        graph_def = sess.graph.as_graph_def(add_shapes=True)
-        self.saver = Saver(self.config, self.network.network_config, graph_def)
-        self.saver.load_checkpoint(sess, maybe_remove_prev=False)
+        self.network.eval_unroll()
+        state_encoder = self.state_encoder
 
         # run simulation
         self.domain = self._eval_sim(config, self.network.network_config['nr_downsamples'])
 
         # compute compressed state
-        compressed_state = self.domain.compute_compressed_state(sess, 
-                                self.compressed_state_from_state, 
-                                self.state, self.network.state_padding_decrease())
+        cstate    = self.domain.state_to_cstate(self.network.state_encoder())
+        cboundary = self.domain.boundary_to_cboundary(self.network.boundary_encoder())
 
-        # compute compressed boundary
-        compressed_boundary = self.domain.compute_compressed_boundary(sess, 
-                                   self.compressed_boundary_from_boundary, 
-                                   self.boundary, self.network.state_padding_decrease())
-
-        decompressed_state = self.domain.compute_decompressed_state(sess,
-                                  self.state_from_compressed_state,
-                                  self.decoder_compressed_state, self.decoder_compressed_boundary,
-                                  compressed_state, compressed_boundary, 
-                                  self.network.decompressed_state_padding_decrease())
+        # decode state
+        state = self.domain.cstate_to_state(self.network.decoder(), cstate)
 
         print(self.state_from_compressed_state.get_shape())
         print(decompressed_state.shape)

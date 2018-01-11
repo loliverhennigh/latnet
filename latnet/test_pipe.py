@@ -82,10 +82,20 @@ class Pipe:
     self.saver = Saver(self.config, self.network.network_config, graph_def)
     self.saver.load_checkpoint(self.sess)
 
+  def train_shape_converter(self):
+    shape_converters = {}
+    for i in xrange(self.seq_length):
+      name = ("state", "true_state_" + str(i))
+      shape_converters[name] = self.shape_converters[name]
+    return shape_converters
+
   def train_step(self, feed_dict):
 
     # perform train step
-    _, l = self.sess.run([self.out_tensors['train_op'], self.out_tensors['loss']], feed_dict=feed_dict)
+    tf_feed_dict = {}
+    for name in feed_dict.keys():
+      tf_feed_dict[self.in_tensors[name]] = feed_dict[name]
+    _, l = self.sess.run([self.out_tensors['train_op'], self.out_tensors['loss']], feed_dict=tf_feed_dict)
    
     # print required data and save
     step = self.sess.run(self.out_tensors['global_step'])
@@ -99,6 +109,7 @@ class Pipe:
  
   def eval_unroll(self):
     pass
+
 
   def encoder_state(self, in_name, out_name):
     pass
