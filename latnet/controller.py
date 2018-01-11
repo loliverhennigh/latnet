@@ -119,6 +119,17 @@ class LatNetController(object):
 
       with tf.Graph().as_default():
 
+        # unroll train_unroll
+        self.network.train_unroll()
+ 
+        # construct dataset
+        self.dataset = DataQueue(self.config, self._train_sim)
+
+        for i in xrange(10000):
+          feed_dict = self.dataset.minibatch()
+          self.train_step()
+ 
+
         # global step counter
         global_step = tf.get_variable('global_step', [], 
                           initializer=tf.constant_initializer(0), trainable=False)
@@ -181,6 +192,11 @@ class LatNetController(object):
       self.network = LatNet(self.config)
 
       with tf.Graph().as_default():
+
+        # unroll network
+        self.eval_unroll()
+
+        
 
         # make inputs
         self.inputs = Inputs(self.config)
