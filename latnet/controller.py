@@ -125,8 +125,11 @@ class LatNetController(object):
 
         # make inputs
         self.inputs = Inputs(self.config)
-        self.state_in, self.state_out = self.inputs.state_seq(self.network.state_padding_decrease_seq())
-        self.boundary = self.inputs.boundary()
+        state_in = self.inputs.state()
+        boundary = self.inputs.boundary()
+        pipe_in = Pipe(state_in.update(boundary))
+        
+        seq_state_out = self.inputs.state_seq(self.network.state_padding_decrease_seq())
 
         # make network pipe
         self.pred_state_out = self.network.unroll(self.state_in, self.boundary)

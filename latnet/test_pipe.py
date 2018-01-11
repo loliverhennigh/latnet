@@ -9,15 +9,29 @@ import network_architectures.nn as nn
 from network_architectures.shape_converter import ShapeConverter
 
 class Pipe:
-  def __init__(self, tensors):
+  def __init__(self):
     # in and out tensors
-    self.in_tensors = tensors
-    self.out_tensors = tensors
+    self.in_tensors = {}
+    self.out_tensors = {}
 
     # shape converter from in_tensor to out_tensor
     self.shape_converters = {}
     for name in tensors:
       self.shape_converters[name,name] = ShapeConverter()
+
+  def train_unroll(self):
+    self.in_tensors['state'] = 
+
+    self.encoder_state(pipe, in_name="state", out_name="cstate_0")
+    self.encoder_boundary(pipe, in_name="boundary", out_name="cboundary")
+
+    return loss
+
+  def train_step(self):
+    pass
+
+  def eval_unroll(self):
+    pass
 
   def encoder_state(self, in_name, out_name):
     pass

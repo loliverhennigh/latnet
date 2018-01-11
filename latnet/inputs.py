@@ -20,37 +20,29 @@ class Inputs:
     self.seq_length = config.seq_length
     self.batch_size = config.batch_size
 
-  def state_seq(self, state_padding_decrease_seq):
-    state_in = Tensor(tf.placeholder(tf.float32, (2 + self.dims) + [None]))
-    state_out = []
+  def state_seq(self):
+    states = {}
     for i in xrange(self.seq_length):
-      state_out.append(Tensor(tf.placeholder(tf.float32, (2 + self.dims) + [None])))
-      tf.summary.image('true_state_out_vel_' + str(i), lat.vel_to_norm(lat.lattice_to_vel(state_out[i])))
+      states['state_' + str(i)] = tf.placeholder(tf.float32, (2 + self.dims) + [None])
+      tf.summary.image('true_states_vel_' + str(i), lat.lattice_to_norm(states['state_' + str(i)]))
 
-    tf.summary.image('true_state_in_vel', lat.lattice_to_norm(state_in)))
-    return state_in, state_out
+    return states
 
-  def state(self, padding=0):
-    state = Tensor(tf.placeholder(tf.float32, (2 + self.dims) + [None]))
-    tf.summary.image('true_state', lat.lattice_to_norm(state))
+  def state(self):
+    state = {'state': tf.placeholder(tf.float32, (2 + self.dims) + [None])}
+    tf.summary.image('true_state', lat.lattice_to_norm(state['state']))
     return state
  
-  def boundary(self, padding=0):
-    boundary = Tensor(tf.placeholder(tf.float32, (2 + self.dims) + [None]))
+  def boundary(self):
+    boundary = {'boundary': tf.placeholder(tf.float32, (2 + self.dims) + [None])}
     # TODO add more image summarys for boundary
-    tf.summary.image('true_boundary', boundary[:,:,:,0:1])
+    tf.summary.image('true_boundary', boundary['boundary'][...,0:1])
     return boundary
     
-  def compressed_state(self, filter_size, padding=0): 
-    compressed_state = Tensor(tf.placeholder(tf.float32, (2 + self.dims) + [None]))
+  def compressed_state(self): 
+    compressed_state = {'cstate':, tf.placeholder(tf.float32, (2 + self.dims) + [None])}
     return compressed_state
     
-  def compressed_boundary(self, filter_size, padding=0): 
-    compressed_boundary = Tensor(tf.placeholder(tf.float32,, (2 + self.dims) + [None]))
+  def compressed_boundary(self): 
+    compressed_boundary = {'cboundary': tf.placeholder(tf.float32,, (2 + self.dims) + [None])}
     return compressed_boundary
-
-class Pipe:
-  # store the input and output
-  def __init__(self, tf_tensor):
-    self.tf_tensor = tf_tensor
-    self.shape_converter = ShapeConverter()

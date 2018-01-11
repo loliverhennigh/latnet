@@ -36,34 +36,24 @@ class LatNet:
     self.unroll                       = tf.make_template('unroll', self._unroll)
     self.single_unroll             = tf.make_template('unroll', self._single_unroll)
 
-  def _unroll(self, state_in, boundary):
-    # store all out
-    x_out = []
-
+  def _unroll(self, pipe):
     # encode
-    y_1 = self.encoder_state(state_in)
-    compressed_boundary = self.encoder_boundary(boundary)
-
-    # apply boundary
-    y_1, = self.compression_mapping_boundary(y_1, compressed_boundary)
+    self.encoder_state(pipe, in_name="state", out_name="cstate_0")
+    self.encoder_boundary(pipe, in_name="boundary", out_name="cboundary")
 
     # unroll all
     for i in xrange(self.seq_length):
       # decode and add to list
-      x_2 = self.decoder_state(y_1)
-      x_out.append(x_2)
+      self.decoder_state(pipe, in_name="cstate_" + str(i), out_name="state_" + str(i))
 
       # compression mapping
-      y_1 = self.compression_mapping(y_1)
+      self.compression_mapping(pipe, in_name="cstate_" + str(i), out_name="cstate_" + str(i))
 
       # apply boundary
-      y_1 = self.compression_mapping_boundary(y_1, compressed_boundary)
+      self.compression_mapping_boundary(pipe, in_name="cstate_" + str(i), in_name="cstate_" + str(i+1))
 
-    # make image summary
-    for i in xrange(self.seq_length):
-      tf.summary.image('predicted_state_out_vel_', lat.vel_to_norm(lat.lattice_to_vel(x_out[i])))
-
-    return x_out
+      # make image summary
+      tf.summary.image('predicted_state_vel_', lat.lattice_to_norm(pipe.out_tensors['state_' + str(i)]))
 
   def _single_unroll(self, state, boundary, 
                 compressed_state, compressed_boundary, 
