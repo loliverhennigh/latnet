@@ -101,14 +101,14 @@ def compression_mapping_boundary(pipe, in_cstate_name, in_cboundary_name, out_na
   pipe.split_tensor(in_name=in_cboundary_name, 
                     a_out_name=in_cboundary_name + "_add", 
                     b_out_name=in_cboundary_name + "_mask", 
-                    num_split=2, axis=-1)
+                    num_split=2, axis=3)
 
   # normalize cboundary_mask between 0 and 1
-  pipe.nonlinearity(name=in_boundary_name + "_mask", 
+  pipe.nonlinearity(name=in_cboundary_name + "_mask", 
                     nonlinarity_name="sigmoid")
 
   # apply image mask
-  pipe.image_combinde(a_name=in_cstate_name, 
+  pipe.image_combine(a_name=in_cstate_name, 
                       b_name=in_cboundary_name + "_add", 
                       mask_name=in_cboundary_name + "_mask", 
                       out_name=out_name)
@@ -159,6 +159,6 @@ def decoder_state(pipe, in_name, out_name, lattice_size=9):
 
   pipe.conv(in_name=out_name, out_name=out_name,
                   kernel_size=1, stride=1, 
-                  filter_size=CONFIGS['filter_size_compression'], 
+                  filter_size=lattice_size, 
                   weight_name="final_down_conv")
 

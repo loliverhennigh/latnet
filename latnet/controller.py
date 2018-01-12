@@ -111,23 +111,21 @@ class LatNetController(object):
 
     def train(self, config):
 
+      # make network
       self.network = LatNet(self.config)
 
-      with tf.Graph().as_default():
-
-        # unroll train_unroll
-        self.network.train_unroll()
-        self.network.init()
+      # unroll train_unroll
+      self.network.train_unroll()
  
-        # construct dataset
-        self.dataset = DataQueue(self.config, self._train_sim, self.network.train_shape_converter())
+      # construct dataset
+      self.dataset = DataQueue(self.config, self._train_sim, self.network.train_shape_converter())
 
-        while True:
-          feed_dict = self.dataset.minibatch()
-          self.train_step(feed_dict)
-          #if finished:
-          #  print("finished training")
-          #  break
+      while True:
+        feed_dict = self.dataset.minibatch()
+        self.train_step(feed_dict)
+        #if finished:
+        #  print("finished training")
+        #  break
 
     def generate_data(self, config):
 

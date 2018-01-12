@@ -46,68 +46,73 @@ class LatNet:
 
   def train_unroll(self):
 
-    ###### Inputs to Graph ######
-    # global step counter
-    self.add_tensor('global_step', tf.get_variable('global_step', [], 
-                     initializer=tf.constant_initializer(0), trainable=False))
-    # make input state and boundary
-    self.add_tensor('state', tf.placeholder(tf.float32, (1 + self.dims) * [None] + [self.lattice_size]))
-    tf.summary.image('state', lat.lattice_to_norm(self.in_tensors['state']))
-    self.add_tensor('boundary', tf.placeholder(tf.float32, (1 + self.dims) * [None] + [4]))
-    tf.summary.image('boundary', self.in_tensors['boundary'][...,0:1])
-    # make seq of output states
-    for i in xrange(self.seq_length):
-      self.add_tensor('true_state_' + str(i), tf.placeholder(tf.float32, (2 + self.dims) * [None]))
-      tf.summary.image('true_state_' + str(i), lat.lattice_to_norm(self.in_tensors['true_state_' + str(i)]))
+    # graph
+    with tf.Graph().as_default():
 
-    ###### Unroll Graph ######
-    # encode
-    self.encoder_state(self, in_name="state", out_name="cstate_0")
-    self.encoder_boundary(self, in_name="boundary", out_name="cboundary")
-
-    # unroll all
-    for i in xrange(self.seq_length):
-      # decode and add to list
-      self.decoder_state(self, in_name="cstate_" + str(i), out_name="pred_state_" + str(i))
-
-      # compression mapping
-      self.compression_mapping(self, in_name="cstate_" + str(i), out_name="cstate_" + str(i))
-
-      # apply boundary
-      self.compression_mapping_boundary(self, in_cstate_name="cstate_" + str(i), 
-                                              in_cboundary_name="cboundary", 
-                                              out_name="cstate_" + str(i+1))
-
-      # make image summary
-      tf.summary.image('predicted_state_vel_', lat.lattice_to_norm(self.out_tensors['pred_state_' + str(i)]))
-
-    ###### Loss Operation ######
-    # define mse loss
-    self.out_tensors["loss"] = 0.0
-    for i in xrange(self.seq_length):
-      self.mse(true_name='true_state_' + str(i),
-               pred_name='pred_state_' + str(i),
-               loss_name='loss_' + str(i))
-      self.out_tensors['loss'] += self.out_tensors['loss_' + str(i)]
-    tf.summary.scalar('loss', self.out_tensors['loss'])
-
-    ###### Train Operation ######
-    all_params = tf.trainable_variables()
-    self.optimizer = Optimizer(self.config)
-    self.optimizer.compute_gradients(self.out_tensors['loss'], all_params)
-    self.out_tensors['train_op'] = self.optimizer.train_op(all_params, self.out_tensors['global_step'])
-
-    ###### Start Session ######
-    self.sess = self.start_session()
-
-    ###### Saver Operation ######
-    self.saver = Saver(self.config, self.network.network_config, graph_def)
-    self.saver.load_checkpoint(self.sess)
+      ###### Inputs to Graph ######
+      # global step counter
+      self.add_tensor('global_step', tf.get_variable('global_step', [], 
+                       initializer=tf.constant_initializer(0), trainable=False))
+      # make input state and boundary
+      self.add_tensor('state', tf.placeholder(tf.float32, (1 + self.dims) * [None] + [self.lattice_size]))
+      tf.summary.image('state', lat.lattice_to_norm(self.in_tensors['state']))
+      self.add_tensor('boundary', tf.placeholder(tf.float32, (1 + self.dims) * [None] + [4]))
+      tf.summary.image('boundary', self.in_tensors['boundary'][...,0:1])
+      # make seq of output states
+      for i in xrange(self.seq_length):
+        self.add_tensor('true_state_' + str(i), tf.placeholder(tf.float32, (2 + self.dims) * [None]))
+        tf.summary.image('true_state_' + str(i), lat.lattice_to_norm(self.in_tensors['true_state_' + str(i)]))
+  
+      ###### Unroll Graph ######
+      # encode
+      self.encoder_state(self, in_name="state", out_name="cstate_0")
+      self.encoder_boundary(self, in_name="boundary", out_name="cboundary")
+  
+      # unroll all
+      for i in xrange(self.seq_length):
+        # decode and add to list
+        self.decoder_state(self, in_name="cstate_" + str(i), out_name="pred_state_" + str(i))
+  
+        # compression mapping
+        self.compression_mapping(self, in_name="cstate_" + str(i), out_name="cstate_" + str(i))
+  
+        # apply boundary
+        self.compression_mapping_boundary(self, in_cstate_name="cstate_" + str(i), 
+                                                in_cboundary_name="cboundary", 
+                                                out_name="cstate_" + str(i+1))
+  
+        # make image summary
+        tf.summary.image('predicted_state_vel_', lat.lattice_to_norm(self.out_tensors['pred_state_' + str(i)]))
+  
+      ###### Loss Operation ######
+      # define mse loss
+      self.out_tensors["loss"] = 0.0
+      for i in xrange(self.seq_length):
+        self.mse(true_name='true_state_' + str(i),
+                 pred_name='pred_state_' + str(i),
+                 loss_name='loss_' + str(i))
+        self.out_tensors['loss'] += self.out_tensors['loss_' + str(i)]
+      tf.summary.scalar('loss', self.out_tensors['loss'])
+  
+      ###### Train Operation ######
+      all_params = tf.trainable_variables()
+      self.optimizer = Optimizer(self.config)
+      self.optimizer.compute_gradients(self.out_tensors['loss'], all_params)
+      self.out_tensors['train_op'] = self.optimizer.train_op(all_params, self.out_tensors['global_step'])
+  
+      ###### Start Session ######
+      self.sess = self.start_session()
+  
+      ###### Saver Operation ######
+      graph_def = self.sess.graph.as_graph_def(add_shapes=True)
+      self.saver = Saver(self.config, self.network_config, graph_def)
+      self.saver.load_checkpoint(self.sess)
 
   def train_shape_converter(self):
     shape_converters = {}
+    print(self.shape_converters.keys())
     for i in xrange(self.seq_length):
-      name = ("state", "true_state_" + str(i))
+      name = ("state", "pred_state_" + str(i))
       shape_converters[name] = self.shape_converters[name]
     return shape_converters
 
@@ -184,34 +189,36 @@ class LatNet:
            weight_name="conv", nonlinearity=None):
 
     # add conv to tensor computation
-    self.out_tensors[in_name] =  nn.conv_layer(self.out_tensors[in_name],
+    self.out_tensors[out_name] =  nn.conv_layer(self.out_tensors[in_name],
                                               kernel_size, stride, filter_size, 
                                               name=weight_name, nonlinearity=None)
 
     # add conv to the shape converter
     for name in self.shape_converters.keys():
       if name[1] == in_name:
-        self.shape_converters[name].add_conv(kernel_size, stride)
+        self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
+        self.shape_converters[name[0], out_name].add_conv(kernel_size, stride)
 
     # rename tensor
-    self.rename_out_tensor(in_name, out_name)
+    #self.rename_out_tensor(in_name, out_name)
 
   def trans_conv(self, in_name, out_name,
                  kernel_size, stride, filter_size, 
                  weight_name="trans_conv", nonlinearity=None):
 
     # add conv to tensor computation
-    self.out_tensors[in_name] =  nn.transpose_conv_layer(self.out_tensors[in_name],
+    self.out_tensors[out_name] =  nn.transpose_conv_layer(self.out_tensors[in_name],
                                                         kernel_size, stride, filter_size, 
                                                         name=weight_name, nonlinearity=None)
 
     # add conv to the shape converter
     for name in self.shape_converters.keys():
       if name[1] == in_name:
-        self.shape_converters[name].add_trans_conv(kernel_size, stride)
+        self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
+        self.shape_converters[name[0], out_name].add_trans_conv(kernel_size, stride)
 
     # rename tensor
-    self.rename_out_tensor(in_name, out_name)
+    #self.rename_out_tensor(in_name, out_name)
 
   def res_block(self, in_name, out_name,
                 filter_size=16, 
@@ -222,9 +229,7 @@ class LatNet:
                 normalize=None):
 
     # add res block to tensor computation
-    print(in_name)
-    print(self.out_tensors)
-    self.out_tensors[in_name] = nn.res_block(self.out_tensors[in_name], a=None,
+    self.out_tensors[out_name] = nn.res_block(self.out_tensors[in_name], a=None,
                                             filter_size=filter_size, 
                                             nonlinearity=nonlinearity, 
                                             keep_p=keep_p, stride=stride, 
@@ -235,10 +240,11 @@ class LatNet:
     # add res block to the shape converter
     for name in self.shape_converters.keys():
       if name[1] == in_name:
-        self.shape_converters[name].add_res_block(stride)
+        self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
+        self.shape_converters[name[0], out_name].add_res_block(stride)
 
     # rename tensor
-    self.rename_out_tensor(in_name, out_name)
+    #self.rename_out_tensor(in_name, out_name)
 
   def split_tensor(self, in_name,
                    a_out_name, b_out_name,
@@ -281,8 +287,8 @@ class LatNet:
     self.out_tensors[name] = nonlin(self.out_tensors[name])
 
   def mse(self, true_name, pred_name, loss_name):
-    tf.out_tensors[loss_name] = tf.nn.l2_loss(self.in_tensors[ true_name] 
-                                            - self.out_tensors[pred_name])
+    self.out_tensors[loss_name] = tf.nn.l2_loss(self.in_tensors[ true_name] 
+                                              - self.out_tensors[pred_name])
     tf.summary.scalar('loss_' + true_name + "_and_" + pred_name, self.out_tensors[loss_name])
 
   def combine_pipe(self, other_pipe):
