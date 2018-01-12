@@ -5,7 +5,7 @@ import shutil
 import os
 
 import lattice
-import utils.padding_utils as padding_utils
+import utils.numpy_utils as numpy_utils
 
 
 import matplotlib.pyplot as plt
@@ -121,7 +121,7 @@ class SimRunner:
     # read seq states
     seq_state = []
     for i in xrange(self.seq_length):
-      seq_state.append(self.read_state(ind + i, seq_state_subdomain[i])
+      seq_state.append(self.read_state(ind + i, seq_state_subdomain[i]))
 
     return state, geometry, seq_state
 
@@ -132,7 +132,7 @@ class SimRunner:
       geometry = np.load(geometry_file)
       geometry = geometry.astype(np.float32)
       geometry = geometry[1:-1,1:-1]
-      geometry = padding_utils.mobius_extract(geometry, subdomain)
+      geometry = numpy_utils.mobius_extract(geometry, subdomain)
     return geometry
 
   def read_states(self, ind, subdomain):
@@ -146,7 +146,7 @@ class SimRunner:
     state = np.swapaxes(state, 0, 1)
     state = np.swapaxes(state, 1, 2)
     state = state - subtract_weights
-    state = padding_utils.mobius_extract(state, subdomain)
+    state = numpy_utils.mobius_extract(state, subdomain)
     return state
 
   def clean_store_dir(self):

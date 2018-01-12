@@ -1,7 +1,7 @@
 
 import tensorflow as tf
 import numpy as np
-from network_architectures.nn import int_shape, simple_conv_2d, simple_conv_3d, simple_trans_conv_2d, simple_trans_conv_3d
+from nn import int_shape, simple_conv_2d, simple_conv_3d, simple_trans_conv_2d, simple_trans_conv_3d
 
 # KERNEL matrixes for calculating velocity, magnetic field, and force
 VELOCITY_KERNEL_2D = np.zeros((3,3,2,1))
@@ -142,7 +142,7 @@ def add_lattice(lattice):
 
 def lattice_to_vel(lattice):
   # get velocity vector field from lattice
-  Lveloc = get_lveloc(int(lattice.get_shape()[-1]))
+  Lveloc = get_lveloc(int(9))
   dims = len(lattice.get_shape())-1
   Lveloc_shape = list(map(int, Lveloc.get_shape()))
   Lveloc = tf.reshape(Lveloc, dims*[1] + Lveloc_shape)

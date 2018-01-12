@@ -6,12 +6,8 @@ import tensorflow as tf
 from latnetwork import LatNet
 from data_queue import DataQueue
 from config import LatNetConfigParser
-from loss import Loss
-from inputs import Inputs
-from optimizer import Optimizer
-from saver import Saver
 from domain import Domain
-from lattice import *
+#from lattice import *
 
 import matplotlib.pyplot as plt
 
@@ -145,19 +141,21 @@ class LatNetController(object):
       with tf.Graph().as_default():
 
         # unroll network
-        self.network.eval_unroll()
-        state_encoder = self.state_encoder
+        (state_encoder, boundary_encoder, cmapping, decoder,
+         encoder_shape_converter, cmapping_shape_converter, 
+         decoder_shape_converter) = self.network.eval_unroll()
 
         # run simulation
         self.domain = self._eval_sim(config, self.network.network_config['nr_downsamples'])
 
         # compute compressed state
-        cstate    = self.domain.state_to_cstate(self.network.state_encoder())
-        cboundary = self.domain.boundary_to_cboundary(self.network.boundary_encoder())
+        cstate    = self.domain.state_to_cstate(state_encoder, encoder_shape_converter)
+        cboundary = self.domain.boundary_to_cboundary(boundary_encoder, encoder_shape_converter)
 
         # decode state
-        state = self.domain.cstate_to_state(self.network.decoder(), cstate)
+        state = self.domain.cstate_to_state(decoder, decoder_shape_converter, cstate)
 
+        """
         print(self.state_from_compressed_state.get_shape())
         print(decompressed_state.shape)
         plt.imshow(decompressed_state[0,:,:,0])
@@ -182,6 +180,7 @@ class LatNetController(object):
             print(decompressed_state.shape)
             plt.imshow(decompressed_state[0,:,:,2])
             plt.show()
+        """
 
 
 

@@ -2,7 +2,7 @@
 import sys
 
 # import latnet files
-import utils.padding_utils as padding_utils
+import utils.numpy_utils as numpy_utils
 
 # import sailfish
 sys.path.append('../sailfish')

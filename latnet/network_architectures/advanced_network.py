@@ -1,6 +1,10 @@
 
 import tensorflow as tf
 import numpy as np
+
+import sys
+sys.path.append('../')
+
 from nn import *
 
 # TODO make this file into class with inheritance from pipe
@@ -48,7 +52,7 @@ def encoder_state(pipe, in_name, out_name):
                  stride=2, 
                  gated=CONFIGS['gated'], 
                  begin_nonlinearity=False, 
-                 weight_name="res_" + str(i))
+                 weight_name="res_" + str(0))
   for i in xrange(CONFIGS['nr_downsamples']-1):
     pipe.res_block(in_name=out_name, out_name=out_name,
                    filter_size=filter_size,
@@ -56,10 +60,10 @@ def encoder_state(pipe, in_name, out_name):
                    stride=2, 
                    gated=CONFIGS['gated'], 
                    begin_nonlinearity=True,
-                   weight_name="res_" + str(i))
+                   weight_name="res_" + str(i+1))
     filter_size = filter_size*2
 
-  pipe.conv_layer(in_name=out_name, out_name=out_name,
+  pipe.conv(in_name=out_name, out_name=out_name,
                   kernel_size=1, stride=1, 
                   filter_size=CONFIGS['filter_size_compression'], 
                   weight_name="final_down_conv")
@@ -75,7 +79,7 @@ def encoder_boundary(pipe, in_name, out_name):
                  stride=2, 
                  gated=CONFIGS['gated'], 
                  begin_nonlinearity=False, 
-                 weight_name="res_" + str(i))
+                 weight_name="res_" + str(0))
   for i in xrange(CONFIGS['nr_downsamples']-1):
     pipe.res_block(in_name=out_name, out_name=out_name,
                    filter_size=filter_size,
@@ -83,12 +87,13 @@ def encoder_boundary(pipe, in_name, out_name):
                    stride=2, 
                    gated=CONFIGS['gated'], 
                    begin_nonlinearity=True,
-                   weight_name="res_" + str(i))
+                   weight_name="res_" + str(i+1))
     filter_size = filter_size*2
 
-  pipe.conv_layer(in_name=out_name, out_name=out_name,
+  pipe.conv(in_name=out_name, out_name=out_name,
                   kernel_size=1, stride=1, 
-                  filter_size=2*CONFIGS['filter_size_compression'], 
+                  filter_size=2*CONFIGS['filter_size_compression'],
+                  weight_name="final_down_conv")
 
 # compression mapping boundary
 def compression_mapping_boundary(pipe, in_cstate_name, in_cboundary_name, out_name):
@@ -116,7 +121,7 @@ def compression_mapping(pipe, in_name, out_name):
                  stride=1, 
                  gated=CONFIGS['gated'], 
                  begin_nonlinearity=False,
-                 weight_name="res_" + str(i))
+                 weight_name="res_" + str(0))
   for i in xrange(CONFIGS['nr_residual_compression'] - 1):
     pipe.res_block(in_name=out_name, out_name=out_name, 
                    filter_size=CONFIGS['filter_size_compression'], 
@@ -124,17 +129,17 @@ def compression_mapping(pipe, in_name, out_name):
                    stride=1, 
                    gated=CONFIGS['gated'], 
                    begin_nonlinearity=True, 
-                   weight_name="res_" + str(i))
+                   weight_name="res_" + str(i+1))
 
 # decoder state
-def decoder_state(pipe, lattice_size=9, in_name, out_name):
+def decoder_state(pipe, in_name, out_name, lattice_size=9):
 
 
   filter_size = int(CONFIGS['filter_size']*pow(2,CONFIGS['nr_downsamples']-1))
   pipe.trans_conv(in_name=in_name, out_name=out_name,
                   kernel_size=2, stride=2, 
                   filter_size=filter_size, 
-                  weight_name="up_conv_" + str(i), 
+                  weight_name="up_conv_" + str(0), 
                   nonlinearity=nonlinearity)
 
   for i in xrange(CONFIGS['nr_downsamples'] - 1):
@@ -145,14 +150,14 @@ def decoder_state(pipe, lattice_size=9, in_name, out_name):
                    stride=1,
                    gated=CONFIGS['gated'],
                    begin_nonlinearity=False, 
-                   weight_name="res_" + str(i))
+                   weight_name="res_" + str(i+1))
     pipe.trans_conv(in_name=out_name, out_name=out_name,
                     kernel_size=2, stride=2, 
                     filter_size=filter_size, 
-                    weight_name="up_conv_" + str(i), 
+                    weight_name="up_conv_" + str(i+1), 
                     nonlinearity=nonlinearity)
 
-  pipe.conv_layer(in_name=out_name, out_name=out_name,
+  pipe.conv(in_name=out_name, out_name=out_name,
                   kernel_size=1, stride=1, 
                   filter_size=CONFIGS['filter_size_compression'], 
                   weight_name="final_down_conv")
