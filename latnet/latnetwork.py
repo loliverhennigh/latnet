@@ -77,6 +77,7 @@ class LatNet:
         self.compression_mapping(self, in_name="cstate_" + str(i), out_name="cstate_" + str(i))
   
         # apply boundary
+        self.out_tensors['cboundary'] = self.out_tensors['cboundary'][:,4:-4,4:-4] # TODO fix this
         self.compression_mapping_boundary(self, in_cstate_name="cstate_" + str(i), 
                                                 in_cboundary_name="cboundary", 
                                                 out_name="cstate_" + str(i+1))
@@ -110,7 +111,6 @@ class LatNet:
 
   def train_shape_converter(self):
     shape_converters = {}
-    print(self.shape_converters.keys())
     for i in xrange(self.seq_length):
       name = ("state", "pred_state_" + str(i))
       shape_converters[name] = self.shape_converters[name]
@@ -128,10 +128,10 @@ class LatNet:
     step = self.sess.run(self.out_tensors['global_step'])
     if step % 100 == 0:
       print("current loss is " + str(l))
-      print("current step is " + str(i))
+      print("current step is " + str(step))
     if step % self.config.save_freq == 0:
       print("saving...")
-      self.saver.save_summary(self.sess, tf_feed_dict, self.out_tensors['global_step'])
+      self.saver.save_summary(self.sess, tf_feed_dict, int(self.sess.run(self.out_tensors['global_step'])))
       self.saver.save_checkpoint(self.sess, int(self.sess.run(self.out_tensors['global_step'])))
  
   def eval_unroll(self):

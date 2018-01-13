@@ -21,6 +21,7 @@ class SimRunner:
     self.lb_to_ln = config.lb_to_ln
     self.max_sim_iters = config.max_sim_iters
     self.script_name = script_name
+    self.seq_length = config.seq_length
 
     sim_shape = config.sim_shape.split('x')
     sim_shape = map(int, sim_shape)
@@ -67,7 +68,7 @@ class SimRunner:
 
     # add iteration till next cpoint and possible restor cpoint
     if last_step is not None:
-      num_run_iters = last_step + (self.num_cpoints * self.lb_to_ln)
+      num_run_iters = last_step + ((self.num_cpoints + 1) * self.lb_to_ln)
       if num_run_iters < self.max_sim_iters:
         cmd += ' --checkpoint_from=' + str(last_step)
         cmd += ' --restore_from=' + last_cpoint[:-13]
@@ -76,10 +77,10 @@ class SimRunner:
       else:
         self.clean_save_dir()
         self.make_sim_dir()
-        cmd += ' --max_sim_iters=' + str(self.num_cpoints * self.lb_to_ln)
+        cmd += ' --max_sim_iters=' + str((self.num_cpoints + 1) * self.lb_to_ln)
         cmd += ' --checkpoint_from=' + str(0)
     else:
-      cmd += ' --max_sim_iters=' + str(self.num_cpoints * self.lb_to_ln)
+      cmd += ' --max_sim_iters=' + str((self.num_cpoints + 1) * self.lb_to_ln)
       cmd += ' --checkpoint_from=' + str(0)
  
     # run cmd
@@ -112,7 +113,7 @@ class SimRunner:
 
     # read state
     state_files = glob.glob(self.save_dir + "/*.0.cpoint.npz")
-    ind = np.random.randint(0, len(state_files) - seq_length)
+    ind = np.random.randint(0, len(state_files) - self.seq_length)
     state = self.read_state(ind, state_subdomain)
 
     # read geometry
@@ -135,7 +136,7 @@ class SimRunner:
       geometry = numpy_utils.mobius_extract(geometry, subdomain)
     return geometry
 
-  def read_states(self, ind, subdomain):
+  def read_state(self, ind, subdomain):
     # load flow file
     state_files = glob.glob(self.save_dir + "/*.0.cpoint.npz")
     state_files.sort()

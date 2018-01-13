@@ -122,7 +122,7 @@ class LatNetController(object):
 
       while True:
         feed_dict = self.dataset.minibatch()
-        self.train_step(feed_dict)
+        self.network.train_step(feed_dict)
         #if finished:
         #  print("finished training")
         #  break

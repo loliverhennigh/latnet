@@ -134,7 +134,6 @@ def compression_mapping(pipe, in_name, out_name):
 # decoder state
 def decoder_state(pipe, in_name, out_name, lattice_size=9):
 
-
   filter_size = int(CONFIGS['filter_size']*pow(2,CONFIGS['nr_downsamples']-1))
   pipe.trans_conv(in_name=in_name, out_name=out_name,
                   kernel_size=2, stride=2, 

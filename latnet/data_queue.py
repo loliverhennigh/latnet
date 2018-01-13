@@ -11,13 +11,15 @@ import gc
 import time
 import psutil as ps
 import shutil
+from copy import copy
 from sim_runner import SimRunner
 
 from Queue import Queue
+from shape_converter import SubDomain
 import threading
 
 class DataQueue:
-  def __init__(self, config, train_sim, shape_converter):
+  def __init__(self, config, train_sim, shape_converters):
 
     # base dir where all the xml files are
     self.base_dir = config.sailfish_sim_dir
@@ -36,6 +38,7 @@ class DataQueue:
     input_shape = config.input_shape.split('x')
     input_shape = map(int, input_shape)
     self.input_shape = input_shape
+    self.shape_converters = shape_converters
 
     # make queue
     self.max_queue = config.max_queue
@@ -62,7 +65,7 @@ class DataQueue:
       geometry_subdomain = SubDomain(rand_pos, self.input_shape)
       seq_state_subdomain = []
       for i in xrange(self.seq_length):
-        seq_state_subdomian = self.shape_converters['state', 'true_state_' + str(i)].in_out_subdomain(state_subdomain)
+        seq_state_subdomain.append(self.shape_converters['state', 'pred_state_' + str(i)].in_out_subdomain(copy(state_subdomain)))
 
       # get geometry and lat data
       state, geometry, seq_state = sim.read_data(state_subdomain,
@@ -77,7 +80,7 @@ class DataQueue:
 
     # queue up data if needed
     for i in xrange(self.max_queue - len(self.queue_batches) - self.queue.qsize()):
-      self.queue.put()
+      self.queue.put(None)
    
     # possibly wait if data needs time to queue up
     while len(self.queue_batches) < 2*self.batch_size: # added times two to make sure enough
@@ -105,8 +108,9 @@ class DataQueue:
     # make feed dict
     feed_dict = {}
     feed_dict['state'] = batch_state
-    feed_dict['boundary'] = batch_goemetry
+    feed_dict['boundary'] = batch_geometry
     for i in xrange(self.seq_length):
-      feed_dict['true_state_' + str(i)] = batch_seq_state
+      feed_dict['true_state_' + str(i)] = batch_seq_state[i]
+      
     return feed_dict
 

@@ -143,6 +143,7 @@ def transpose_conv_layer(x, kernel_size, stride, filter_size, name, nonlinearity
     if nonlinearity is not None:
       conv = nonlinearity(conv)
 
+    """
     #reshape (transpose conv causes output to have ? size)
     #shape = int_shape(x)
     if  length_input == 2:
@@ -151,6 +152,7 @@ def transpose_conv_layer(x, kernel_size, stride, filter_size, name, nonlinearity
     if  length_input == 3:
       #conv = tf.reshape(conv, [shape[0], shape[1]*stride, shape[2]*stride, shape[3]*stride, filter_size])
       conv = conv[:,1:-1,1:-1,1:-1]
+    """
     return conv
 
 def fc_layer(x, hiddens, name, nonlinearity=None, flat = False):
