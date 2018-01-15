@@ -83,7 +83,7 @@ class LatNetController(object):
 
       group = self._config_parser.add_group('Input Details')
       group.add_argument('--input_shape', help='all mode', type=str,
-                         default='256x256')
+                         default='512x512')
       group.add_argument('--compressed_shape', help='all mode', type=str,
                          default='64x64')
       group.add_argument('--lattice_q', help='all mode', type=int,
@@ -149,9 +149,14 @@ class LatNetController(object):
         # compute compressed state
         cstate    = self.domain.state_to_cstate(state_encoder, encoder_shape_converter)
         cboundary = self.domain.boundary_to_cboundary(boundary_encoder, encoder_shape_converter)
+        print(cstate.shape)
+        print(cboundary.shape)
 
         # decode state
         state = self.domain.cstate_to_state(decoder, decoder_shape_converter, cstate)
+        print(state.shape)
+        plt.imshow(state[0,:,:,0])
+        plt.show()
 
         """
         print(self.state_from_compressed_state.get_shape())

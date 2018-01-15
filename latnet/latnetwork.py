@@ -136,49 +136,53 @@ class LatNet:
  
   def eval_unroll(self):
 
-    ###### Inputs to Graph ######
-    # make input state and boundary
-    self.add_tensor('state',     tf.placeholder(tf.float32, (2 + self.dims) * [None]))
-    self.add_tensor('boundary',  tf.placeholder(tf.float32, (2 + self.dims) * [None]))
-    self.add_tensor('cstate',    tf.placeholder(tf.float32, (2 + self.dims) * [None]))
-    self.add_tensor('cboundary', tf.placeholder(tf.float32, (2 + self.dims) * [None]))
+    # graph
+    with tf.Graph().as_default():
 
-    ###### Unroll Graph ######
-    # encoders
-    self.encoder_state(self, in_name="state", out_name="cstate_from_state")
-    self.encoder_boundary(self, in_name="boundary", out_name="cboundary_from_boundary")
-
-    # compression mapping
-    self.compression_mapping(self, in_name="cstate", out_name="cstate_from_cstate")
-    self.compression_mapping_boundary(self, in_cstate_name="cstate_from_cstate", 
-                                            in_cboundary_name="cboundary", 
-                                            out_name="cstate_from_cstate")
-
-    # decoder
-    self.decoder_state(self, in_name="cstate", out_name="state_from_cstate")
-
-    ###### Start Session ######
-    self.sess = self.start_session()
-
-    ###### Saver Operation ######
-    self.saver = Saver(self.config, self.network.network_config, graph_def)
-    self.saver.load_checkpoint(self.sess)
-
+      ###### Inputs to Graph ######
+      # make input state and boundary
+      self.add_tensor('state',     tf.placeholder(tf.float32, (1 + self.dims) * [None] + [self.lattice_size]))
+      self.add_tensor('boundary',  tf.placeholder(tf.float32, (1 + self.dims) * [None] + [4]))
+      self.add_tensor('cstate',    tf.placeholder(tf.float32, (1 + self.dims) * [None] + [self.network_config['filter_size_compression']]))
+      self.add_tensor('cboundary', tf.placeholder(tf.float32, (1 + self.dims) * [None] + [2*self.network_config['filter_size_compression']]))
+  
+      ###### Unroll Graph ######
+      # encoders
+      self.encoder_state(self, in_name="state", out_name="cstate_from_state")
+      self.encoder_boundary(self, in_name="boundary", out_name="cboundary_from_boundary")
+  
+      # compression mapping
+      self.compression_mapping(self, in_name="cstate", out_name="cstate_from_cstate")
+      self.compression_mapping_boundary(self, in_cstate_name="cstate_from_cstate", 
+                                              in_cboundary_name="cboundary", 
+                                              out_name="cstate_from_cstate")
+  
+      # decoder
+      self.decoder_state(self, in_name="cstate", out_name="state_from_cstate")
+  
+      ###### Start Session ######
+      self.sess = self.start_session()
+  
+      ###### Saver Operation ######
+      graph_def = self.sess.graph.as_graph_def(add_shapes=True)
+      self.saver = Saver(self.config, self.network_config, graph_def)
+      self.saver.load_checkpoint(self.sess)
+  
     ###### Function Wrappers ######
     # network functions
-    state_encoder    = lambda x: self.sess(self.out_tensors['cstate_from_state'], 
+    state_encoder    = lambda x: self.sess.run(self.out_tensors['cstate_from_state'], 
                                  feed_dict={self.in_tensors['state']:x})
-    boundary_encoder = lambda x: self.sess(self.out_tensors['cboundary_from_boundary'], 
+    boundary_encoder = lambda x: self.sess.run(self.out_tensors['cboundary_from_boundary'], 
                                  feed_dict={self.in_tensors['boundary']:x})
-    cmapping         = lambda x, y: self.sess(self.out_tensors['cstate_from_cstate'], 
+    cmapping         = lambda x, y: self.sess.run(self.out_tensors['cstate_from_cstate'], 
                                  feed_dict={self.in_tensors['cstate']:x,
                                             self.in_tensors['cboundary']:y})
-    decoder           = lambda x: self.sess(self.out_tensors['state_from_cstate'], 
+    decoder           = lambda x: self.sess.run(self.out_tensors['state_from_cstate'], 
                                  feed_dict={self.in_tensors['cstate']:x})
     # shape converters
     encoder_shape_converter = self.shape_converters['state', 'cstate_from_state']
     cmapping_shape_converter = self.shape_converters['cstate', 'cstate_from_cstate']
-    decoder_shape_converter = self.shape_converters['cstate', 'state']
+    decoder_shape_converter = self.shape_converters['cstate', 'state_from_cstate']
 
     return (state_encoder, boundary_encoder, cmapping, decoder,
             encoder_shape_converter, cmapping_shape_converter, 

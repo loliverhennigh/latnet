@@ -3,6 +3,7 @@ import sys
 
 # import latnet files
 import utils.numpy_utils as numpy_utils
+from shape_converter import SubDomain
 
 # import sailfish
 sys.path.append('../sailfish')
@@ -36,7 +37,7 @@ class Domain(object):
     input_shape = map(int, input_shape)
     self.input_shape = input_shape
 
-    self.input_cshape = [64,64] # hard set for now
+    self.input_cshape = [16,16] # hard set for now
 
     self.sailfish_sim_dir = config.sailfish_sim_dir
     self.max_sim_iters = config.max_sim_iters
@@ -175,9 +176,9 @@ class Domain(object):
 
   def state_to_cstate(self, encoder, encoder_shape_converter):
 
-    nr_subdomains = [math.ceil(x/float(y)) for x, y in zip(self.sim_cshape, self.input_cshape)]
+    nr_subdomains = [int(math.ceil(x/float(y))) for x, y in zip(self.sim_cshape, self.input_cshape)]
     cstate = []
-    for i, j in itertools.product(nr_subdomains[0], nr_subdomains[1]):
+    for i, j in itertools.product(xrange(nr_subdomains[0]), xrange(nr_subdomains[1])):
       pos = [i * self.input_cshape[0], j * self.input_cshape[1]]
       subdomain = SubDomain(pos, self.input_cshape)
       input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
@@ -188,15 +189,17 @@ class Domain(object):
     cstate = numpy_utils.stack_grid(cstate, nr_subdomains, has_batch=True)
 
     # trim edges TODO add smarter padding making this unnessasary
-    cstate = cstate[:,:self.sim_cshape[0],:self.sim_cshape[1]]
+    #cstate = cstate[:,:self.sim_cshape[0],:self.sim_cshape[1]]
 
     return cstate
 
   def boundary_to_cboundary(self, encoder, encoder_shape_converter):
 
-    nr_subdomains = [math.ceil(x/float(y)) for x, y in zip(self.sim_cshape, self.input_cshape)]
+    nr_subdomains = [int(math.ceil(x/float(y))) for x, y in zip(self.sim_cshape, self.input_cshape)]
     cboundary = []
-    for i, j in itertools.product(nr_subdomains[0], nr_subdomains[1]):
+    print(self.sim_cshape, self.input_cshape)
+    print(nr_subdomains)
+    for i, j in itertools.product(xrange(nr_subdomains[0]), xrange(nr_subdomains[1])):
       pos = [i * self.input_cshape[0], j * self.input_cshape[1]]
       subdomain = SubDomain(pos, self.input_cshape)
       input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
@@ -208,21 +211,24 @@ class Domain(object):
       where_velocity, velocity = self.velocity_boundary_conditions(hx, hy, self.sim_shape)
       where_density, density = self.density_boundary_conditions(hx, hy, self.sim_shape)
       input_geometry = self.make_geometry_input(where_boundary, velocity, where_velocity, density, where_density)
+      input_geometry = np.expand_dims(input_geometry, axis=0)
+      plt.imshow(input_geometry[0,:,:,0])
+      plt.show()
       cboundary.append(encoder(input_geometry))
 
     # list to full tensor
     cboundary = numpy_utils.stack_grid(cboundary, nr_subdomains, has_batch=True)
 
     # trim edges TODO add smarter padding making this unnessasary
-    cboundary = cboundary[:,:self.sim_cshape[0],:self.sim_cshape[1]]
+    #cboundary = cboundary[:,:self.sim_cshape[0],:self.sim_cshape[1]]
 
     return cboundary
 
   def cstate_to_cstate(self, cmapping, cmapping_shape_converter, cstate, cboundary):
 
-    nr_subdomains = [math.ceil(x/float(y)) for x, y in zip(self.sim_cshape, self.input_cshape)]
+    nr_subdomains = [int(math.ceil(x/float(y))) for x, y in zip(self.sim_cshape, self.input_cshape)]
     new_cstate = []
-    for i, j in itertools.product(nr_subdomains[0], nr_subdomains[1]):
+    for i, j in itertools.product(xrange(nr_subdomains[0]), xrange(nr_subdomains[1])):
       pos = [i * self.input_cshape[0], j * self.input_cshape[1]]
       subdomain = SubDomain(pos, self.input_cshape)
       input_subdomain = cmapping_shape_converter.out_in_subdomain(subdomain)
@@ -239,19 +245,20 @@ class Domain(object):
 
   def cstate_to_state(self, decoder, decoder_shape_converter, cstate):
 
-    nr_subdomains = [math.ceil(x/float(y)) for x, y in zip(self.sim_shape, self.input_shape)]
+    nr_subdomains = [int(math.ceil(x/float(y))) for x, y in zip(self.sim_shape, self.input_shape)]
     state = []
-    for i, j in itertools.product(nr_subdomains[0], nr_subdomains[1]):
+    for i, j in itertools.product(xrange(nr_subdomains[0]), xrange(nr_subdomains[1])):
       pos = [i * self.input_shape[0], j * self.input_shape[1]]
       subdomain = SubDomain(pos, self.input_shape)
       input_subdomain = decoder_shape_converter.out_in_subdomain(subdomain)
+      print(input_subdomain.pos, input_subdomain.size)
       state.append(decoder(numpy_utils.mobius_extract(cstate, input_subdomain, has_batch=True)))
 
     # list to full tensor
     state = numpy_utils.stack_grid(state, nr_subdomains, has_batch=True)
 
     # trim edges TODO add smarter padding making this unnessasary
-    state = state[:,:self.sim_shape[0],:self.sim_shape[1]]
+    #state = state[:,:self.sim_shape[0],:self.sim_shape[1]]
 
     return state
 
