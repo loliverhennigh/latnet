@@ -63,7 +63,7 @@ class LatNetController(object):
       group.add_argument('--optimizer', help='all mode', type=str,
                         default='adam')
       group.add_argument('--lr', help='all mode', type=float,
-                        default=0.0004)
+                        default=0.1)
       group.add_argument('--train_iterations', help='all mode', type=int,
                         default=1000000)
 

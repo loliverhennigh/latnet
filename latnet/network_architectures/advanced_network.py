@@ -105,7 +105,7 @@ def compression_mapping_boundary(pipe, in_cstate_name, in_cboundary_name, out_na
 
   # normalize cboundary_mask between 0 and 1
   pipe.nonlinearity(name=in_cboundary_name + "_mask", 
-                    nonlinarity_name="sigmoid")
+                    nonlinearity_name="sigmoid")
 
   # apply image mask
   pipe.image_combine(a_name=in_cstate_name, 
@@ -160,4 +160,7 @@ def decoder_state(pipe, in_name, out_name, lattice_size=9):
                   kernel_size=1, stride=1, 
                   filter_size=lattice_size, 
                   weight_name="final_down_conv")
+
+  pipe.nonlinearity(name=out_name, nonlinearity_name='tanh')
+
 

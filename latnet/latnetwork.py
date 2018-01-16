@@ -286,13 +286,15 @@ class LatNet:
     #self.rm_tensor(   b_name)
     #self.rm_tensor(mask_name)
 
-  def nonlinearity(self, name, nonlinarity_name):
-    nonlin = nn.set_nonlinearity(nonlinarity_name)
+  def nonlinearity(self, name, nonlinearity_name):
+    nonlin = nn.set_nonlinearity(nonlinearity_name)
     self.out_tensors[name] = nonlin(self.out_tensors[name])
 
   def mse(self, true_name, pred_name, loss_name):
-    self.out_tensors[loss_name] = tf.nn.l2_loss(self.in_tensors[ true_name] 
-                                              - self.out_tensors[pred_name])
+    print(tf.shape(self.out_tensors[pred_name]))
+    self.out_tensors[loss_name] = (tf.nn.l2_loss(self.in_tensors[ true_name] 
+                                              - self.out_tensors[pred_name]) /
+                                   tf.cast(tf.reduce_prod(tf.shape(self.out_tensors[pred_name][1:-1])), tf.float32))
     tf.summary.scalar('loss_' + true_name + "_and_" + pred_name, self.out_tensors[loss_name])
 
   def combine_pipe(self, other_pipe):
