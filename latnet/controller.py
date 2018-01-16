@@ -149,12 +149,11 @@ class LatNetController(object):
         # compute compressed state
         cstate    = self.domain.state_to_cstate(state_encoder, encoder_shape_converter)
         cboundary = self.domain.boundary_to_cboundary(boundary_encoder, encoder_shape_converter)
-        print(cstate.shape)
-        print(cboundary.shape)
 
         # decode state
         state = self.domain.cstate_to_state(decoder, decoder_shape_converter, cstate)
         print(state.shape)
+        print(state[:,100,100])
         plt.imshow(state[0,:,:,0])
         plt.savefig('figs/out_state.png')
 

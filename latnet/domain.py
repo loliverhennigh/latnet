@@ -22,6 +22,7 @@ import numpy as np
 import math
 import itertools
 from tqdm import *
+from copy import copy
 
 
 class Domain(object):
@@ -64,6 +65,21 @@ class Domain(object):
 
   def density_initial_conditions(self, hx, hy, shape):
     pass
+
+  def vel_to_lattice(self, vel):
+    vel = np.array(vel)
+    C = np.array([ [0,0], [1,0], [0,1], [-1,0], [0,-1], [1,1], [-1,1], [-1,-1], [1,-1] ])
+    W = np.array(  [4./9., 1./9., 1./9., 1./9., 1./9., 1./36., 1./36., 1./36., 1./36.])
+
+    vel_dot_vel = np.sum(vel * vel)
+    vel_dot_c = np.sum(np.expand_dims(vel, axis=0) * C, axis=-1)
+    feq = W * (1.0 + 
+               3.0*vel_dot_c + 
+               4.5*vel_dot_c*vel_dot_c - 
+               1.5*vel_dot_vel)
+    feq = feq - W
+    print(feq)
+    return feq 
 
   def make_geometry_input(self, where_boundary, velocity, where_velocity, density, where_density):
     input_geometry = np.concatenate([np.expand_dims(where_boundary, axis=-1).astype(np.float32),
@@ -184,8 +200,9 @@ class Domain(object):
       pos = [i * self.input_cshape[0], j * self.input_cshape[1]]
       subdomain = SubDomain(pos, self.input_cshape)
       input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
-      zero_state = np.zeros([1] + input_subdomain.size + [9]) # TODO make correct start vel
-      cstate.append(encoder(zero_state))
+      _, vel = self.velocity_boundary_conditions(0, 0, None)
+      start_state = np.zeros([1] + input_subdomain.size + [9]) + self.vel_to_lattice(vel).reshape((1,1,1,9))
+      cstate.append(encoder(start_state))
 
     # list to full tensor
     cstate = numpy_utils.stack_grid(cstate, nr_subdomains, has_batch=True)
@@ -199,8 +216,6 @@ class Domain(object):
 
     nr_subdomains = [int(math.ceil(x/float(y))) for x, y in zip(self.sim_cshape, self.input_cshape)]
     cboundary = []
-    print(self.sim_cshape, self.input_cshape)
-    print(nr_subdomains)
     for i, j in itertools.product(xrange(nr_subdomains[0]), xrange(nr_subdomains[1])):
       pos = [i * self.input_cshape[0], j * self.input_cshape[1]]
       subdomain = SubDomain(pos, self.input_cshape)
@@ -253,10 +268,13 @@ class Domain(object):
     for i, j in itertools.product(xrange(nr_subdomains[0]), xrange(nr_subdomains[1])):
       pos = [i * self.input_shape[0], j * self.input_shape[1]]
       subdomain = SubDomain(pos, self.input_shape)
-      print(subdomain.pos, subdomain.size)
-      input_subdomain = decoder_shape_converter.out_in_subdomain(subdomain)
-      print(input_subdomain.pos, input_subdomain.size)
-      state.append(decoder(numpy_utils.mobius_extract(cstate, input_subdomain, has_batch=True)))
+      input_subdomain = decoder_shape_converter.out_in_subdomain(copy(subdomain))
+      output_subdomain = decoder_shape_converter.in_out_subdomain(copy(input_subdomain))
+      state_store = decoder(numpy_utils.mobius_extract(cstate, input_subdomain, has_batch=True))
+      left_pad  = [x - y for x, y in zip(subdomain.pos, output_subdomain.pos)]
+      state_store = state_store[:,left_pad[0]:,left_pad[1]:,:]
+      state_store = state_store[:,:self.input_shape[0],:self.input_shape[1],:]
+      state.append(state_store)
 
     # list to full tensor
     state = numpy_utils.stack_grid(state, nr_subdomains, has_batch=True)

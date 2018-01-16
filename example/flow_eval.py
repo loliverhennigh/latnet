@@ -68,8 +68,6 @@ class EvalDomain(Domain):
 
   def velocity_boundary_conditions(self, hx, hy, shape):
     where_velocity = (hx == 0)
-    #plt.imshow(hx)
-    #plt.show()
     velocity = self.vel
     return where_velocity, velocity
  

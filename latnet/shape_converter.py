@@ -45,12 +45,12 @@ class ShapeConverter:
         subdomain.add_edges(edge_padding)
 
       elif stride == 2:
+        # downsample
+        subdomain.upsample()
+
         # add edges
         edge_padding = (kernel_size-1)/2
         subdomain.add_edges(edge_padding)
-
-        # downsample
-        subdomain.upsample()
 
       return subdomain
 
@@ -61,7 +61,7 @@ class ShapeConverter:
   def add_trans_conv(self, kernel_size, stride):
 
     # only suports filter size 2 and stride 2 for now
-    assert (kernel_size == 2) and (stride == 2), "filter size and stride need to be 2 for trans conv"
+    #assert (kernel_size == 2) and (stride == 2), "filter size and stride need to be 2 for trans conv"
 
     def in_out_helper(subdomain):
       if stride == 2:
@@ -69,8 +69,8 @@ class ShapeConverter:
         subdomain.upsample()
 
         # add edges
-        #edge_padding = (kernel_size-1)/2
-        #subdomain.remove_edges(edge_padding)
+        edge_padding = (kernel_size-1)/2
+        subdomain.remove_edges(edge_padding)
 
       return subdomain
 
@@ -80,8 +80,8 @@ class ShapeConverter:
         subdomain.add_make_size_even()
 
         # remove edges
-        #edge_padding = (kernel_size-2)
-        #subdomain.remove_edges(edge_padding)
+        edge_padding = (kernel_size-1)/2
+        subdomain.remove_edges(edge_padding)
 
         # downsample
         subdomain.downsample()
@@ -96,7 +96,7 @@ class ShapeConverter:
     if stride == 1:
       self.add_conv(3, stride)
     elif stride == 2:
-      self.add_conv(2, stride)
+      self.add_conv(4, stride)
     self.add_conv(3, 1)
 
   def concat_function_in_out(self, func):

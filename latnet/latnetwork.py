@@ -78,7 +78,7 @@ class LatNet:
         self.compression_mapping(self, in_name="cstate_" + str(i), out_name="cstate_" + str(i))
   
         # apply boundary
-        self.out_tensors['cboundary'] = self.out_tensors['cboundary'][:,4:-4,4:-4] # TODO fix this
+        self.out_tensors['cboundary'] = self.out_tensors['cboundary'][:,6:-6,6:-6] # TODO fix this
         self.compression_mapping_boundary(self, in_cstate_name="cstate_" + str(i), 
                                                 in_cboundary_name="cboundary", 
                                                 out_name="cstate_" + str(i+1))

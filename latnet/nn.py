@@ -133,26 +133,24 @@ def transpose_conv_layer(x, kernel_size, stride, filter_size, name, nonlinearity
     batch_size = tf.shape(x)[0]
 
     if length_input == 2:
-      output_shape = tf.stack([tf.shape(x)[0], tf.shape(x)[1]*stride, tf.shape(x)[2]*stride, filter_size]) 
-      conv = tf.nn.conv2d_transpose(x, weights, output_shape, strides=[1,stride,stride,1], padding='SAME')
+      output_shape = tf.stack([tf.shape(x)[0], tf.shape(x)[1]*stride+2, tf.shape(x)[2]*stride+2, filter_size]) 
+      conv = tf.nn.conv2d_transpose(x, weights, output_shape, strides=[1,stride,stride,1], padding='VALID')
     elif length_input == 3:
       output_shape = tf.stack([tf.shape(x)[0], tf.shape(x)[1]*stride, tf.shape(x)[2]*stride, tf.shape(x)[3]*stride, filter_size]) 
-      conv = tf.nn.conv3d_transpose(x, weights, output_shape, strides=[1,stride,stride,stride,1], padding='SAME')
+      conv = tf.nn.conv3d_transpose(x, weights, output_shape, strides=[1,stride,stride,stride,1], padding='VALID')
 
     conv = tf.nn.bias_add(conv, biases)
     if nonlinearity is not None:
       conv = nonlinearity(conv)
 
-    """
     #reshape (transpose conv causes output to have ? size)
     #shape = int_shape(x)
     if  length_input == 2:
       #conv = tf.reshape(conv, [shape[0], shape[1]*stride, shape[2]*stride, filter_size])
-      conv = conv[:,1:-1,1:-1]
+      conv = conv[:,2:-2,2:-2]
     if  length_input == 3:
       #conv = tf.reshape(conv, [shape[0], shape[1]*stride, shape[2]*stride, shape[3]*stride, filter_size])
-      conv = conv[:,1:-1,1:-1,1:-1]
-    """
+      conv = conv[:,2:-2,2:-2,2:-2]
     return conv
 
 def fc_layer(x, hiddens, name, nonlinearity=None, flat = False):
@@ -207,7 +205,7 @@ def res_block(x, a=None,
   # determine if 2d or 3d trans conv is needed
   length_input = len(x.get_shape())
 
-  orig_x = x[:,2:-2,2:-2]
+  orig_x = x
   if normalize == "batch_norm":
     x = tcl.batch_norm(x)
   elif normalize == "layer_norm":
@@ -216,8 +214,13 @@ def res_block(x, a=None,
     x = nonlinearity(x) 
   if stride == 1:
     x = conv_layer(x, 3, stride, filter_size, name + '_conv_1')
+    orig_x = orig_x[:,1:-1,1:-1]
   elif stride == 2:
-    x = conv_layer(x, 2, stride, filter_size, name + '_conv_1')
+    x = conv_layer(x, 4, stride, filter_size, name + '_conv_1')
+    if length_input == 4:
+      orig_x = tf.nn.avg_pool(orig_x, [1,4,4,1], [1,2,2,1], padding='VALID')
+    elif length_input == 5:
+      orig_x = tf.nn.avg_pool3d(orig_x, [1,4,4,4,1], [1,2,2,2,1], padding='VALID')
   else:
     print("stride > 2 is not supported")
     exit()
@@ -238,20 +241,17 @@ def res_block(x, a=None,
   elif normalize == "layer_norm":
     x = tcl.layer_norm(x)
   x = nonlinearity(x)
-  if keep_p < 1.0:
-    x = tf.nn.dropout(x, keep_prob=keep_p)
+  #if keep_p < 1.0:
+  #  x = tf.nn.dropout(x, keep_prob=keep_p)
   if not gated:
+    #pass
     x = conv_layer(x, 3, 1, filter_size, name + '_conv_2')
+    orig_x = orig_x[:,1:-1,1:-1]
   else:
     x = conv_layer(x, 3, 1, filter_size*2, name + '_conv_2')
+    orig_x = orig_x[:,1:-1,1:-1]
     x_1, x_2 = tf.split(x,2,length_input-1)
     x = x_1 * tf.nn.sigmoid(x_2)
-
-  if stride == 2:
-    if length_input == 4:
-      orig_x = tf.nn.avg_pool(orig_x, [1,2,2,1], [1,2,2,1], padding='VALID')
-    elif length_input == 5:
-      orig_x = tf.nn.avg_pool3d(orig_x, [1,2,2,2,1], [1,2,2,2,1], padding='VALID')
 
   # pad it
   out_filter = filter_size
