@@ -212,8 +212,8 @@ class Domain(object):
       where_density, density = self.density_boundary_conditions(hx, hy, self.sim_shape)
       input_geometry = self.make_geometry_input(where_boundary, velocity, where_velocity, density, where_density)
       input_geometry = np.expand_dims(input_geometry, axis=0)
-      plt.imshow(input_geometry[0,:,:,0])
-      plt.show()
+      #plt.imshow(input_geometry[0,:,:,0])
+      #plt.show()
       cboundary.append(encoder(input_geometry))
 
     # list to full tensor

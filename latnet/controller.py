@@ -155,8 +155,8 @@ class LatNetController(object):
         # decode state
         state = self.domain.cstate_to_state(decoder, decoder_shape_converter, cstate)
         print(state.shape)
-        plt.imshow(state[0,:,:,0])
-        plt.show()
+        #plt.imshow(state[0,:,:,0])
+        #plt.show()
 
         """
         print(self.state_from_compressed_state.get_shape())
