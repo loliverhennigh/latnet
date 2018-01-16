@@ -71,6 +71,7 @@ class LatNet:
       # unroll all
       for i in xrange(self.seq_length):
         # decode and add to list
+        self.out_tensors['cstate_00'] = self.out_tensors['cstate_0']
         self.decoder_state(self, in_name="cstate_" + str(i), out_name="pred_state_" + str(i))
   
         # compression mapping
@@ -126,7 +127,7 @@ class LatNet:
    
     # print required data and save
     step = self.sess.run(self.out_tensors['global_step'])
-    if step % 100 == 0:
+    if step % 10 == 0:
       print("current loss is " + str(l))
       print("current step is " + str(step))
     if step % self.config.save_freq == 0:
@@ -291,10 +292,8 @@ class LatNet:
     self.out_tensors[name] = nonlin(self.out_tensors[name])
 
   def mse(self, true_name, pred_name, loss_name):
-    print(tf.shape(self.out_tensors[pred_name]))
-    self.out_tensors[loss_name] = (tf.nn.l2_loss(self.in_tensors[ true_name] 
-                                              - self.out_tensors[pred_name]) /
-                                   tf.cast(tf.reduce_prod(tf.shape(self.out_tensors[pred_name][1:-1])), tf.float32))
+    self.out_tensors[loss_name] = tf.nn.l2_loss(self.in_tensors[ true_name] 
+                                              - self.out_tensors[pred_name])
     tf.summary.scalar('loss_' + true_name + "_and_" + pred_name, self.out_tensors[loss_name])
 
   def combine_pipe(self, other_pipe):

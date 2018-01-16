@@ -2,6 +2,10 @@
 
 import sys
 
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
 # import latnet
 sys.path.append('../latnet')
 from domain import Domain
@@ -10,7 +14,6 @@ import utils.binvox_rw as binvox_rw
 import numpy as np
 import cv2
 import glob
-import matplotlib.pyplot as plt
 
 def rand_vel(max_vel=.10, min_vel=.09):
   vel = np.random.uniform(min_vel, max_vel)

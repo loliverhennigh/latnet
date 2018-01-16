@@ -27,7 +27,7 @@ class ShapeConverter:
 
       elif stride == 2:
         # remove one from right edges if odd
-        subdomain.make_size_even()
+        subdomain.remove_make_size_even()
 
         # remove edges
         edge_padding = (kernel_size-1)/2
@@ -77,7 +77,7 @@ class ShapeConverter:
     def out_in_helper(subdomain):
       if stride == 2:
         # remove one from right edges if odd
-        #subdomain.make_size_even()
+        subdomain.add_make_size_even()
 
         # remove edges
         #edge_padding = (kernel_size-2)
@@ -126,7 +126,11 @@ class SubDomain:
     self.pos =  [x+edge_length for x in self.pos ]
     self.size = [x-2*edge_length for x in self.size]
 
-  def make_size_even(self):
+  def add_make_size_even(self):
+    odd_edge = [(x % 2) for x in self.size]
+    self.size = [x + y for x, y in zip(self.size, odd_edge)]
+
+  def remove_make_size_even(self):
     odd_edge = [(x % 2) for x in self.size]
     self.size = [x - y for x, y in zip(self.size, odd_edge)]
 

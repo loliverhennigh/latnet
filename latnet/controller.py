@@ -63,7 +63,7 @@ class LatNetController(object):
       group.add_argument('--optimizer', help='all mode', type=str,
                         default='adam')
       group.add_argument('--lr', help='all mode', type=float,
-                        default=0.1)
+                        default=0.0004)
       group.add_argument('--train_iterations', help='all mode', type=int,
                         default=1000000)
 
@@ -155,8 +155,8 @@ class LatNetController(object):
         # decode state
         state = self.domain.cstate_to_state(decoder, decoder_shape_converter, cstate)
         print(state.shape)
-        #plt.imshow(state[0,:,:,0])
-        #plt.show()
+        plt.imshow(state[0,:,:,0])
+        plt.savefig('figs/out_state.png')
 
         """
         print(self.state_from_compressed_state.get_shape())

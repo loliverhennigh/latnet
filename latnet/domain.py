@@ -1,6 +1,9 @@
 
 import sys
 
+import matplotlib.pyplot as plt
+
+
 # import latnet files
 import utils.numpy_utils as numpy_utils
 from shape_converter import SubDomain
@@ -16,7 +19,6 @@ from sailfish.sym import S
 
 # import external librarys
 import numpy as np
-import matplotlib.pyplot as plt
 import math
 import itertools
 from tqdm import *
@@ -212,7 +214,8 @@ class Domain(object):
       where_density, density = self.density_boundary_conditions(hx, hy, self.sim_shape)
       input_geometry = self.make_geometry_input(where_boundary, velocity, where_velocity, density, where_density)
       input_geometry = np.expand_dims(input_geometry, axis=0)
-      #plt.imshow(input_geometry[0,:,:,0])
+      plt.imshow(input_geometry[0,:,:,0])
+      plt.savefig('figs/foo.png')
       #plt.show()
       cboundary.append(encoder(input_geometry))
 
@@ -250,6 +253,7 @@ class Domain(object):
     for i, j in itertools.product(xrange(nr_subdomains[0]), xrange(nr_subdomains[1])):
       pos = [i * self.input_shape[0], j * self.input_shape[1]]
       subdomain = SubDomain(pos, self.input_shape)
+      print(subdomain.pos, subdomain.size)
       input_subdomain = decoder_shape_converter.out_in_subdomain(subdomain)
       print(input_subdomain.pos, input_subdomain.size)
       state.append(decoder(numpy_utils.mobius_extract(cstate, input_subdomain, has_batch=True)))

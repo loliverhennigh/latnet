@@ -143,19 +143,26 @@ def decoder_state(pipe, in_name, out_name, lattice_size=9):
 
   for i in xrange(CONFIGS['nr_downsamples'] - 1):
     filter_size = int(CONFIGS['filter_size']*pow(2,CONFIGS['nr_downsamples']-i-1))
-    pipe.res_block(in_name=out_name, out_name=out_name, 
-                   filter_size=filter_size,
-                   nonlinearity=nonlinearity,
-                   stride=1,
-                   gated=CONFIGS['gated'],
-                   begin_nonlinearity=False, 
-                   weight_name="res_" + str(i+1))
+    for j in xrange(2):
+      pipe.res_block(in_name=out_name, out_name=out_name, 
+                     filter_size=filter_size,
+                     nonlinearity=nonlinearity,
+                     stride=1,
+                     gated=CONFIGS['gated'],
+                     weight_name="res_" + str(i+1) + '_' + str(j))
     pipe.trans_conv(in_name=out_name, out_name=out_name,
                     kernel_size=2, stride=2, 
                     filter_size=filter_size, 
                     weight_name="up_conv_" + str(i+1), 
                     nonlinearity=nonlinearity)
 
+  for j in xrange(2):
+    pipe.res_block(in_name=out_name, out_name=out_name, 
+                   filter_size=filter_size,
+                   nonlinearity=nonlinearity,
+                   stride=1,
+                   gated=CONFIGS['gated'],
+                   weight_name="final_res_" + str(j))
   pipe.conv(in_name=out_name, out_name=out_name,
                   kernel_size=1, stride=1, 
                   filter_size=lattice_size, 
