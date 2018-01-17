@@ -160,7 +160,8 @@ class LatNet:
   
       # decoder
       self.decoder_state(self, in_name="cstate", out_name="state_from_cstate")
-  
+      self.out_tensors['state_from_cstate'] = lat.lattice_to_norm(self.out_tensors['state_from_cstate'])
+
       ###### Start Session ######
       self.sess = self.start_session()
   

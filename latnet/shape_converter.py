@@ -79,12 +79,12 @@ class ShapeConverter:
         # remove one from right edges if odd
         subdomain.add_make_size_even()
 
-        # remove edges
-        edge_padding = (kernel_size-1)/2
-        subdomain.remove_edges(edge_padding)
-
         # downsample
         subdomain.downsample()
+
+        # remove edges
+        edge_padding = (kernel_size-1)/2
+        subdomain.add_edges(edge_padding)
 
       return subdomain
 

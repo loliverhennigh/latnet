@@ -149,13 +149,17 @@ class LatNetController(object):
         # compute compressed state
         cstate    = self.domain.state_to_cstate(state_encoder, encoder_shape_converter)
         cboundary = self.domain.boundary_to_cboundary(boundary_encoder, encoder_shape_converter)
+        print(cboundary.shape)
+        print(cstate.shape)
 
-        # decode state
-        state = self.domain.cstate_to_state(decoder, decoder_shape_converter, cstate)
-        print(state.shape)
-        print(state[:,100,100])
-        plt.imshow(state[0,:,:,0])
-        plt.savefig('figs/out_state.png')
+        for i in xrange(1000):
+
+          cstate = self.domain.cstate_to_cstate(cmapping, cmapping_shape_converter, cstate, cboundary)
+          if i % 10 == 0:
+            # decode state
+            state = self.domain.cstate_to_state(decoder, decoder_shape_converter, cstate)
+            plt.imshow(state[0,:,:,0])
+            plt.savefig('figs/out_state_' + str(i) + '.png')
 
         """
         print(self.state_from_compressed_state.get_shape())

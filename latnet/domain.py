@@ -249,9 +249,9 @@ class Domain(object):
     for i, j in itertools.product(xrange(nr_subdomains[0]), xrange(nr_subdomains[1])):
       pos = [i * self.input_cshape[0], j * self.input_cshape[1]]
       subdomain = SubDomain(pos, self.input_cshape)
-      input_subdomain = cmapping_shape_converter.out_in_subdomain(subdomain)
+      input_subdomain = cmapping_shape_converter.out_in_subdomain(copy(subdomain))
       new_cstate.append(cmapping(numpy_utils.mobius_extract(cstate, input_subdomain, has_batch=True),
-                                 numpy_utils.mobius_extract(cboundary, input_subdomain, has_batch=True )))
+                                 numpy_utils.mobius_extract(cboundary, subdomain, has_batch=True )))
 
     # list to full tensor
     new_cstate = numpy_utils.stack_grid(new_cstate, nr_subdomains, has_batch=True)
