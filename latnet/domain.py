@@ -40,7 +40,7 @@ class Domain(object):
     input_shape = map(int, input_shape)
     self.input_shape = input_shape
 
-    self.input_cshape = [16,16] # hard set for now
+    self.input_cshape = [32,32] # hard set for now
 
     self.sailfish_sim_dir = config.sailfish_sim_dir
     self.max_sim_iters = config.max_sim_iters
@@ -78,7 +78,6 @@ class Domain(object):
                4.5*vel_dot_c*vel_dot_c - 
                1.5*vel_dot_vel)
     feq = feq - W
-    print(feq)
     return feq 
 
   def make_geometry_input(self, where_boundary, velocity, where_velocity, density, where_density):
@@ -200,7 +199,7 @@ class Domain(object):
       pos = [i * self.input_cshape[0], j * self.input_cshape[1]]
       subdomain = SubDomain(pos, self.input_cshape)
       input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
-      _, vel = self.velocity_boundary_conditions(0, 0, None)
+      vel = self.velocity_initial_conditions(0,0,None)
       start_state = np.zeros([1] + input_subdomain.size + [9]) + self.vel_to_lattice(vel).reshape((1,1,1,9))
       cstate.append(encoder(start_state))
 
@@ -229,9 +228,21 @@ class Domain(object):
       where_density, density = self.density_boundary_conditions(hx, hy, self.sim_shape)
       input_geometry = self.make_geometry_input(where_boundary, velocity, where_velocity, density, where_density)
       input_geometry = np.expand_dims(input_geometry, axis=0)
+      """
+      plt.imshow(hx[:,:])
+      plt.savefig('figs/foo_4.png')
+      plt.imshow(hy[:,:])
+      plt.savefig('figs/foo_5.png')
       plt.imshow(input_geometry[0,:,:,0])
-      plt.savefig('figs/foo.png')
+      plt.savefig('figs/foo_0.png')
+      plt.imshow(input_geometry[0,:,:,1])
+      plt.savefig('figs/foo_1.png')
+      plt.imshow(input_geometry[0,:,:,2])
+      plt.savefig('figs/foo_2.png')
+      plt.imshow(input_geometry[0,:,:,3])
+      plt.savefig('figs/foo_3.png')
       #plt.show()
+      """
       cboundary.append(encoder(input_geometry))
 
     # list to full tensor

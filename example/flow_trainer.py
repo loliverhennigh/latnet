@@ -16,7 +16,8 @@ def rand_vel(max_vel=.10, min_vel=.09):
   angle = np.random.uniform(-np.pi/2, np.pi/2)
   vel_x = vel * np.cos(angle)
   vel_y = vel * np.sin(angle)
-  return (vel_x, vel_y)
+  #return (vel_x, vel_y)
+  return (0.10, 0.00)
 
 def floodfill(image, x, y):
     edge = [(x, y)]

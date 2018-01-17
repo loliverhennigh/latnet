@@ -17,7 +17,7 @@ class SimRunner:
 
   def __init__(self, config, save_dir, script_name):
     self.save_dir = save_dir
-    self.num_cpoints = config.seq_length * 50
+    self.num_cpoints = config.seq_length * 100
     self.lb_to_ln = config.lb_to_ln
     self.max_sim_iters = config.max_sim_iters
     self.script_name = script_name

@@ -26,7 +26,7 @@ class LatNetController(object):
       group.add_argument('--run_mode', help='all modes', type=str,
             choices=['generate_data', 'train', 'eval'], default='train')
       group.add_argument('--sailfish_sim_dir', help='train mode', type=str,
-                        default='/data/sailfish_sim/')
+                        default='./data/sailfish_sim/')
       group.add_argument('--latnet_network_dir', help='all mode', type=str,
                         default='./network_checkpoint')
       group.add_argument('--latnet_sim_dir', help='eval mode', type=str,

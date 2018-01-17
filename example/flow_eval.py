@@ -20,7 +20,8 @@ def rand_vel(max_vel=.10, min_vel=.09):
   angle = np.random.uniform(-np.pi/2, np.pi/2)
   vel_x = vel * np.cos(angle)
   vel_y = vel * np.sin(angle)
-  return (vel_x, vel_y)
+  #return (vel_x, vel_y)
+  return (0.10, 0.00)
 
 def draw_triangle(boundary, vertex_1, vertex_2, vertex_3):
   # just using cv2 imp
@@ -43,14 +44,15 @@ def draw_random_triangle(boundary, size_range):
   size_y_2 = np.random.randint(-size_range, size_range)
   max_length_x = np.max([np.abs(size_x_1), np.abs(size_x_2)])
   max_length_y = np.max([np.abs(size_y_1), np.abs(size_y_2)])
-  vertex = rand_vertex([max_length_x, shape[0]-max_length_x], [max_length_y+int(.1*shape[1]), shape[1]-max_length_y-int(.1*shape[1])])
+  #vertex = rand_vertex([max_length_x+300, shape[0]-max_length_x-300], [max_length_y+int(.1*shape[1])+300, shape[1]-max_length_y-int(.1*shape[1]-300)])
+  vertex = rand_vertex([shape[0]/2, 3+shape[0]/2], [shape[1]/2, 3+shape[1]/2])
   boundary = draw_triangle(boundary, vertex, [vertex[0]+size_x_2, vertex[1]+size_y_2], [vertex[0]+size_x_1, vertex[1]+size_y_1])
   return boundary
 
 def make_boundary(hx):
   boundary = (hx == -2)
   boundary = boundary.astype(np.uint8)
-  for i in xrange(5):
+  for i in xrange(1):
     boundary = draw_random_triangle(boundary, 50)
   boundary = boundary.astype(np.bool)
   return boundary

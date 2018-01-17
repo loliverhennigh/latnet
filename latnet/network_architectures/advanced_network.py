@@ -29,7 +29,7 @@ CONFIGS['nr_residual_compression'] = 3
 CONFIGS['nr_residual_encoder'] = 2
 
 # numper of downsamples
-CONFIGS['nr_downsamples'] = 4
+CONFIGS['nr_downsamples'] = 2
 
 # what nonlinearity to use, leakey_relu, relu, elu, concat_elu
 CONFIGS['nonlinearity']="relu"
