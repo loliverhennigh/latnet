@@ -78,10 +78,10 @@ class SimRunner:
         self.clean_save_dir()
         self.make_sim_dir()
         cmd += ' --max_sim_iters=' + str((self.num_cpoints + 1) * self.lb_to_ln)
-        cmd += ' --checkpoint_from=' + str(0)
+        cmd += ' --checkpoint_from=' + str(-1)
     else:
       cmd += ' --max_sim_iters=' + str((self.num_cpoints + 1) * self.lb_to_ln)
-      cmd += ' --checkpoint_from=' + str(0)
+      cmd += ' --checkpoint_from=' + str(-1)
  
     # run cmd
     """

@@ -71,18 +71,17 @@ class LatNet:
       # unroll all
       for i in xrange(self.seq_length):
         # decode and add to list
-        self.out_tensors['cstate_00'] = self.out_tensors['cstate_0']
         self.decoder_state(self, in_name="cstate_" + str(i), out_name="pred_state_" + str(i))
   
-        # compression mapping
-        self.compression_mapping(self, in_name="cstate_" + str(i), out_name="cstate_" + str(i))
-  
         # apply boundary
-        self.out_tensors['cboundary'] = self.out_tensors['cboundary'][:,6:-6,6:-6] # TODO fix this
         self.compression_mapping_boundary(self, in_cstate_name="cstate_" + str(i), 
                                                 in_cboundary_name="cboundary", 
-                                                out_name="cstate_" + str(i+1))
-  
+                                                out_name="cstate_" + str(i))
+
+        # compression mapping
+        self.compression_mapping(self, in_name="cstate_" + str(i), out_name="cstate_" + str(i+1))
+        self.out_tensors['cboundary'] = self.out_tensors['cboundary'][:,6:-6,6:-6] # TODO fix this
+
         # make image summary
         tf.summary.image('predicted_state_vel_', lat.lattice_to_norm(self.out_tensors['pred_state_' + str(i)]))
   
@@ -153,10 +152,10 @@ class LatNet:
       self.encoder_boundary(self, in_name="boundary", out_name="cboundary_from_boundary")
   
       # compression mapping
-      self.compression_mapping(self, in_name="cstate", out_name="cstate_from_cstate")
-      self.compression_mapping_boundary(self, in_cstate_name="cstate_from_cstate", 
+      self.compression_mapping_boundary(self, in_cstate_name="cstate", 
                                               in_cboundary_name="cboundary", 
                                               out_name="cstate_from_cstate")
+      self.compression_mapping(self, in_name="cstate_from_cstate", out_name="cstate_from_cstate")
   
       # decoder
       self.decoder_state(self, in_name="cstate", out_name="state_from_cstate")

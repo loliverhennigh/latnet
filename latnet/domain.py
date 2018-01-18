@@ -40,7 +40,7 @@ class Domain(object):
     input_shape = map(int, input_shape)
     self.input_shape = input_shape
 
-    self.input_cshape = [32,32] # hard set for now
+    self.input_cshape = [128,128] # hard set for now
 
     self.sailfish_sim_dir = config.sailfish_sim_dir
     self.max_sim_iters = config.max_sim_iters
@@ -200,6 +200,7 @@ class Domain(object):
       subdomain = SubDomain(pos, self.input_cshape)
       input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
       vel = self.velocity_initial_conditions(0,0,None)
+      print(vel)
       start_state = np.zeros([1] + input_subdomain.size + [9]) + self.vel_to_lattice(vel).reshape((1,1,1,9))
       cstate.append(encoder(start_state))
 
@@ -262,7 +263,7 @@ class Domain(object):
       subdomain = SubDomain(pos, self.input_cshape)
       input_subdomain = cmapping_shape_converter.out_in_subdomain(copy(subdomain))
       new_cstate.append(cmapping(numpy_utils.mobius_extract(cstate, input_subdomain, has_batch=True),
-                                 numpy_utils.mobius_extract(cboundary, subdomain, has_batch=True )))
+                                 numpy_utils.mobius_extract(cboundary, input_subdomain, has_batch=True )))
 
     # list to full tensor
     new_cstate = numpy_utils.stack_grid(new_cstate, nr_subdomains, has_batch=True)

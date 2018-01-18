@@ -18,7 +18,8 @@ def rand_vel(max_vel=.25, min_vel=.05):
 class TrainDomain(Domain):
   script_name = __file__
 
-  vel = rand_vel()
+  #vel = rand_vel()
+  vel = (0.2, 0.0)
 
   def geometry_boundary_conditions(self, hx, hy, shape):
     where_boundary = (hx == shape[0]-1) | (hx == 0) | (hy == 0)
