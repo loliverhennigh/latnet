@@ -3,12 +3,12 @@
 from copy import copy
 import tensorflow as tf
 
-import lattice as lat
+import lattice
 import nn as nn
 
 from shape_converter import ShapeConverter
 from optimizer import Optimizer
-from saver import Saver
+from network_saver import NetworkSaver
 
 class LatNet:
   def __init__(self, config):
@@ -21,8 +21,7 @@ class LatNet:
 
     # needed configs
     self.config = config # TODO remove this when config is corrected
-    self.dims = 2
-    self.lattice_size = 9
+    self.DxQy = lattice.TYPES[config.DxQy]
     self.network_dir  = config.latnet_network_dir
     self.network_name = config.network_name
     self.seq_length = config.seq_length
@@ -54,14 +53,14 @@ class LatNet:
       self.add_tensor('global_step', tf.get_variable('global_step', [], 
                        initializer=tf.constant_initializer(0), trainable=False))
       # make input state and boundary
-      self.add_tensor('state', tf.placeholder(tf.float32, (1 + self.dims) * [None] + [self.lattice_size]))
-      tf.summary.image('state', lat.lattice_to_norm(self.in_tensors['state']))
-      self.add_tensor('boundary', tf.placeholder(tf.float32, (1 + self.dims) * [None] + [4]))
+      self.add_tensor('state', tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.DxQy.Q]))
+      tf.summary.image('state', self.DxQy.lattice_to_norm(self.in_tensors['state']))
+      self.add_tensor('boundary', tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [4]))
       tf.summary.image('boundary', self.in_tensors['boundary'][...,0:1])
       # make seq of output states
       for i in xrange(self.seq_length):
-        self.add_tensor('true_state_' + str(i), tf.placeholder(tf.float32, (2 + self.dims) * [None]))
-        tf.summary.image('true_state_' + str(i), lat.lattice_to_norm(self.in_tensors['true_state_' + str(i)]))
+        self.add_tensor('true_state_' + str(i), tf.placeholder(tf.float32, (2 + self.DxQy.dims) * [None]))
+        tf.summary.image('true_state_' + str(i), self.DxQy.lattice_to_norm(self.in_tensors['true_state_' + str(i)]))
   
       ###### Unroll Graph ######
       # encode
@@ -83,7 +82,7 @@ class LatNet:
         self.out_tensors['cboundary'] = self.out_tensors['cboundary'][:,6:-6,6:-6] # TODO fix this
 
         # make image summary
-        tf.summary.image('predicted_state_vel_', lat.lattice_to_norm(self.out_tensors['pred_state_' + str(i)]))
+        tf.summary.image('predicted_state_vel_', self.DxQy.lattice_to_norm(self.out_tensors['pred_state_' + str(i)]))
   
       ###### Loss Operation ######
       # define mse loss
@@ -106,7 +105,7 @@ class LatNet:
   
       ###### Saver Operation ######
       graph_def = self.sess.graph.as_graph_def(add_shapes=True)
-      self.saver = Saver(self.config, self.network_config, graph_def)
+      self.saver = NetworkSaver(self.config, self.network_config, graph_def)
       self.saver.load_checkpoint(self.sess)
 
   def train_shape_converter(self):
@@ -129,7 +128,7 @@ class LatNet:
     if step % 10 == 0:
       print("current loss is " + str(l))
       print("current step is " + str(step))
-    if step % self.config.save_freq == 0:
+    if step % self.config.save_network_freq == 0:
       print("saving...")
       self.saver.save_summary(self.sess, tf_feed_dict, int(self.sess.run(self.out_tensors['global_step'])))
       self.saver.save_checkpoint(self.sess, int(self.sess.run(self.out_tensors['global_step'])))
@@ -141,10 +140,10 @@ class LatNet:
 
       ###### Inputs to Graph ######
       # make input state and boundary
-      self.add_tensor('state',     tf.placeholder(tf.float32, (1 + self.dims) * [None] + [self.lattice_size]))
-      self.add_tensor('boundary',  tf.placeholder(tf.float32, (1 + self.dims) * [None] + [4]))
-      self.add_tensor('cstate',    tf.placeholder(tf.float32, (1 + self.dims) * [None] + [self.network_config['filter_size_compression']]))
-      self.add_tensor('cboundary', tf.placeholder(tf.float32, (1 + self.dims) * [None] + [2*self.network_config['filter_size_compression']]))
+      self.add_tensor('state',     tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.DxQy.Q]))
+      self.add_tensor('boundary',  tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [4]))
+      self.add_tensor('cstate',    tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.network_config['filter_size_compression']]))
+      self.add_tensor('cboundary', tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [2*self.network_config['filter_size_compression']]))
   
       ###### Unroll Graph ######
       # encoders
@@ -159,14 +158,15 @@ class LatNet:
   
       # decoder
       self.decoder_state(self, in_name="cstate", out_name="state_from_cstate")
-      self.out_tensors['state_from_cstate'] = lat.lattice_to_norm(self.out_tensors['state_from_cstate'])
+      self.out_tensors['vel_from_cstate'] = self.DxQy.lattice_to_vel(self.out_tensors['state_from_cstate'])
+      self.out_tensors['rho_from_cstate'] = self.DxQy.lattice_to_rho(self.out_tensors['state_from_cstate'])
 
       ###### Start Session ######
       self.sess = self.start_session()
   
       ###### Saver Operation ######
       graph_def = self.sess.graph.as_graph_def(add_shapes=True)
-      self.saver = Saver(self.config, self.network_config, graph_def)
+      self.saver = NetworkSaver(self.config, self.network_config, graph_def)
       self.saver.load_checkpoint(self.sess)
   
     ###### Function Wrappers ######
@@ -178,7 +178,8 @@ class LatNet:
     cmapping         = lambda x, y: self.sess.run(self.out_tensors['cstate_from_cstate'], 
                                  feed_dict={self.in_tensors['cstate']:x,
                                             self.in_tensors['cboundary']:y})
-    decoder           = lambda x: self.sess.run(self.out_tensors['state_from_cstate'], 
+    decoder           = lambda x: self.sess.run([self.out_tensors['vel_from_cstate'], 
+                                                 self.out_tensors['rho_from_cstate']], 
                                  feed_dict={self.in_tensors['cstate']:x})
     # shape converters
     encoder_shape_converter = self.shape_converters['state', 'cstate_from_state']

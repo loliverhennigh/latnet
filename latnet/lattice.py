@@ -3,186 +3,184 @@ import tensorflow as tf
 import numpy as np
 from nn import int_shape, simple_conv_2d, simple_conv_3d, simple_trans_conv_2d, simple_trans_conv_3d
 
-# KERNEL matrixes for calculating velocity, magnetic field, and force
-VELOCITY_KERNEL_2D = np.zeros((3,3,2,1))
-VELOCITY_KERNEL_2D[2,1,0,0] =  1.0
-VELOCITY_KERNEL_2D[0,1,0,0] = -1.0
-VELOCITY_KERNEL_2D[1,2,1,0] =  1.0
-VELOCITY_KERNEL_2D[1,0,1,0] = -1.0
-VELOCITY_KERNEL_3D = np.zeros((3,3,3,3,1))
-VELOCITY_KERNEL_3D[2,1,1,2,0] =  1.0
-VELOCITY_KERNEL_3D[0,1,1,2,0] = -1.0
-VELOCITY_KERNEL_3D[1,2,1,1,0] =  1.0
-VELOCITY_KERNEL_3D[1,0,1,1,0] = -1.0
-VELOCITY_KERNEL_3D[1,1,2,0,0] =  1.0
-VELOCITY_KERNEL_3D[1,1,0,0,0] = -1.0
+# helper function
+def is_numpy(x):
+  return type(x) == np.ndarray
 
-BOUNDARY_EDGE_KERNEL_2D = np.zeros((3,3,9,1))
-BOUNDARY_EDGE_KERNEL_2D[1,0,1,0] = 1.0 # right
-BOUNDARY_EDGE_KERNEL_2D[0,1,2,0] = 1.0 # up
-BOUNDARY_EDGE_KERNEL_2D[1,2,3,0] = 1.0 # left
-BOUNDARY_EDGE_KERNEL_2D[2,1,4,0] = 1.0 # down
-BOUNDARY_EDGE_KERNEL_2D[0,0,5,0] = 1.0 # up right
-BOUNDARY_EDGE_KERNEL_2D[0,2,6,0] = 1.0 # up left
-BOUNDARY_EDGE_KERNEL_2D[2,2,7,0] = 1.0 # down left
-BOUNDARY_EDGE_KERNEL_2D[2,0,8,0] = 1.0 # down right
+class DxQy:
 
-BOUNDARY_EDGE_KERNEL_3D = np.zeros((3,3,3,15,1))
-BOUNDARY_EDGE_KERNEL_3D[1,1,0,1 ,0] = 1.0 # down
-BOUNDARY_EDGE_KERNEL_3D[1,1,2,2 ,0] = 1.0 # up
-BOUNDARY_EDGE_KERNEL_3D[1,0,1,3 ,0] = 1.0 # down
-BOUNDARY_EDGE_KERNEL_3D[1,2,1,4 ,0] = 1.0 # up
-BOUNDARY_EDGE_KERNEL_3D[0,1,1,5 ,0] = 1.0 # down
-BOUNDARY_EDGE_KERNEL_3D[2,1,1,6 ,0] = 1.0 # up
-BOUNDARY_EDGE_KERNEL_3D[0,0,0,7 ,0] = 1.0 # down left out
-BOUNDARY_EDGE_KERNEL_3D[2,2,2,8 ,0] = 1.0 # up right in
-BOUNDARY_EDGE_KERNEL_3D[2,0,0,9 ,0] = 1.0 # down left in 
-BOUNDARY_EDGE_KERNEL_3D[0,2,2,10,0] = 1.0 # up right out
-BOUNDARY_EDGE_KERNEL_3D[0,2,0,11,0] = 1.0 # down right out
-BOUNDARY_EDGE_KERNEL_3D[2,0,2,12,0] = 1.0 # up left in 
-BOUNDARY_EDGE_KERNEL_3D[2,2,0,13,0] = 1.0 # down right in 
-BOUNDARY_EDGE_KERNEL_3D[0,0,2,14,0] = 1.0 # up left out
+  @classmethod
+  def add_lattice(cls, lattice):
+    w = cls._expand(lattice, cls.weights)
+    w = cls._convert(lattice, w)
+    lattice = lattice + w
+    return lattice
 
-def get_weights(lattice_size):
-  # returns the lattice weights given the size of lattice
-  if lattice_size == 9:
-    return tf.constant(np.array([4./9.,  1./9.,  1./9., 
-                                 1./9.,  1./9.,  1./36.,
-                                 1./36., 1./36., 1./36.]), dtype=1)
-  elif lattice_size == 15:
-    return tf.constant(np.array([2./9.,  1./9.,  1./9.,
-                                 1./9.,  1./9.,  1./9., 
-                                 1./9.,  1./72., 1./72.,
-                                 1./72., 1./72., 1./72.,
-                                 1./72., 1./72., 1./72.]), dtype=1)
+  @classmethod
+  def subtract_lattice(cls, lattice):
+    w = cls._expand(lattice, cls.weights)
+    w = cls._convert(lattice, w)
+    lattice = lattice - w
+    return lattice
 
-def get_weights_numpy(lattice_size):
-  # returns the lattice weights in numpy form given the size of lattice
-  if lattice_size == 9:
-    return np.array([4./9.,  1./9.,  1./9., 
-                     1./9.,  1./9.,  1./36.,
-                     1./36., 1./36., 1./36.])
-  elif lattice_size == 15:
-    return np.array([2./9.,  1./9.,  1./9.,
-                     1./9.,  1./9.,  1./9., 
-                     1./9.,  1./72., 1./72.,
-                     1./72., 1./72., 1./72.,
-                     1./72., 1./72., 1./72.])
+  @classmethod
+  def lattice_to_vel(cls, lattice):
+    c = cls._expand(lattice, cls.c)
+    c = cls._convert(lattice, c)
+    lattice = cls._expand_lattice(lattice)
+    vel = cls._reduce_lattice(c * lattice)
+    return velocity
 
-def get_lveloc(lattice_size):
-  # returns the lattice directions given the size of lattice
-  if lattice_size == 9:
-    return tf.constant(np.array([[0 ,0], [ 0, 1], [ 1,0],
-                                 [0,-1], [-1, 0], [ 1,1],
-                                 [1,-1], [-1,-1], [-1,1]]), dtype=1)
-  elif lattice_size == 15:
-    return tf.constant(np.array([[ 0, 0, 0], [ 1, 0, 0], [-1, 0, 0],
-                                 [ 0, 1, 0], [ 0,-1, 0], [ 0, 0, 1],
-                                 [ 0, 0,-1], [ 1, 1, 1], [-1,-1,-1],
-                                 [ 1, 1,-1], [-1,-1, 1], [ 1,-1, 1],
-                                 [-1, 1,-1], [ 1,-1,-1], [-1, 1, 1]]), dtype=1)
+  @classmethod
+  def lattice_to_norm(cls, lattice):
+    vel = cls.lattice_to_vel(lattice)
+    norm = cls.vel_to_norm(vel)
+    return norm
 
-def get_lelect():
-  D1 = tf.constant(np.array([[-0.5, 0.5, 0.0], [-0.5,-0.5, 0.0],
-                             [ 0.5,-0.5, 0.0], [ 0.5, 0.5, 0.0],
-                             [-0.5, 0.0, 0.5], [-0.5, 0.0,-0.5],
-                             [ 0.5, 0.0,-0.5], [ 0.5, 0.0, 0.5],
-                             [ 0.0,-0.5, 0.5], [ 0.0,-0.5,-0.5],
-                             [ 0.0, 0.5,-0.5], [ 0.0, 0.5, 0.5] ]), dtype=1)
-  D2 = tf.constant(np.array([[ 0.5,-0.5, 0.0], [ 0.5, 0.5, 0.0],
-                             [-0.5, 0.5, 0.0], [-0.5,-0.5, 0.0],
-                             [ 0.5, 0.0,-0.5], [ 0.5, 0.0, 0.5],
-                             [-0.5, 0.0, 0.5], [-0.5, 0.0,-0.5],
-                             [ 0.0, 0.5,-0.5], [ 0.0, 0.5, 0.5],
-                             [ 0.0,-0.5, 0.5], [ 0.0,-0.5,-0.5] ]), dtype=1)
-  return D1, D2
+  @classmethod
+  def lattice_to_rho(cls, lattice):
+    if is_numpy(lattice):
+      rho = np.sum(lattice, axis=-1)
+    else:
+      rho = tf.reduce_sum(lattice, axis=len(lattice.get_shape())-1)
+    return rho
 
-def get_lmagne():
-  H1 = tf.constant(np.array([[ 0.0, 0.0, 1.0], [ 0.0, 0.0, 1.0],
-                             [ 0.0, 0.0, 1.0], [ 0.0, 0.0, 1.0],
-                             [ 0.0,-1.0, 0.0], [ 0.0,-1.0, 0.0],
-                             [ 0.0,-1.0, 0.0], [ 0.0,-1.0, 0.0],
-                             [ 1.0, 0.0, 0.0], [ 1.0, 0.0, 0.0],
-                             [ 1.0, 0.0, 0.0], [ 1.0, 0.0, 0.0] ]), dtype=1)
-  H2 = tf.constant(np.array([[ 0.0, 0.0,-1.0], [ 0.0, 0.0,-1.0],
-                             [ 0.0, 0.0,-1.0], [ 0.0, 0.0,-1.0],
-                             [ 0.0, 1.0, 0.0], [ 0.0, 1.0, 0.0],
-                             [ 0.0, 1.0, 0.0], [ 0.0, 1.0, 0.0],
-                             [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0],
-                             [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0] ]), dtype=1)
-  return H1, H2
-
-def get_velocity_kernel(lattice_size):
-  # returns the velocity kernel given the size of lattice
-  if lattice_size == 9:
-    return tf.constant(VELOCITY_KERNEL_2D, dtype=1)
-  elif lattice_size == 15:
-    return tf.constant(VELOCITY_KERNEL_3D, dtype=1)
-
-def get_edge_kernel(lattice_size):
-  # returns the lattice edge kernel given the size of lattice
-  if lattice_size == 9:
-    return tf.constant(BOUNDARY_EDGE_KERNEL_2D, dtype=1)
-  elif lattice_size == 15:
-    return tf.constant(BOUNDARY_EDGE_KERNEL_3D, dtype=1)
-
-def subtract_lattice(lattice):
-  Weights = get_weights(int(lattice.get_shape()[-1]))
-  dims = len(lattice.get_shape())-1
-  Weights = tf.reshape(Weights, dims*[1] + [int(Weights.get_shape()[0])])
-  lattice = lattice - Weights
-  return lattice
-
-def add_lattice(lattice):
-  Weights = get_weights(int(lattice.get_shape()[-1]))
-  dims = len(lattice.get_shape())-1
-  Weights = tf.reshape(Weights, dims*[1] + [int(Weights.get_shape()[0])])
-  lattice = lattice + Weights
-  return lattice
-
-def lattice_to_vel(lattice):
-  # get velocity vector field from lattice
-  Lveloc = get_lveloc(int(9))
-  dims = len(lattice.get_shape())-1
-  Lveloc_shape = list(map(int, Lveloc.get_shape()))
-  Lveloc = tf.reshape(Lveloc, dims*[1] + Lveloc_shape)
-  lattice = tf.expand_dims(lattice, -1)
-  velocity = tf.reduce_sum(Lveloc * lattice, axis=dims)
-  return velocity
-
-def vel_to_norm(velocity):
-  if len(velocity.get_shape()) == 4:
-    velocity_norm = tf.sqrt(tf.square(velocity[:,:,:,0:1]) + 
-                            tf.square(velocity[:,:,:,1:2]))
-  else:
-    velocity_norm = tf.sqrt(tf.square(velocity[:,:,:,:,0:1]) +
-                            tf.square(velocity[:,:,:,:,1:2]) + 
-                            tf.square(velocity[:,:,:,:,2:3]))
-  return velocity_norm
-
-def lattice_to_norm(lattice):
-  velocity = lattice_to_vel(lattice)
-  norm = vel_to_norm(velocity)
-  return norm
-
-def lattice_to_rho(lattice):
-  dims = len(lattice.get_shape())-1
-  rho = tf.reduce_sum(lattice, axis=dims)
-  rho = tf.expand_dims(rho, axis=dims)
-  return rho
-
-def lattice_to_divergence(lattice):
-  velocity = lattice_to_vel(lattice)
-  velocity_shape = list(map(int, velocity.get_shape()))
-  velocity_kernel = get_velocity_kernel(int(lattice.get_shape()[-1]))
-  if len(velocity_shape) == 4:
-    divergence = simple_conv_2d(velocity, velocity_kernel)
-    divergence = divergence[:,1:-1,1:-1,:]
-  else:
-    divergence = simple_conv_3d(velocity, velocity_kernel)
-    divergence = divergence[:,1:-1,1:-1,1:-1,:]
+  def lattice_to_divergence(cls, lattice):
+    assert not is_numpy(lattice), "divergence not supported for numpy"
+    velocity = cls.lattice_to_vel(lattice)
+    if cls.dims == 2:
+      divergence = nn.simple_conv_2d(vel, cls.divergence_kernel)
+      divergence = divergence[:,1:-1,1:-1,:]
+    elif cls.dims == 3:
+      divergence = simple_conv_3d(vel, cls.divergence_kernel)
+      divergence = divergence[:,1:-1,1:-1,1:-1,:]
   return divergence
 
+  @classmethod
+  def vel_to_norm(cls, vel):
+    if is_numpy(vel):
+      norm = np.norm(vel, axis=-1)
+    else:
+      norm = tf.norm(vel, axis=-1)
+    return norm
+
+  @classmethod
+  def _expand(cls, lattice, vec):
+    if is_numpy(lattice):
+      vec = vec.reshape((len(lattice.shape)-1)*[1] + vec.shape)
+    else:
+      vec = vec.reshape((len(lattice.get_shape())-1)*[1] + vec.shape)
+    return vec
+ 
+  @classmethod
+  def _expand_lattice(cls, lattice):
+    if is_numpy(lattice):
+      lattice = np.expand_dims(lattice, axis=len(latticec.shape))
+    else:
+      lattice = tf.expand_dims(lattice, axis=len(latticec.get_shape()))
+    return lattice
+ 
+  @classmethod
+  def _reduce_lattice(cls, lattice):
+    if is_numpy(lattice):
+      lattice = np.sum(lattice, axis=len(latticec.shape-2))
+    else:
+      lattice = tf.reduce_sum(lattice, axis=len(latticec.get_shape())-2)
+    return lattice
+
+  @classmethod
+  def _convert(cls, lattice, vec):
+    if not is_numpy(lattice):
+      vec = tf.constant(vec, dtype=1)
+    return vec
+
+class D2Q9(DxQy):
+  dim = 2
+  Q = 9
+  weights = np.array([4./9.,  1./9.,  1./9., 
+                      1./9.,  1./9.,  1./36.,
+                      1./36., 1./36., 1./36.])
+  
+  c = np.array([[0 ,0], [ 0, 1], [ 1,0],
+                [0,-1], [-1, 0], [ 1,1],
+                [1,-1], [-1,-1], [-1,1]])
+
+
+
+  divergence_kernel = np.zeros((3,3,2,1))
+  divergence_kernel[2,1,0,0] =  1.0
+  divergence_kernel[0,1,0,0] = -1.0
+  divergence_kernel[1,2,1,0] =  1.0
+  divergence_kernel[1,0,1,0] = -1.0
+
+  force_kernel = np.zeros((3,3,9,1))
+  force_kernel[1,0,1,0] = 1.0 # right
+  force_kernel[0,1,2,0] = 1.0 # up
+  force_kernel[1,2,3,0] = 1.0 # left
+  force_kernel[2,1,4,0] = 1.0 # down
+  force_kernel[0,0,5,0] = 1.0 # up right
+  force_kernel[0,2,6,0] = 1.0 # up left
+  force_kernel[2,2,7,0] = 1.0 # down left
+  force_kernel[2,0,8,0] = 1.0 # down right
+
+  def vel_to_feq(self, vel):
+    vel = np.array(vel)
+    vel_dot_vel = np.sum(vel * vel)
+    vel_dot_c = np.sum(np.expand_dims(vel, axis=0) * self.c, axis=-1)
+    feq = self.w * (1.0 + 
+                    3.0*vel_dot_c + 
+                    4.5*vel_dot_c*vel_dot_c - 
+                    1.5*vel_dot_vel)
+    feq = feq - self.w
+    return feq 
+
+class D3Q15(DxQy):
+  dim = 3
+  Q = 15
+  weights = np.array([2./9.,  1./9.,  1./9.,
+                      1./9.,  1./9.,  1./9., 
+                      1./9.,  1./72., 1./72.,
+                      1./72., 1./72., 1./72.,
+                      1./72., 1./72., 1./72.])
+  c = np.array([[ 0, 0, 0], [ 1, 0, 0], [-1, 0, 0],
+                [ 0, 1, 0], [ 0,-1, 0], [ 0, 0, 1],
+                [ 0, 0,-1], [ 1, 1, 1], [-1,-1,-1],
+                [ 1, 1,-1], [-1,-1, 1], [ 1,-1, 1],
+                [-1, 1,-1], [ 1,-1,-1], [-1, 1, 1]])
+
+  divergence_kernel = np.zeros((3,3,3,3,1))
+  divergence_kernel[2,1,1,2,0] =  1.0
+  divergence_kernel[0,1,1,2,0] = -1.0
+  divergence_kernel[1,2,1,1,0] =  1.0
+  divergence_kernel[1,0,1,1,0] = -1.0
+  divergence_kernel[1,1,2,0,0] =  1.0
+  divergence_kernel[1,1,0,0,0] = -1.0
+
+  force_kernel = np.zeros((3,3,3,15,1))
+  force_kernel[1,1,0,1 ,0] = 1.0 # down
+  force_kernel[1,1,2,2 ,0] = 1.0 # up
+  force_kernel[1,0,1,3 ,0] = 1.0 # down
+  force_kernel[1,2,1,4 ,0] = 1.0 # up
+  force_kernel[0,1,1,5 ,0] = 1.0 # down
+  force_kernel[2,1,1,6 ,0] = 1.0 # up
+  force_kernel[0,0,0,7 ,0] = 1.0 # down left out
+  force_kernel[2,2,2,8 ,0] = 1.0 # up right in
+  force_kernel[2,0,0,9 ,0] = 1.0 # down left in 
+  force_kernel[0,2,2,10,0] = 1.0 # up right out
+  force_kernel[0,2,0,11,0] = 1.0 # down right out
+  force_kernel[2,0,2,12,0] = 1.0 # up left in 
+  force_kernel[2,2,0,13,0] = 1.0 # down right in 
+  force_kernel[0,0,2,14,0] = 1.0 # up left out
+
+  def vel_to_feq(self, vel):
+    print("vel_to_feq not implemented for D3Q15 yet")
+    exit()
+
+TYPES = {}
+TYPES['D2Q9']  = D2Q9
+TYPES['D3Q15'] = D3Q15
+
+"""
 def lattice_to_flux(lattice, boundary):
   Lveloc = get_lveloc(int(lattice.get_shape()[-1]))
   rho = lattice_to_rho(lattice)
@@ -220,37 +218,4 @@ def lattice_to_force(lattice, boundary):
   edge = tf.reshape(edge, edge_shape + [1])
   force = tf.reduce_sum(edge * Lveloc, axis=dims)
   return force, edge[...,0]
-
-def lattice_to_electric(lattice, boundary):
-  dims = len(lattice.get_shape())-1
-  split_lattice = tf.split(lattice, 48, axis=3)
-  e_1 = split_lattice[0::4]
-  e_2 = split_lattice[1::4]
-  e_1 = tf.stack(e_1, axis=3)
-  e_2 = tf.stack(e_2, axis=3)
-  D1, D2 = get_lelect()
-  D1_shape = list(map(int, D1.get_shape()))
-  D1 = tf.reshape(D1, dims*[1] + D1_shape)
-  D2 = tf.reshape(D2, dims*[1] + D1_shape)
-  electric = tf.reduce_sum((D1 * e_1) + (D2 * e_2), axis=dims)
-  electric = electric/boundary
-  return electric
-
-def lattice_to_magnetic(lattice):
-  dims = len(lattice.get_shape())-1
-  split_lattice = tf.split(lattice, 48, axis=3)
-  m_1 = split_lattice[2::4]
-  m_2 = split_lattice[3::4]
-  m_1 = tf.stack(m_1, axis=3)
-  m_2 = tf.stack(m_2, axis=3)
-  H1, H2 = get_lmagne()
-  H1_shape = list(map(int, H1.get_shape()))
-  H1 = tf.reshape(H1, dims*[1] + H1_shape)
-  H2 = tf.reshape(H2, dims*[1] + H1_shape)
-  magnetic = tf.reduce_sum((H1 * m_1) + (H2 * m_2), axis=dims)
-  return magnetic 
-
-def field_to_norm(field):
-  field_norm = tf.sqrt(tf.square(field[:,:,:,0:1]) + tf.square(field[:,:,:,1:2]) + tf.square(field[:,:,:,2:3]))
-  return field_norm
-
+"""

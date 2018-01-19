@@ -12,12 +12,14 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 
+
+
 class SimRunner:
   # generates simulation data for training 
 
   def __init__(self, config, save_dir, script_name):
     self.save_dir = save_dir
-    self.num_cpoints = config.seq_length * 100
+    self.num_cpoints = 300
     self.lb_to_ln = config.lb_to_ln
     self.max_sim_iters = config.max_sim_iters
     self.script_name = script_name
@@ -26,6 +28,7 @@ class SimRunner:
     sim_shape = config.sim_shape.split('x')
     sim_shape = map(int, sim_shape)
     self.sim_shape = sim_shape
+    self.DxQy = lattice.TYPES[config.DxQy]
 
     # hard set for now
     self.max_times_called = np.random.randint(200,800)*(self.num_cpoints/config.seq_length)
@@ -46,6 +49,16 @@ class SimRunner:
       return cpoints[-1]
     else:
       return None
+
+  def run_sailfish_sim(script_name, save_dir, num_iters, lb_to_ln)
+    cmd = ('./' + script_name 
+         + ' --run_mode=generate_data'
+         + ' --sailfish_sim_dir=' + save_dir
+         + ' --max_sim_iters=' + str(lb_to_ln*num_iters)
+         + ' --checkpoint_from=0')
+    p = ps.subprocess.Popen(cmd.split(' '), 
+                            env=dict(os.environ, CUDA_VISIBLE_DEVICES='1'))
+    p.communicate()
 
   def generate_cpoint(self):
 
@@ -78,10 +91,10 @@ class SimRunner:
         self.clean_save_dir()
         self.make_sim_dir()
         cmd += ' --max_sim_iters=' + str((self.num_cpoints + 1) * self.lb_to_ln)
-        cmd += ' --checkpoint_from=' + str(-1)
+        cmd += ' --checkpoint_from=' + str(0)
     else:
       cmd += ' --max_sim_iters=' + str((self.num_cpoints + 1) * self.lb_to_ln)
-      cmd += ' --checkpoint_from=' + str(-1)
+      cmd += ' --checkpoint_from=' + str(0)
  
     # run cmd
     """
@@ -140,13 +153,12 @@ class SimRunner:
     # load flow file
     state_files = glob.glob(self.save_dir + "/*.0.cpoint.npz")
     state_files.sort()
-    subtract_weights = lattice.get_weights_numpy(9).reshape(1,1,9)
     state = np.load(state_files[ind])
     state = state.f.dist0a[:,1:-1,1:self.sim_shape[0]+1]
     state = state.astype(np.float32)
     state = np.swapaxes(state, 0, 1)
     state = np.swapaxes(state, 1, 2)
-    state = state - subtract_weights
+    state = self.DxQy.subtract_lattice(state)
     state = numpy_utils.mobius_extract(state, subdomain)
     return state
 

@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 # import latnet files
 import utils.numpy_utils as numpy_utils
 from shape_converter import SubDomain
+import lattice
 
 # import sailfish
 sys.path.append('../sailfish')
@@ -42,10 +43,11 @@ class Domain(object):
 
     self.input_cshape = [128,128] # hard set for now
 
-    self.sailfish_sim_dir = config.sailfish_sim_dir
+    self.train_sim_dir = config.train_sim_dir
     self.max_sim_iters = config.max_sim_iters
     self.lb_to_ln = config.lb_to_ln
     self.visc = config.visc
+    self.DxQy = lattice.TYPES[config.DxQy]
     self.restore_geometry = config.restore_geometry
 
   def boundary_conditions(self, hx, hy):
@@ -65,20 +67,6 @@ class Domain(object):
 
   def density_initial_conditions(self, hx, hy, shape):
     pass
-
-  def vel_to_lattice(self, vel):
-    vel = np.array(vel)
-    C = np.array([ [0,0], [1,0], [0,1], [-1,0], [0,-1], [1,1], [-1,1], [-1,-1], [1,-1] ])
-    W = np.array(  [4./9., 1./9., 1./9., 1./9., 1./9., 1./36., 1./36., 1./36., 1./36.])
-
-    vel_dot_vel = np.sum(vel * vel)
-    vel_dot_c = np.sum(np.expand_dims(vel, axis=0) * C, axis=-1)
-    feq = W * (1.0 + 
-               3.0*vel_dot_c + 
-               4.5*vel_dot_c*vel_dot_c - 
-               1.5*vel_dot_vel)
-    feq = feq - W
-    return feq 
 
   def make_geometry_input(self, where_boundary, velocity, where_velocity, density, where_density):
     input_geometry = np.concatenate([np.expand_dims(where_boundary, axis=-1).astype(np.float32),
@@ -100,7 +88,7 @@ class Domain(object):
 
     # update defaults
     shape = self.sim_shape
-    sailfish_sim_dir = self.sailfish_sim_dir
+    train_sim_dir = self.train_sim_dir
     max_iters = self.max_sim_iters
     lb_to_ln = self.lb_to_ln
     visc = self.visc
@@ -117,7 +105,7 @@ class Domain(object):
 
         # restore from old dir or make new geometry
         if restore_geometry:
-          restore_boundary_conditions = np.load(sailfish_sim_dir[:-10] + "flow_geometry.npy")
+          restore_boundary_conditions = np.load(train_sim_dir[:-10] + "flow_geometry.npy")
           where_boundary = restore_boundary_conditions[:,:,0].astype(np.bool)
           where_velocity = restore_boundary_conditions[:,:,1].astype(np.bool)
           velocity = (restore_boundary_conditions[-1,-1,1], restore_boundary_conditions[-1,-1,2])
@@ -139,7 +127,7 @@ class Domain(object):
 
         # save geometry
         save_geometry = make_geometry_input(where_boundary, velocity, where_velocity, density, where_density)
-        np.save(sailfish_sim_dir + "_geometry.npy", save_geometry)
+        np.save(train_sim_dir + "_geometry.npy", save_geometry)
 
       def initial_conditions(self, sim, hx, hy):
         # set start density
@@ -157,7 +145,9 @@ class Domain(object):
       
       @classmethod
       def add_options(cls, group, dim):
-        group.add_argument('--sailfish_sim_dir', help='all modes', type=str,
+        group.add_argument('--train_sim_dir', help='all modes', type=str,
+                              default='')
+        group.add_argument('--sim_dir', help='all modes', type=str,
                               default='')
         group.add_argument('--run_mode', help='all modes', type=str,
                               default='')
@@ -173,7 +163,7 @@ class Domain(object):
           'output_format': 'npy',
           'periodic_y': True,
           'periodic_x': True,
-          'checkpoint_file': sailfish_sim_dir,
+          'checkpoint_file': train_sim_dir,
           'checkpoint_every': lb_to_ln,
           'lat_nx': shape[0],
           'lat_ny': shape[1]
@@ -191,6 +181,24 @@ class Domain(object):
 
     return ctrl
 
+  def run(self):
+
+    self.saver = SimSaver(self.config, script_name)
+
+    cstate    = self.domain.state_to_cstate(state_encoder, encoder_shape_converter)
+    cboundary = self.domain.boundary_to_cboundary(boundary_encoder, encoder_shape_converter)
+
+    for i in xrange(config.num_iters):
+
+      cstate = self.domain.cstate_to_cstate(cmapping, cmapping_shape_converter, cstate, cboundary)
+
+      if i % config.sim_save_every == 0:
+        # decode state
+        vel, rho = self.domain.cstate_to_state(decoder, decoder_shape_converter, cstate)
+
+        plt.imshow(state[0,:,:,0])
+        plt.savefig('figs/out_state_' + str(i) + '.png')
+
   def state_to_cstate(self, encoder, encoder_shape_converter):
 
     nr_subdomains = [int(math.ceil(x/float(y))) for x, y in zip(self.sim_cshape, self.input_cshape)]
@@ -199,16 +207,20 @@ class Domain(object):
       pos = [i * self.input_cshape[0], j * self.input_cshape[1]]
       subdomain = SubDomain(pos, self.input_cshape)
       input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
-      vel = self.velocity_initial_conditions(0,0,None)
-      print(vel)
-      start_state = np.zeros([1] + input_subdomain.size + [9]) + self.vel_to_lattice(vel).reshape((1,1,1,9))
+      if self.saver.start_state is not None:
+        start_state = numpy_utils.mobius_extract(self.saver.start_state, input_subdomain, has_batch=False)
+        start_state = np.expand_dims(start_state, axis=0)
+      else:
+        vel = self.velocity_initial_conditions(0,0,None)
+        feq = self.DxQy.vel_to_feq(vel)
+        start_state = np.zeros([1] + input_subdomain.size + [self.DxQy.Q]) + feq.reshape((1,1,1,9))
       cstate.append(encoder(start_state))
 
     # list to full tensor
     cstate = numpy_utils.stack_grid(cstate, nr_subdomains, has_batch=True)
 
     # trim edges TODO add smarter padding making this unnessasary
-    #cstate = cstate[:,:self.sim_cshape[0],:self.sim_cshape[1]]
+    cstate = cstate[:,:self.sim_cshape[0],:self.sim_cshape[1]]
 
     return cstate
 
@@ -220,37 +232,25 @@ class Domain(object):
       pos = [i * self.input_cshape[0], j * self.input_cshape[1]]
       subdomain = SubDomain(pos, self.input_cshape)
       input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
-      h = np.mgrid[input_subdomain.pos[0]:input_subdomain.pos[0] + input_subdomain.size[0],
-                   input_subdomain.pos[1]:input_subdomain.pos[1] + input_subdomain.size[1]]
-      hx = np.mod(h[1], self.sim_shape[0])
-      hy = np.mod(h[0], self.sim_shape[1])
-      where_boundary = self.geometry_boundary_conditions(hx, hy, self.sim_shape)
-      where_velocity, velocity = self.velocity_boundary_conditions(hx, hy, self.sim_shape)
-      where_density, density = self.density_boundary_conditions(hx, hy, self.sim_shape)
-      input_geometry = self.make_geometry_input(where_boundary, velocity, where_velocity, density, where_density)
+      if self.saver.start_boundary is not None:
+        input_geometry = numpy_utils.mobius_extract(self.saver.start_boundary, input_subdomain, has_batch=False)
+      else:
+        h = np.mgrid[input_subdomain.pos[0]:input_subdomain.pos[0] + input_subdomain.size[0],
+                     input_subdomain.pos[1]:input_subdomain.pos[1] + input_subdomain.size[1]]
+        hx = np.mod(h[1], self.sim_shape[0])
+        hy = np.mod(h[0], self.sim_shape[1])
+        where_boundary = self.geometry_boundary_conditions(hx, hy, self.sim_shape)
+        where_velocity, velocity = self.velocity_boundary_conditions(hx, hy, self.sim_shape)
+        where_density, density = self.density_boundary_conditions(hx, hy, self.sim_shape)
+        input_geometry = self.make_geometry_input(where_boundary, velocity, where_velocity, density, where_density)
       input_geometry = np.expand_dims(input_geometry, axis=0)
-      """
-      plt.imshow(hx[:,:])
-      plt.savefig('figs/foo_4.png')
-      plt.imshow(hy[:,:])
-      plt.savefig('figs/foo_5.png')
-      plt.imshow(input_geometry[0,:,:,0])
-      plt.savefig('figs/foo_0.png')
-      plt.imshow(input_geometry[0,:,:,1])
-      plt.savefig('figs/foo_1.png')
-      plt.imshow(input_geometry[0,:,:,2])
-      plt.savefig('figs/foo_2.png')
-      plt.imshow(input_geometry[0,:,:,3])
-      plt.savefig('figs/foo_3.png')
-      #plt.show()
-      """
       cboundary.append(encoder(input_geometry))
 
     # list to full tensor
     cboundary = numpy_utils.stack_grid(cboundary, nr_subdomains, has_batch=True)
 
     # trim edges TODO add smarter padding making this unnessasary
-    #cboundary = cboundary[:,:self.sim_cshape[0],:self.sim_cshape[1]]
+    cboundary = cboundary[:,:self.sim_cshape[0],:self.sim_cshape[1]]
 
     return cboundary
 
@@ -276,23 +276,29 @@ class Domain(object):
   def cstate_to_state(self, decoder, decoder_shape_converter, cstate):
 
     nr_subdomains = [int(math.ceil(x/float(y))) for x, y in zip(self.sim_shape, self.input_shape)]
-    state = []
+    vel = []
+    rho = []
     for i, j in itertools.product(xrange(nr_subdomains[0]), xrange(nr_subdomains[1])):
       pos = [i * self.input_shape[0], j * self.input_shape[1]]
       subdomain = SubDomain(pos, self.input_shape)
       input_subdomain = decoder_shape_converter.out_in_subdomain(copy(subdomain))
       output_subdomain = decoder_shape_converter.in_out_subdomain(copy(input_subdomain))
-      state_store = decoder(numpy_utils.mobius_extract(cstate, input_subdomain, has_batch=True))
+      vel_store, rho_store = decoder(numpy_utils.mobius_extract(cstate, input_subdomain, has_batch=True))
       left_pad  = [x - y for x, y in zip(subdomain.pos, output_subdomain.pos)]
-      state_store = state_store[:,left_pad[0]:,left_pad[1]:,:]
-      state_store = state_store[:,:self.input_shape[0],:self.input_shape[1],:]
-      state.append(state_store)
+      vel_store = vel_store[:,left_pad[0]:,left_pad[1]:,:]
+      vel_store = vel_store[:,:self.input_shape[0],:self.input_shape[1],:]
+      vel.append(vel_store)
+      rho_store = rho_store[:,left_pad[0]:,left_pad[1]:,:]
+      rho_store = rho_store[:,:self.input_shape[0],:self.input_shape[1],:]
+      rho.append(rho_store)
 
     # list to full tensor
-    state = numpy_utils.stack_grid(state, nr_subdomains, has_batch=True)
+    vel = numpy_utils.stack_grid(vel, nr_subdomains, has_batch=True)
+    rho = numpy_utils.stack_grid(rho, nr_subdomains, has_batch=True)
 
     # trim edges TODO add smarter padding making this unnessasary
-    #state = state[:,:self.sim_shape[0],:self.sim_shape[1]]
+    vel = vel[:,:self.sim_shape[0],:self.sim_shape[1]]
+    rho = rho[:,:self.sim_shape[0],:self.sim_shape[1]]
 
-    return state
+    return vel, rho
 

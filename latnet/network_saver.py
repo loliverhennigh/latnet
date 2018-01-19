@@ -3,11 +3,7 @@ import tensorflow as tf
 import fnmatch
 import os
 
-# helper function
-def str2bool(v):
-  return v == 'TRUE'
-
-class Saver:
+class NetworkSaver:
 
   def __init__(self, config, network_config, graph_def):
 
