@@ -14,11 +14,10 @@ import matplotlib.pyplot as plt
 class LatNetController(object):
     """Controls the execution of a LN simulation."""
 
-    def __init__(self, eval_sim=None, train_sim=None):
+    def __init__(self, _sim=None):
 
       self._config_parser = LatNetConfigParser()
-      self._train_sim = train_sim
-      self._eval_sim = eval_sim
+      self._sim = _sim
      
       group = self._config_parser.add_group('Controller Details')
       group.add_argument('--mode', help='runtime mode', type=str,
@@ -81,16 +80,10 @@ class LatNetController(object):
                         default='./simulation/')
       group.add_argument('--sim_save_every', help='eval mode', type=int,
                         default=1)
-      group.add_argument('--save_format', help='eval mode', type=str,
-                        default='npy')
-      group.add_argument('--save_cstate', help='eval mode', type=bool,
-                        default=False)
 
       group = self._config_parser.add_group('Simulation Process Details')
       group.add_argument('--compare', help='compares to sailfish simulation', type=bool,
                         default=True)
-      group.add_argument('--sim_save_every', help='eval mode', type=int,
-                        default=2)
       group.add_argument('--save_format', help='eval mode', type=str,
                         default='npy')
       group.add_argument('--save_cstate', help='eval mode', type=bool,
@@ -131,7 +124,7 @@ class LatNetController(object):
       self.network.train_unroll()
  
       # construct dataset
-      self.dataset = DataQueue(self.config, self._train_sim, self.network.train_shape_converter())
+      self.dataset = DataQueue(self.config, self._sim, self.network.train_shape_converter())
 
       while True:
         feed_dict = self.dataset.minibatch()
@@ -142,13 +135,13 @@ class LatNetController(object):
 
     def generate_data(self, config):
 
-      sailfish_ctrl = self._train_sim(config).create_sailfish_simulation()
+      sailfish_ctrl = self._sim(config).create_sailfish_simulation()
       sailfish_ctrl.run()
 
     def eval(self, config):
 
       self.network = LatNet(self.config)
-      self.sim_saver = SimSaver(self.config)
+      self.sim_saver = SimSaver(self.config, self._sim.script_name)
 
       with tf.Graph().as_default():
 
@@ -158,7 +151,7 @@ class LatNetController(object):
          decoder_shape_converter) = self.network.eval_unroll()
 
         # run simulation
-        self.domain = self._eval_sim(config, self.network.network_config['nr_downsamples'])
+        self.domain = self._sim(config, self.network.network_config['nr_downsamples'])
 
         # compute compressed state
         cstate    = self.domain.state_to_cstate(state_encoder, encoder_shape_converter)

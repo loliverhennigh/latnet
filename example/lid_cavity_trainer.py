@@ -47,7 +47,7 @@ class TrainDomain(Domain):
     super(TrainDomain, self).__init__(*args, **kwargs)
 
 if __name__ == '__main__':
-  sim = LatNetController(train_sim=TrainDomain)
+  sim = LatNetController(_sim=TrainDomain)
   sim.run()
     
 

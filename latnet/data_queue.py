@@ -22,7 +22,7 @@ class DataQueue:
   def __init__(self, config, train_sim, shape_converters):
 
     # base dir where all the xml files are
-    self.base_dir = config.sailfish_sim_dir
+    self.base_dir = config.train_sim_dir
     self.script_name = train_sim.script_name
 
     # configs

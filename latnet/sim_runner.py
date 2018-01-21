@@ -19,7 +19,7 @@ class SimRunner:
 
   def __init__(self, config, save_dir, script_name):
     self.save_dir = save_dir
-    self.num_cpoints = 300
+    self.num_cpoints = 30
     self.lb_to_ln = config.lb_to_ln
     self.max_sim_iters = config.max_sim_iters
     self.script_name = script_name
@@ -50,10 +50,10 @@ class SimRunner:
     else:
       return None
 
-  def run_sailfish_sim(script_name, save_dir, num_iters, lb_to_ln)
+  def run_sailfish_sim(script_name, save_dir, num_iters, lb_to_ln):
     cmd = ('./' + script_name 
          + ' --run_mode=generate_data'
-         + ' --sailfish_sim_dir=' + save_dir
+         + ' --train_sim_dir=' + save_dir
          + ' --max_sim_iters=' + str(lb_to_ln*num_iters)
          + ' --checkpoint_from=0')
     p = ps.subprocess.Popen(cmd.split(' '), 
@@ -71,7 +71,7 @@ class SimRunner:
     # base cmd
     cmd = ('./' + self.script_name 
          + ' --run_mode=generate_data'
-         + ' --sailfish_sim_dir=' + self.save_dir + '/store/flow')
+         + ' --train_sim_dir=' + self.save_dir + '/store/flow')
 
     # determine last checkpoint
     last_cpoint = self.last_cpoint()

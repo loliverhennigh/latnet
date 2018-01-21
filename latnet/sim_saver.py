@@ -1,8 +1,13 @@
 
+import lattice
+
 import numpy as np
 import matplotlib.pyplot as plt
+import psutil as ps
+import os
+import glob
 
-def SimSaver:
+class SimSaver:
 
   def __init__(self, config, script_name):
     self.save_dir = config.sim_dir
@@ -10,11 +15,14 @@ def SimSaver:
     self.save_cstate = config.save_cstate
     self.script_name = script_name
     self.DxQy = lattice.TYPES[config.DxQy]
+    self.sim_restore_iter = config.sim_restore_iter
+    self.lb_to_ln = config.lb_to_ln
+    self.sim_shape 
 
     self.latnet_files = []
 
     if self.sim_restore_iter >= 1:
-      self.start_state, self.start_boundary = self.generate_start_state()
+      self.start_state, self.start_boundary = self.generate_start_data()
 
   def generate_start_data(self):
     self.run_sailfish_sim(self.script_name, self.save_dir, 
@@ -38,7 +46,7 @@ def SimSaver:
 
   def read_state(self, ind):
     # load flow file
-    state_files = glob.glob(self.save_dir + "/*.0.cpoint.npz")
+    state_files = glob.glob(self.save_dir + "*.0.cpoint.npz")
     state_files.sort()
     state = np.load(state_files[ind])
     state = state.f.dist0a[:,1:-1,1:self.sim_shape[0]+1]
@@ -58,12 +66,13 @@ def SimSaver:
       np.savez(file_name, vel=vel, rho=rho)
     self.latnet_files.append(file_name)
 
-  def run_sailfish_sim(self, script_name, save_dir, num_iters, lb_to_ln)
+  def run_sailfish_sim(self, script_name, save_dir, num_iters, lb_to_ln):
     cmd = ('./' + script_name 
          + ' --run_mode=generate_data'
-         + ' --sailfish_sim_dir=' + save_dir
+         + ' --train_sim_dir=' + save_dir + 'store/flow'
          + ' --max_sim_iters=' + str(lb_to_ln*num_iters)
          + ' --checkpoint_from=0')
+    print(cmd)
     p = ps.subprocess.Popen(cmd.split(' '), 
                             env=dict(os.environ, CUDA_VISIBLE_DEVICES='1'))
     p.communicate()
@@ -73,9 +82,6 @@ def SimSaver:
       sailfish_state = read_state(i)
       sailfish_vel = self.DxQy.lattice_to_vel(sailfish_state)
       latnet_vel = np.load(self.lat_files[i])['vel'][0]
-      plt.imshow(np.concatenate([sailfish_vel[:,:,:,0]
+      plt.imshow(np.concatenate([sailfish_vel[:,:,:,0], latnet_vel[:,:,:,0]], axis=0))
+      plt.show()
       
-
-
-
-

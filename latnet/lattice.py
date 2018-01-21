@@ -29,7 +29,7 @@ class DxQy:
     c = cls._convert(lattice, c)
     lattice = cls._expand_lattice(lattice)
     vel = cls._reduce_lattice(c * lattice)
-    return velocity
+    return vel
 
   @classmethod
   def lattice_to_norm(cls, lattice):
@@ -54,7 +54,7 @@ class DxQy:
     elif cls.dims == 3:
       divergence = simple_conv_3d(vel, cls.divergence_kernel)
       divergence = divergence[:,1:-1,1:-1,1:-1,:]
-  return divergence
+    return divergence
 
   @classmethod
   def vel_to_norm(cls, vel):
@@ -67,25 +67,25 @@ class DxQy:
   @classmethod
   def _expand(cls, lattice, vec):
     if is_numpy(lattice):
-      vec = vec.reshape((len(lattice.shape)-1)*[1] + vec.shape)
+      vec = vec.reshape((len(lattice.shape)-1)*[1] + list(vec.shape))
     else:
-      vec = vec.reshape((len(lattice.get_shape())-1)*[1] + vec.shape)
+      vec = vec.reshape((len(lattice.get_shape())-1)*[1] + list(vec.shape))
     return vec
  
   @classmethod
   def _expand_lattice(cls, lattice):
     if is_numpy(lattice):
-      lattice = np.expand_dims(lattice, axis=len(latticec.shape))
+      lattice = np.expand_dims(lattice, axis=len(lattice.shape))
     else:
-      lattice = tf.expand_dims(lattice, axis=len(latticec.get_shape()))
+      lattice = tf.expand_dims(lattice, axis=len(lattice.get_shape()))
     return lattice
  
   @classmethod
   def _reduce_lattice(cls, lattice):
     if is_numpy(lattice):
-      lattice = np.sum(lattice, axis=len(latticec.shape-2))
+      lattice = np.sum(lattice, axis=len(lattice.shape-2))
     else:
-      lattice = tf.reduce_sum(lattice, axis=len(latticec.get_shape())-2)
+      lattice = tf.reduce_sum(lattice, axis=len(lattice.get_shape())-2)
     return lattice
 
   @classmethod
@@ -95,7 +95,7 @@ class DxQy:
     return vec
 
 class D2Q9(DxQy):
-  dim = 2
+  dims = 2
   Q = 9
   weights = np.array([4./9.,  1./9.,  1./9., 
                       1./9.,  1./9.,  1./36.,
@@ -135,7 +135,7 @@ class D2Q9(DxQy):
     return feq 
 
 class D3Q15(DxQy):
-  dim = 3
+  dims = 3
   Q = 15
   weights = np.array([2./9.,  1./9.,  1./9.,
                       1./9.,  1./9.,  1./9., 

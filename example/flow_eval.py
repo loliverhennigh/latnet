@@ -91,7 +91,7 @@ class EvalDomain(Domain):
     super(EvalDomain, self).__init__(*args, **kwargs)
 
 if __name__ == '__main__':
-  sim = LatNetController(eval_sim=EvalDomain)
+  sim = LatNetController(_sim=EvalDomain)
   sim.run()
     
 
