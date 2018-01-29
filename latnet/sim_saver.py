@@ -72,7 +72,6 @@ class SimSaver:
          + ' --train_sim_dir=' + save_dir + 'store/flow'
          + ' --max_sim_iters=' + str(lb_to_ln*num_iters)
          + ' --checkpoint_from=0')
-    print(cmd)
     p = ps.subprocess.Popen(cmd.split(' '), 
                             env=dict(os.environ, CUDA_VISIBLE_DEVICES='1'))
     p.communicate()

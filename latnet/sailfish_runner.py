@@ -7,6 +7,11 @@ class SailfishRunner:
     self.max_sim_iters = config.max_sim_iters
     self.script_name = script_name
  
+    sim_shape = config.sim_shape.split('x')
+    sim_shape = map(int, sim_shape)
+    self.sim_shape = sim_shape
+    self.DxQy = lattice.TYPES[config.DxQy]
+
   def list_cpoints(self):
     cpoints = glob.glob(self.save_dir + "/*.0.cpoint.npz")
     return cpoints.sort()
@@ -135,30 +140,17 @@ class SailfishRunner:
 class TrainSailfishRunner(SailfishRunner):
 
   def __init__(self, config, save_dir, script_name):
-    self.save_dir = save_dir
-    self.num_cpoints = 30
-    self.lb_to_ln = config.lb_to_ln
-    self.max_sim_iters = config.max_sim_iters
-    self.script_name = script_name
-    self.seq_length = config.seq_length
-
-    sim_shape = config.sim_shape.split('x')
-    sim_shape = map(int, sim_shape)
-    self.sim_shape = sim_shape
-    self.DxQy = lattice.TYPES[config.DxQy]
-
-    # hard set for now
-    self.max_times_called = np.random.randint(200,800)*(self.num_cpoints/config.seq_length)
-    self.times_called = 0
+    SailfishRunner.__init__(self, config, save_dir, script_name)
+    self.num_cpoints = 400
+    # more configs will probably be added later
 
   def read_train_data(self, state_subdomain, geometry_subdomain, seq_state_subdomain):
 
     # if read geometry too many times generate new data
-    self.times_called += 1
-    if self.times_called > self.max_times_called:
-      self.generate_cpoint()
-      self.times_called = 0
-
+    #self.times_called += 1
+    #if self.times_called > self.max_times_called:
+    #  self.generate_cpoint()
+    #  self.times_called = 0
 
     # read state
     state_files = glob.glob(self.save_dir + "/*.0.cpoint.npz")
@@ -170,20 +162,11 @@ class TrainSailfishRunner(SailfishRunner):
 
     # read seq states
     seq_state = []
-    for i in xrange(self.seq_length):
+    for i in xrange(len(seq_state_subdomain)):
       seq_state.append(self.read_state(ind + i, seq_state_subdomain[i]))
 
     return state, geometry, seq_state
 
   def generate_train_data(self):
-    self.new_sim(self, num_iters):
-
-
-
-
-
-
-
-
-
+    self.new_sim(self, num_iters)
 

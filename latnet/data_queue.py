@@ -12,7 +12,7 @@ import time
 import psutil as ps
 import shutil
 from copy import copy
-from sim_runner import SimRunner
+from sailfish_runner import TrainSailfishRunner
 
 from Queue import Queue
 from shape_converter import SubDomain
@@ -49,8 +49,8 @@ class DataQueue:
     self.sim_runners = []
     print("generating dataset")
     for i in tqdm(xrange(self.num_simulations)):
-      sim = SimRunner(config, self.base_dir + 'sim_' + str(i), self.script_name) 
-      sim.generate_cpoint()
+      sim = TrainSailfishRunner(config, self.base_dir + 'sim_' + str(i), self.script_name) 
+      sim.generate_train_data()
       thr = threading.Thread(target= (lambda: self.data_worker(sim)))
       thr.daemon = True
       thr.start()
@@ -68,9 +68,9 @@ class DataQueue:
         seq_state_subdomain.append(self.shape_converters['state', 'pred_state_' + str(i)].in_out_subdomain(copy(state_subdomain)))
 
       # get geometry and lat data
-      state, geometry, seq_state = sim.read_data(state_subdomain,
-                                                 geometry_subdomain,
-                                                 seq_state_subdomain)
+      state, geometry, seq_state = sim.read_train_data(state_subdomain,
+                                                       geometry_subdomain,
+                                                       seq_state_subdomain)
 
       # add to que
       self.queue_batches.append((state, geometry, seq_state))
