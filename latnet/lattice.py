@@ -34,7 +34,9 @@ class DxQy:
   @classmethod
   def lattice_to_norm(cls, lattice):
     vel = cls.lattice_to_vel(lattice)
+    print(vel.get_shape())
     norm = cls.vel_to_norm(vel)
+    print(norm.get_shape())
     return norm
 
   @classmethod
@@ -60,8 +62,10 @@ class DxQy:
   def vel_to_norm(cls, vel):
     if is_numpy(vel):
       norm = np.norm(vel, axis=-1)
+      norm = np.expand_dims(norm, axis=-1)
     else:
       norm = tf.norm(vel, axis=-1)
+      norm = tf.expand_dims(norm, axis=-1)
     return norm
 
   @classmethod

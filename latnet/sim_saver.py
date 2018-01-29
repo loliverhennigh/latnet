@@ -77,11 +77,8 @@ class SimSaver:
                             env=dict(os.environ, CUDA_VISIBLE_DEVICES='1'))
     p.communicate()
 
-  def compare_latnet_vs_sailfish(self):
-    for i in xrange(self.num_iters):
-      sailfish_state = read_state(i)
-      sailfish_vel = self.DxQy.lattice_to_vel(sailfish_state)
-      latnet_vel = np.load(self.lat_files[i])['vel'][0]
-      plt.imshow(np.concatenate([sailfish_vel[:,:,:,0], latnet_vel[:,:,:,0]], axis=0))
-      plt.show()
-      
+  def visualizer(iteration, state):
+    pass
+
+  def compare_true_generated(iteration, sailfish_state, latnet_state):
+    pass

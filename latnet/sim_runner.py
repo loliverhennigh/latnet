@@ -81,7 +81,7 @@ class SimRunner:
 
     # add iteration till next cpoint and possible restor cpoint
     if last_step is not None:
-      num_run_iters = last_step + ((self.num_cpoints + 1) * self.lb_to_ln)
+      num_run_iters = last_step + (self.num_cpoints * self.lb_to_ln)
       if num_run_iters < self.max_sim_iters:
         cmd += ' --checkpoint_from=' + str(last_step)
         cmd += ' --restore_from=' + last_cpoint[:-13]
@@ -90,10 +90,10 @@ class SimRunner:
       else:
         self.clean_save_dir()
         self.make_sim_dir()
-        cmd += ' --max_sim_iters=' + str((self.num_cpoints + 1) * self.lb_to_ln)
+        cmd += ' --max_sim_iters=' + str(self.num_cpoints * self.lb_to_ln)
         cmd += ' --checkpoint_from=' + str(0)
     else:
-      cmd += ' --max_sim_iters=' + str((self.num_cpoints + 1) * self.lb_to_ln)
+      cmd += ' --max_sim_iters=' + str(self.num_cpoints * self.lb_to_ln)
       cmd += ' --checkpoint_from=' + str(0)
  
     # run cmd
@@ -112,6 +112,7 @@ class SimRunner:
     self.clean_prev_cpoints()
 
     # if no cpoints in dir then need to restart simulation
+    print(len(glob.glob(self.save_dir + "/*.0.cpoint.npz")))
     if len(glob.glob(self.save_dir + "/*.0.cpoint.npz")) != self.num_cpoints:
       self.generate_cpoint()
 

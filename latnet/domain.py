@@ -183,21 +183,36 @@ class Domain(object):
 
   def run(self):
 
-    self.saver = SimSaver(self.config, script_name)
+    # make saver
+    if self._saver is not None:
+      self.saver = self._saver(self.config, script_name)
+    else:
+      self.saver = SimSaver(self.config, script_name)
 
-    cstate    = self.domain.state_to_cstate(state_encoder, encoder_shape_converter)
-    cboundary = self.domain.boundary_to_cboundary(boundary_encoder, encoder_shape_converter)
+    # generate compressed state
+    cstate    = self.domain.state_to_cstate(state_encoder, 
+                                            encoder_shape_converter)
+    cboundary = self.domain.boundary_to_cboundary(boundary_encoder, 
+                                                  encoder_shape_converter)
 
+    # run simulation
     for i in xrange(config.num_iters):
-
-      cstate = self.domain.cstate_to_cstate(cmapping, cmapping_shape_converter, cstate, cboundary)
+      cstate = self.domain.cstate_to_cstate(cmapping, 
+                                            cmapping_shape_converter, 
+                                            cstate, cboundary)
 
       if i % config.sim_save_every == 0:
         # decode state
-        vel, rho = self.domain.cstate_to_state(decoder, decoder_shape_converter, cstate)
+        vel, rho = self.domain.cstate_to_state(decoder, 
+                                               decoder_shape_converter, 
+                                               cstate)
+        self.saver.save(vel, rho)
 
-        plt.imshow(state[0,:,:,0])
-        plt.savefig('figs/out_state_' + str(i) + '.png')
+    if self.compare:
+      self.saver.generate_comparison_data()
+      for i in xrange(config
+        self.saver.run_sailfish_sim
+
 
   def state_to_cstate(self, encoder, encoder_shape_converter):
 
