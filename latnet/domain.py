@@ -7,6 +7,9 @@ import matplotlib.pyplot as plt
 # import latnet files
 import utils.numpy_utils as numpy_utils
 from shape_converter import SubDomain
+from vis import Visualizations
+from sim_saver import SimSaver
+from sailfish_runner import SailfishRunner
 import lattice
 
 # import sailfish
@@ -43,12 +46,18 @@ class Domain(object):
 
     self.input_cshape = [128,128] # hard set for now
 
+    self.config = config
     self.train_sim_dir = config.train_sim_dir
     self.max_sim_iters = config.max_sim_iters
     self.lb_to_ln = config.lb_to_ln
     self.visc = config.visc
     self.DxQy = lattice.TYPES[config.DxQy]
     self.restore_geometry = config.restore_geometry
+    self.sim_dir = config.sim_dir
+    self.num_iters = config.num_iters
+    self.sim_save_every = config.sim_save_every
+    self.sim_restore_iter = config.sim_restore_iter
+    self.compare = config.compare
 
   def boundary_conditions(self, hx, hy):
     pass
@@ -66,6 +75,9 @@ class Domain(object):
     pass
 
   def density_initial_conditions(self, hx, hy, shape):
+    pass
+
+  def compare_script(self, true_vel, true_rho, generated_vel, generated_rho):
     pass
 
   def make_geometry_input(self, where_boundary, velocity, where_velocity, density, where_density):
@@ -181,38 +193,66 @@ class Domain(object):
 
     return ctrl
 
-  def run(self):
+  def run(self, state_encoder, 
+          boundary_encoder, 
+          cmapping, decoder,
+          encoder_shape_converter, 
+          cmapping_shape_converter, 
+          decoder_shape_converter):
+
+    # make visualizer
+    self.vis = Visualizations(self.config)
 
     # make saver
-    if self._saver is not None:
-      self.saver = self._saver(self.config, script_name)
+    self.saver = SimSaver(self.config)
+
+    # possibly generate start state and boundary (really just used for testing)
+    if self.sim_restore_iter > 0:
+      self.sailfish_runner = SailfishRunner(self.config, self.sim_dir + 'sailfish', self.script_name)
+      self.sailfish_runner.new_sim(self.sim_restore_iter)
+      self.start_state = self.sailfish_runner.read_state(self.sim_restore_iter)
+      self.start_boundary = self.sailfish_runner.read_boundary()
     else:
-      self.saver = SimSaver(self.config, script_name)
+      self.sailfish_runner = None
+      self.start_state = None
+      self.start_boundary = None
 
     # generate compressed state
-    cstate    = self.domain.state_to_cstate(state_encoder, 
-                                            encoder_shape_converter)
-    cboundary = self.domain.boundary_to_cboundary(boundary_encoder, 
-                                                  encoder_shape_converter)
+    cstate    = self.state_to_cstate(state_encoder, 
+                                     encoder_shape_converter)
+    cboundary = self.boundary_to_cboundary(boundary_encoder, 
+                                           encoder_shape_converter)
 
     # run simulation
-    for i in xrange(config.num_iters):
-      cstate = self.domain.cstate_to_cstate(cmapping, 
-                                            cmapping_shape_converter, 
-                                            cstate, cboundary)
+    for i in xrange(self.num_iters):
+      cstate = self.cstate_to_cstate(cmapping, 
+                                     cmapping_shape_converter, 
+                                     cstate, cboundary)
 
-      if i % config.sim_save_every == 0:
+      if i % self.sim_save_every == 0:
         # decode state
-        vel, rho = self.domain.cstate_to_state(decoder, 
-                                               decoder_shape_converter, 
-                                               cstate)
-        self.saver.save(vel, rho)
+        vel, rho = self.cstate_to_state(decoder, 
+                                        decoder_shape_converter, 
+                                        cstate)
+        # vis and save
+        self.vis.update_vel_rho(i, vel, rho)
+        self.saver.save(i, vel, rho, cstate)
 
+    # generate comparision simulation
     if self.compare:
-      self.saver.generate_comparison_data()
-      for i in xrange(config
-        self.saver.run_sailfish_sim
+      if self.sailfish_runner is not None:
+        self.sailfish_runner.restart_sim(self.num_iters)
+      else:
+        self.sailfish_runner = SailfishRunner(self.config, self.sim_dir + 'sailfish', self.script_name)
+        self.sailfish_runner.new_sim(self.num_iters)
 
+      # run comparision function
+      for i in xrange(self.num_iters):
+        if i % self.sim_save_every == 0:
+          # this functionality will probably be changed TODO
+          true_vel, true_rho = self.sailfish_runner.read_vel_rho(i + self.sim_restore_iter + 1)
+          generated_vel, generated_rho = self.saver.read_vel_rho(i)
+          self.compare_script(true_vel, true_rho, generated_vel, generated_rho)
 
   def state_to_cstate(self, encoder, encoder_shape_converter):
 
@@ -222,8 +262,8 @@ class Domain(object):
       pos = [i * self.input_cshape[0], j * self.input_cshape[1]]
       subdomain = SubDomain(pos, self.input_cshape)
       input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
-      if self.saver.start_state is not None:
-        start_state = numpy_utils.mobius_extract(self.saver.start_state, input_subdomain, has_batch=False)
+      if self.start_state is not None:
+        start_state = numpy_utils.mobius_extract(self.start_state, input_subdomain, has_batch=False)
         start_state = np.expand_dims(start_state, axis=0)
       else:
         vel = self.velocity_initial_conditions(0,0,None)
@@ -247,8 +287,8 @@ class Domain(object):
       pos = [i * self.input_cshape[0], j * self.input_cshape[1]]
       subdomain = SubDomain(pos, self.input_cshape)
       input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
-      if self.saver.start_boundary is not None:
-        input_geometry = numpy_utils.mobius_extract(self.saver.start_boundary, input_subdomain, has_batch=False)
+      if self.start_boundary is not None:
+        input_geometry = numpy_utils.mobius_extract(self.start_boundary, input_subdomain, has_batch=False)
       else:
         h = np.mgrid[input_subdomain.pos[0]:input_subdomain.pos[0] + input_subdomain.size[0],
                      input_subdomain.pos[1]:input_subdomain.pos[1] + input_subdomain.size[1]]

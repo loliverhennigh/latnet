@@ -51,7 +51,7 @@ class LatNetController(object):
       group.add_argument('--optimizer', help='all mode', type=str,
                         default='adam')
       group.add_argument('--lr', help='all mode', type=float,
-                        default=0.0001)
+                        default=0.0010)
       group.add_argument('--train_iterations', help='all mode', type=int,
                         default=1000000)
 
@@ -71,15 +71,15 @@ class LatNetController(object):
       group.add_argument('--DxQy', help='all mode', type=str,
             choices=['D2Q9'], default='D2Q9')
       group.add_argument('--num_iters', help='eval mode', type=int,
-                        default=100)
-      group.add_argument('--sim_restore_iter', help='if -1 then it will not restore', type=int,
+                        default=15)
+      group.add_argument('--sim_restore_iter', help='if 0 then it will not restore', type=int,
                         default=1)
 
       group = self._config_parser.add_group('Simulation Saver Details')
       group.add_argument('--sim_dir', help='eval mode', type=str,
                         default='./simulation/')
       group.add_argument('--sim_save_every', help='eval mode', type=int,
-                        default=1)
+                        default=2)
 
       group = self._config_parser.add_group('Simulation Process Details')
       group.add_argument('--compare', help='compares to sailfish simulation', type=bool,
@@ -141,7 +141,6 @@ class LatNetController(object):
     def eval(self, config):
 
       self.network = LatNet(self.config)
-      self.sim_saver = SimSaver(self.config, self._sim.script_name)
 
       with tf.Graph().as_default():
 
@@ -153,21 +152,10 @@ class LatNetController(object):
         # run simulation
         self.domain = self._sim(config, self.network.network_config['nr_downsamples'])
 
-        # compute compressed state
-        cstate    = self.domain.state_to_cstate(state_encoder, encoder_shape_converter)
-        cboundary = self.domain.boundary_to_cboundary(boundary_encoder, encoder_shape_converter)
-
-        for i in xrange(config.num_iters):
-
-          cstate = self.domain.cstate_to_cstate(cmapping, cmapping_shape_converter, cstate, cboundary)
-
-          if i % config.sim_save_every == 0:
-            # decode state
-            vel, rho = self.domain.cstate_to_state(decoder, decoder_shape_converter, cstate)
-
-            plt.imshow(state[0,:,:,0])
-            plt.savefig('figs/out_state_' + str(i) + '.png')
-
-
-
+        self.domain.run(state_encoder, 
+                        boundary_encoder, 
+                        cmapping, decoder,
+                        encoder_shape_converter, 
+                        cmapping_shape_converter, 
+                        decoder_shape_converter)
 

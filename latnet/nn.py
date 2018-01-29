@@ -37,6 +37,8 @@ def set_nonlinearity(name):
     return tf.nn.relu
   elif name == 'sigmoid':
     return tf.nn.sigmoid
+  elif name == 'hard_sigmoid':
+    return hard_sigmoid
   elif name == 'tanh':
     return tf.nn.tanh
   else:
@@ -96,9 +98,12 @@ def conv_layer(x, kernel_size, stride, filter_size, name, nonlinearity=None):
     weights = _variable('weights', shape=length_input*[kernel_size] + [input_channels,filter_size],initializer=tf.contrib.layers.xavier_initializer_conv2d())
     biases = _variable('biases',[filter_size],initializer=tf.contrib.layers.xavier_initializer_conv2d())
 
-    conv = tf.nn.convolution(x, weights, strides=length_input*[stride], padding='VALID')
-    conv = tf.nn.bias_add(conv, biases)
+    if length_input == 2:
+      conv = tf.nn.conv2d(x, weights, strides=[1, stride, stride, 1], padding='VALID')
+    elif length_input == 3:
+      conv = tf.nn.conv3d(x, weights, strides=[1, stride, stride, stride, 1], padding='VALID')
 
+    conv = tf.nn.bias_add(conv, biases)
     if nonlinearity is not None:
       conv = nonlinearity(conv)
     return conv

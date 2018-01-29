@@ -16,21 +16,6 @@ import numpy as np
 import cv2
 import glob
 
-class LDCSaver(SimSaver):
-
-  def compare_true_generated(self, iteration, sailfish_state, network_state):
-    if iteration == 10:
-      sailfish_vel = self.DxQy.lattice_to_vel(sailfish_state)
-      latnet_vel = self.DxQy.lattice_to_vel(network_state)
-      plt.imshow(np.concatenate([sailfish_vel[:,:,:,0], latnet_vel[:,:,:,0]], axis=0))
-      plt.show()
-
-  def visualizer(self, iteration, state):
-    if iteration == 10:
-      vel = self.DxQy.lattice_to_norm(state)
-      plt.imshow(vel[:,:,:,0])
-      plt.show()
-
 class LDCDomain(Domain):
   script_name = __file__
 
@@ -56,6 +41,12 @@ class LDCDomain(Domain):
   def density_initial_conditions(self, hx, hy, shape):
     rho = 1.0
     return rho
+
+  def compare_script(self, iteration, sailfish_state, network_state):
+    sailfish_vel = self.DxQy.lattice_to_vel(sailfish_state)
+    latnet_vel = self.DxQy.lattice_to_vel(network_state)
+    plt.imshow(np.concatenate([sailfish_vel[:,:,:,0], latnet_vel[:,:,:,0]], axis=0))
+    plt.show()
 
 if __name__ == '__main__':
   sim = LatNetController(_sim=LDCDomain)

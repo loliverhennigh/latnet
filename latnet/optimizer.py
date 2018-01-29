@@ -22,6 +22,11 @@ class Optimizer:
   def adam_updates(self, params, global_step, mom1=0.9, mom2=0.999):
     ''' Adam optimizer '''
     updates = []
+
+    # make moving average
+    ema = tf.train.ExponentialMovingAverage(decay=.9995)
+    updates.append(tf.group(ema.apply(params)))
+ 
     t = tf.Variable(1., 'adam_t')
     for p, g in zip(params, self.gradients):
       mg = tf.Variable(tf.zeros(p.get_shape()), p.name + '_adam_mg')
@@ -41,9 +46,5 @@ class Optimizer:
     updates.append(t.assign_add(1))
     updates.append(global_step.assign_add(1))
 
-    # make moving average
-    ema = tf.train.ExponentialMovingAverage(decay=.9995)
-    updates.append(tf.group(ema.apply(params)))
-    
     return tf.group(*updates)
 

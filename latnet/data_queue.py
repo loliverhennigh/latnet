@@ -107,9 +107,14 @@ class DataQueue:
 
     # make feed dict
     feed_dict = {}
+    #feed_dict['state'] = np.zeros_like(batch_state)
+    #feed_dict['state'] = np.zeros_like(batch_state)
     feed_dict['state'] = batch_state
+    #feed_dict['boundary'] = np.zeros_like(batch_geometry)
     feed_dict['boundary'] = batch_geometry
     for i in xrange(self.seq_length):
+      #feed_dict['true_state_' + str(i)] = np.zeros_like(batch_seq_state[i])
+      #feed_dict['true_state_' + str(i)] = np.zeros_like(batch_seq_state[i]) + 1.0
       feed_dict['true_state_' + str(i)] = batch_seq_state[i]
       
     return feed_dict

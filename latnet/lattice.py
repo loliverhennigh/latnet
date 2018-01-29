@@ -34,17 +34,17 @@ class DxQy:
   @classmethod
   def lattice_to_norm(cls, lattice):
     vel = cls.lattice_to_vel(lattice)
-    print(vel.get_shape())
     norm = cls.vel_to_norm(vel)
-    print(norm.get_shape())
     return norm
 
   @classmethod
   def lattice_to_rho(cls, lattice):
     if is_numpy(lattice):
       rho = np.sum(lattice, axis=-1)
+      rho = np.expand_dims(rho, axis=-1)
     else:
       rho = tf.reduce_sum(lattice, axis=len(lattice.get_shape())-1)
+      rho = tf.expand_dims(rho, axis=-1)
     return rho
 
   def lattice_to_divergence(cls, lattice):
@@ -87,7 +87,7 @@ class DxQy:
   @classmethod
   def _reduce_lattice(cls, lattice):
     if is_numpy(lattice):
-      lattice = np.sum(lattice, axis=len(lattice.shape-2))
+      lattice = np.sum(lattice, axis=len(lattice.shape)-2)
     else:
       lattice = tf.reduce_sum(lattice, axis=len(lattice.get_shape())-2)
     return lattice

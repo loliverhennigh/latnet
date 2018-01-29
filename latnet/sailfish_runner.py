@@ -1,4 +1,13 @@
 
+import os
+import psutil as ps
+import glob
+
+import lattice
+import utils.numpy_utils as numpy_utils
+
+import numpy as np
+
 class SailfishRunner:
 
   def __init__(self, config, save_dir, script_name):
@@ -14,7 +23,8 @@ class SailfishRunner:
 
   def list_cpoints(self):
     cpoints = glob.glob(self.save_dir + "/*.0.cpoint.npz")
-    return cpoints.sort()
+    cpoints.sort()
+    return cpoints
 
   def boundary_file(self):
     return self.save_dir + "/flow_geometry.npy"
@@ -30,7 +40,7 @@ class SailfishRunner:
   def is_restorable(self):
     cpoints = self.list_cpoints()
     boundary_file = self.boundary_file()
-    return ((len(cpoints) > 0) and os.path.isfile(boundary_file)):
+    return ((len(cpoints) > 0) and os.path.isfile(boundary_file))
 
   def cpoint_to_iter(self, cpoint_name):
     sailfish_iter = int(cpoint_name.split('.')[-4])
@@ -38,9 +48,11 @@ class SailfishRunner:
 
   def iter_to_cpoint(self, iteration):
     sailfish_iter = self.latnet_iter_to_sailfish_iter(iteration)
+    zpadding = len(self.last_cpoint()[0].split('.')[-4])
     cpoint = (self.save_dir + '/flow.' 
-             + str(sailfish_iter)
+             + str(sailfish_iter).zfill(zpadding)
              + '.0.cpoint.npz')
+    return cpoint
 
   def sailfish_iter_to_latnet_iter(self, iteration):
     return int(iteration/self.lb_to_ln)
@@ -84,13 +96,13 @@ class SailfishRunner:
     cmd = ('./' + self.script_name 
          + ' --run_mode=generate_data'
          + ' --train_sim_dir=' + self.save_dir + '/store/flow'
-         + ' --max_sim_iters=' + str(self.lb_to_ln*num_iters)
+         + ' --max_sim_iters=' + str(self.lb_to_ln*num_iters + 1)
          + ' --checkpoint_from=0')
     p = ps.subprocess.Popen(cmd.split(' '), 
                             env=dict(os.environ, CUDA_VISIBLE_DEVICES='1'))
     p.communicate()
    
-    self.mv_store_dir(self)
+    self.mv_store_dir()
  
   def restart_sim(self, num_iters, keep_old=False):
 
@@ -103,7 +115,7 @@ class SailfishRunner:
          + ' --run_mode=generate_data'
          + ' --train_sim_dir=' + self.save_dir + '/store/flow'
          + ' --max_sim_iters=' + str(self.latnet_iter_to_sailfish_iter(num_iters
-                                                                    + last_iter))
+                                                                    + last_iter) + 1)
          + ' --checkpoint_from=0'
          + ' --restore_geometry=True'
          + ' --restore_from=' + last_cpoint[:-13])
@@ -113,19 +125,20 @@ class SailfishRunner:
   
     if not keep_old:
       self.clean_dir()
-    self.mv_store_dir(self)
+    self.mv_store_dir()
 
-  def read_geometry(self, subdomain):
-    geometry_file = self.boundary_file()
-    geometry = None
-    if os.path.isfile(geometry_file):
-      geometry = np.load(geometry_file)
-      geometry = geometry.astype(np.float32)
-      geometry = geometry[1:-1,1:-1]
-      geometry = numpy_utils.mobius_extract(geometry, subdomain)
-    return geometry
+  def read_boundary(self, subdomain=None):
+    boundary_file = self.boundary_file()
+    boundary = None
+    if os.path.isfile(boundary_file):
+      boundary = np.load(boundary_file)
+      boundary = boundary.astype(np.float32)
+      boundary = boundary[1:-1,1:-1]
+      if subdomain is not None:
+        boundary = numpy_utils.mobius_extract(boundary, subdomain)
+    return boundary
 
-  def read_state(self, iteration, subdomain):
+  def read_state(self, iteration, subdomain=None):
     # load flow file
     state_file = self.iter_to_cpoint(iteration)
     state = np.load(state_file)
@@ -134,19 +147,26 @@ class SailfishRunner:
     state = np.swapaxes(state, 0, 1)
     state = np.swapaxes(state, 1, 2)
     state = self.DxQy.subtract_lattice(state)
-    state = numpy_utils.mobius_extract(state, subdomain)
+    if subdomain is not None:
+      state = numpy_utils.mobius_extract(state, subdomain)
     return state
+
+  def read_vel_rho(self, iteration, subdomain=None):
+    state = self.read_state(iteration, subdomain)
+    vel = self.DxQy.lattice_to_vel(state)
+    rho = self.DxQy.lattice_to_rho(state)
+    return vel, rho
 
 class TrainSailfishRunner(SailfishRunner):
 
   def __init__(self, config, save_dir, script_name):
     SailfishRunner.__init__(self, config, save_dir, script_name)
-    self.num_cpoints = 400
+    self.num_cpoints = 4
     # more configs will probably be added later
 
-  def read_train_data(self, state_subdomain, geometry_subdomain, seq_state_subdomain):
+  def read_train_data(self, state_subdomain, boundary_subdomain, seq_state_subdomain):
 
-    # if read geometry too many times generate new data
+    # if read boundary too many times generate new data
     #self.times_called += 1
     #if self.times_called > self.max_times_called:
     #  self.generate_cpoint()
@@ -154,19 +174,19 @@ class TrainSailfishRunner(SailfishRunner):
 
     # read state
     state_files = glob.glob(self.save_dir + "/*.0.cpoint.npz")
-    ind = np.random.randint(0, len(state_files) - self.seq_length)
+    ind = np.random.randint(1, len(state_files) - len(seq_state_subdomain))
     state = self.read_state(ind, state_subdomain)
 
-    # read geometry
-    geometry = self.read_geometry(geometry_subdomain)
+    # read boundary
+    boundary = self.read_boundary(boundary_subdomain)
 
     # read seq states
     seq_state = []
     for i in xrange(len(seq_state_subdomain)):
       seq_state.append(self.read_state(ind + i, seq_state_subdomain[i]))
 
-    return state, geometry, seq_state
+    return state, boundary, seq_state
 
   def generate_train_data(self):
-    self.new_sim(self, num_iters)
+    self.new_sim(self.num_cpoints)
 

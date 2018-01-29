@@ -69,13 +69,13 @@ class LatNet:
   
       # unroll all
       for i in xrange(self.seq_length):
-        # decode and add to list
-        self.decoder_state(self, in_name="cstate_" + str(i), out_name="pred_state_" + str(i))
-  
         # apply boundary
         self.compression_mapping_boundary(self, in_cstate_name="cstate_" + str(i), 
                                                 in_cboundary_name="cboundary", 
                                                 out_name="cstate_" + str(i))
+
+        # decode and add to list
+        self.decoder_state(self, in_name="cstate_" + str(i), out_name="pred_state_" + str(i))
 
         # compression mapping
         self.compression_mapping(self, in_name="cstate_" + str(i), out_name="cstate_" + str(i+1))
@@ -122,6 +122,10 @@ class LatNet:
     for name in feed_dict.keys():
       tf_feed_dict[self.in_tensors[name]] = feed_dict[name]
     _, l = self.sess.run([self.out_tensors['train_op'], self.out_tensors['loss']], feed_dict=tf_feed_dict)
+    #print("feed dict")
+    #print(feed_dict['true_state_1'][0, 100, 100, :])
+    #print("out")
+    #print(self.sess.run(self.out_tensors['pred_state_1'], feed_dict=tf_feed_dict)[0, 100, 100, :])
    
     # print required data and save
     step = self.sess.run(self.out_tensors['global_step'])
@@ -215,7 +219,7 @@ class LatNet:
     # add conv to tensor computation
     self.out_tensors[out_name] =  nn.transpose_conv_layer(self.out_tensors[in_name],
                                                         kernel_size, stride, filter_size, 
-                                                        name=weight_name, nonlinearity=None)
+                                                        name=weight_name, nonlinearity=nonlinearity)
 
     # add conv to the shape converter
     for name in self.shape_converters.keys():
@@ -270,8 +274,10 @@ class LatNet:
 
   def image_combine(self, a_name, b_name, mask_name, out_name):
     # as seen in "Generating Videos with Scene Dynamics" figure 1
-    self.out_tensors[out_name] = ((self.out_tensors[a_name] *      self.out_tensors[mask_name] )
-                                + (self.out_tensors[b_name] * (1 - self.out_tensors[mask_name])))
+    #self.out_tensors[out_name] = ((self.out_tensors[a_name] *      self.out_tensors[mask_name] )
+    #                            + (self.out_tensors[b_name]))
+                                #+ (self.out_tensors[b_name] * (1 - self.out_tensors[mask_name])))
+    self.out_tensors[out_name] = self.out_tensors[a_name] + self.out_tensors[b_name]
 
     # take shape converters from a_name
     # TODO add tools to how shape converters are merged to make safer

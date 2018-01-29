@@ -32,7 +32,7 @@ CONFIGS['nr_residual_encoder'] = 2
 CONFIGS['nr_downsamples'] = 2
 
 # what nonlinearity to use, leakey_relu, relu, elu, concat_elu
-CONFIGS['nonlinearity']="relu"
+CONFIGS['nonlinearity']="elu"
 nonlinearity = set_nonlinearity(CONFIGS['nonlinearity'])
 
 # gated res blocks
@@ -115,8 +115,8 @@ def compression_mapping_boundary(pipe, in_cstate_name, in_cboundary_name, out_na
                     num_split=2, axis=3)
 
   # normalize cboundary_mask between 0 and 1
-  pipe.nonlinearity(name=in_cboundary_name + "_mask", 
-                    nonlinearity_name="sigmoid")
+  #pipe.nonlinearity(name=in_cboundary_name + "_mask", 
+  #                  nonlinearity_name="hard_sigmoid")
 
   # apply image mask
   pipe.image_combine(a_name=in_cstate_name, 
@@ -158,6 +158,6 @@ def decoder_state(pipe, in_name, out_name, lattice_size=9):
                   filter_size=lattice_size, 
                   weight_name="last_up_conv")
 
-  pipe.nonlinearity(name=out_name, nonlinearity_name='tanh')
+  #pipe.nonlinearity(name=out_name, nonlinearity_name='tanh')
 
 
