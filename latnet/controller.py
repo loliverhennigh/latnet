@@ -47,7 +47,7 @@ class LatNetController(object):
       group.add_argument('--seq_length', help='all mode', type=int, 
                         default=5)
       group.add_argument('--batch_size', help='all mode', type=int,
-                        default=2)
+                        default=4)
       group.add_argument('--optimizer', help='all mode', type=str,
                         default='adam')
       group.add_argument('--lr', help='all mode', type=float,
@@ -79,7 +79,7 @@ class LatNetController(object):
       group.add_argument('--sim_dir', help='eval mode', type=str,
                         default='./simulation/')
       group.add_argument('--sim_save_every', help='eval mode', type=int,
-                        default=2)
+                        default=1)
 
       group = self._config_parser.add_group('Simulation Process Details')
       group.add_argument('--compare', help='compares to sailfish simulation', type=bool,

@@ -86,6 +86,9 @@ class EvalDomain(Domain):
     rho = 1.0
     return rho
 
+  def compare_script(self, iteration, true_vel, true_rho, generated_vel, generated_rho):
+    plt.imshow(np.concatenate([true_vel[:,:,0], generated_vel[:,:,0]], axis=0))
+    plt.savefig('./figs/compare_' + str(iteration) + '.png')
 
   def __init__(self, *args, **kwargs):
     super(EvalDomain, self).__init__(*args, **kwargs)

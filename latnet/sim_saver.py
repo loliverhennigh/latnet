@@ -40,9 +40,9 @@ class SimSaver:
     plt.imshow(vel[0,:,:,0])
     plt.savefig('figs/out_state_' + str(iteration) + '.png')
     if self.save_cstate:
-      np.savez(file_name, vel=vel, rho=rho, cstate=cstate)
+      np.savez(file_name, vel=vel[0], rho=rho[0], cstate=cstate[0])
     else:
-      np.savez(file_name, vel=vel, rho=rho)
+      np.savez(file_name, vel=vel[0], rho=rho[0])
     self.latnet_files.append(file_name)
 
   def read_vel_rho(self, iteration, subdomain=None):

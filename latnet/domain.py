@@ -77,7 +77,7 @@ class Domain(object):
   def density_initial_conditions(self, hx, hy, shape):
     pass
 
-  def compare_script(self, true_vel, true_rho, generated_vel, generated_rho):
+  def compare_script(self, iteration, true_vel, true_rho, generated_vel, generated_rho):
     pass
 
   def make_geometry_input(self, where_boundary, velocity, where_velocity, density, where_density):
@@ -225,10 +225,6 @@ class Domain(object):
 
     # run simulation
     for i in xrange(self.num_iters):
-      cstate = self.cstate_to_cstate(cmapping, 
-                                     cmapping_shape_converter, 
-                                     cstate, cboundary)
-
       if i % self.sim_save_every == 0:
         # decode state
         vel, rho = self.cstate_to_state(decoder, 
@@ -237,6 +233,10 @@ class Domain(object):
         # vis and save
         self.vis.update_vel_rho(i, vel, rho)
         self.saver.save(i, vel, rho, cstate)
+
+      cstate = self.cstate_to_cstate(cmapping, 
+                                     cmapping_shape_converter, 
+                                     cstate, cboundary)
 
     # generate comparision simulation
     if self.compare:
@@ -252,7 +252,7 @@ class Domain(object):
           # this functionality will probably be changed TODO
           true_vel, true_rho = self.sailfish_runner.read_vel_rho(i + self.sim_restore_iter + 1)
           generated_vel, generated_rho = self.saver.read_vel_rho(i)
-          self.compare_script(true_vel, true_rho, generated_vel, generated_rho)
+          self.compare_script(i, true_vel, true_rho, generated_vel, generated_rho)
 
   def state_to_cstate(self, encoder, encoder_shape_converter):
 
@@ -263,6 +263,7 @@ class Domain(object):
       subdomain = SubDomain(pos, self.input_cshape)
       input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
       if self.start_state is not None:
+        print("aaaaaaaa")
         start_state = numpy_utils.mobius_extract(self.start_state, input_subdomain, has_batch=False)
         start_state = np.expand_dims(start_state, axis=0)
       else:
@@ -289,6 +290,7 @@ class Domain(object):
       input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
       if self.start_boundary is not None:
         input_geometry = numpy_utils.mobius_extract(self.start_boundary, input_subdomain, has_batch=False)
+        print("aaaaaaaa")
       else:
         h = np.mgrid[input_subdomain.pos[0]:input_subdomain.pos[0] + input_subdomain.size[0],
                      input_subdomain.pos[1]:input_subdomain.pos[1] + input_subdomain.size[1]]
@@ -312,13 +314,14 @@ class Domain(object):
   def cstate_to_cstate(self, cmapping, cmapping_shape_converter, cstate, cboundary):
 
     nr_subdomains = [int(math.ceil(x/float(y))) for x, y in zip(self.sim_cshape, self.input_cshape)]
+    print(nr_subdomains)
     new_cstate = []
     for i, j in itertools.product(xrange(nr_subdomains[0]), xrange(nr_subdomains[1])):
       pos = [i * self.input_cshape[0], j * self.input_cshape[1]]
       subdomain = SubDomain(pos, self.input_cshape)
       input_subdomain = cmapping_shape_converter.out_in_subdomain(copy(subdomain))
-      new_cstate.append(cmapping(numpy_utils.mobius_extract(cstate, input_subdomain, has_batch=True),
-                                 numpy_utils.mobius_extract(cboundary, input_subdomain, has_batch=True )))
+      new_cstate.append(cmapping(numpy_utils.mobius_extract(cstate, copy(input_subdomain), has_batch=True),
+                                 numpy_utils.mobius_extract(cboundary, copy(input_subdomain), has_batch=True )))
 
     # list to full tensor
     new_cstate = numpy_utils.stack_grid(new_cstate, nr_subdomains, has_batch=True)

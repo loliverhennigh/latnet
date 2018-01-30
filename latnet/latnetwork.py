@@ -69,13 +69,13 @@ class LatNet:
   
       # unroll all
       for i in xrange(self.seq_length):
+        # decode and add to list
+        self.decoder_state(self, in_name="cstate_" + str(i), out_name="pred_state_" + str(i))
+
         # apply boundary
         self.compression_mapping_boundary(self, in_cstate_name="cstate_" + str(i), 
                                                 in_cboundary_name="cboundary", 
                                                 out_name="cstate_" + str(i))
-
-        # decode and add to list
-        self.decoder_state(self, in_name="cstate_" + str(i), out_name="pred_state_" + str(i))
 
         # compression mapping
         self.compression_mapping(self, in_name="cstate_" + str(i), out_name="cstate_" + str(i+1))
@@ -274,10 +274,9 @@ class LatNet:
 
   def image_combine(self, a_name, b_name, mask_name, out_name):
     # as seen in "Generating Videos with Scene Dynamics" figure 1
-    #self.out_tensors[out_name] = ((self.out_tensors[a_name] *      self.out_tensors[mask_name] )
-    #                            + (self.out_tensors[b_name]))
-                                #+ (self.out_tensors[b_name] * (1 - self.out_tensors[mask_name])))
-    self.out_tensors[out_name] = self.out_tensors[a_name] + self.out_tensors[b_name]
+    self.out_tensors[out_name] = ((self.out_tensors[a_name] *      self.out_tensors[mask_name] )
+                                + (self.out_tensors[b_name] * (1 - self.out_tensors[mask_name])))
+    #self.out_tensors[out_name] = self.out_tensors[a_name] + self.out_tensors[b_name]
 
     # take shape converters from a_name
     # TODO add tools to how shape converters are merged to make safer

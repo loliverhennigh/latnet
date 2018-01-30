@@ -161,7 +161,7 @@ class TrainSailfishRunner(SailfishRunner):
 
   def __init__(self, config, save_dir, script_name):
     SailfishRunner.__init__(self, config, save_dir, script_name)
-    self.num_cpoints = 4
+    self.num_cpoints = 20
     # more configs will probably be added later
 
   def read_train_data(self, state_subdomain, boundary_subdomain, seq_state_subdomain):
