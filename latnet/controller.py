@@ -33,11 +33,11 @@ class LatNetController(object):
 
       group = self._config_parser.add_group('Network Input Details')
       group.add_argument('--input_shape', help='all mode', type=str,
-                         default='512x512')
+                         default='256x256')
       group.add_argument('--input_cshape', help='all mode', type=str,
                          default='128x128')
       group.add_argument('--lb_to_ln', help='all mode', type=int,
-                        default=120)
+                        default=60)
 
       group = self._config_parser.add_group('Network Saver Details')
       group.add_argument('--save_network_freq', help='all mode', type=int, 
@@ -47,7 +47,9 @@ class LatNetController(object):
       group.add_argument('--seq_length', help='all mode', type=int, 
                         default=5)
       group.add_argument('--batch_size', help='all mode', type=int,
-                        default=4)
+                        default=2)
+      group.add_argument('--gpus', help='all mode', type=str,
+                        default='0')
       group.add_argument('--optimizer', help='all mode', type=str,
                         default='adam')
       group.add_argument('--lr', help='all mode', type=float,
@@ -59,7 +61,7 @@ class LatNetController(object):
       group.add_argument('--train_sim_dir', help='train mode', type=str,
                         default='./data_train/sailfish_sim/')
       group.add_argument('--gpu_fraction', help='all mode', type=float,
-                        default=0.3)
+                        default=0.9)
       group.add_argument('--num_simulations', help='all mode', type=int,
                         default=10)
       group.add_argument('--max_queue', help='all mode', type=int,

@@ -23,26 +23,26 @@ CONFIGS = {}
 PADDING = {}
 
 # number of residual blocks in compression mapping
-CONFIGS['nr_residual_compression'] = 3
+CONFIGS['nr_residual_compression'] = 2
 
 # number of residual blocks in encoder mappings
-CONFIGS['nr_residual_encoder'] = 2
+CONFIGS['nr_residual_encoder'] = 1
 
 # numper of downsamples
-CONFIGS['nr_downsamples'] = 2
+CONFIGS['nr_downsamples'] = 3
 
 # what nonlinearity to use, leakey_relu, relu, elu, concat_elu
-CONFIGS['nonlinearity']="elu"
+CONFIGS['nonlinearity']="relu"
 nonlinearity = set_nonlinearity(CONFIGS['nonlinearity'])
 
 # gated res blocks
-CONFIGS['gated']=False
+CONFIGS['gated']=True
 
 # filter size for first res block. the rest of the filters are 2x every downsample
-CONFIGS['filter_size']=16
+CONFIGS['filter_size']=32
 
 # final filter size
-CONFIGS['filter_size_compression']=128
+CONFIGS['filter_size_compression']=32
 
 # encoder state
 def encoder_state(pipe, in_name, out_name):

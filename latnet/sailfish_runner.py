@@ -183,6 +183,7 @@ class TrainSailfishRunner(SailfishRunner):
     # read seq states
     seq_state = []
     for i in xrange(len(seq_state_subdomain)):
+      #print(seq_state_subdomain[i].size)
       seq_state.append(self.read_state(ind + i, seq_state_subdomain[i]))
 
     return state, boundary, seq_state

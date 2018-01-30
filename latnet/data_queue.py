@@ -30,6 +30,8 @@ class DataQueue:
     self.num_simulations = config.num_simulations
     self.seq_length      = config.seq_length
     self.free_gpu        = True
+    gpus = config.gpus.split(',')
+    self.gpus = map(int, gpus)
 
     # shape
     sim_shape = config.sim_shape.split('x')
@@ -65,7 +67,7 @@ class DataQueue:
       geometry_subdomain = SubDomain(rand_pos, self.input_shape)
       seq_state_subdomain = []
       for i in xrange(self.seq_length):
-        seq_state_subdomain.append(self.shape_converters['state', 'pred_state_' + str(i)].in_out_subdomain(copy(state_subdomain)))
+        seq_state_subdomain.append(self.shape_converters['state' + '_gpu_' + str(self.gpus[0]), 'pred_state_' + str(i) + '_gpu_' + str(self.gpus[0])].in_out_subdomain(copy(state_subdomain)))
 
       # get geometry and lat data
       state, geometry, seq_state = sim.read_train_data(state_subdomain,
@@ -83,7 +85,7 @@ class DataQueue:
       self.queue.put(None)
    
     # possibly wait if data needs time to queue up
-    while len(self.queue_batches) < 2*self.batch_size: # added times two to make sure enough
+    while len(self.queue_batches) < 2*self.batch_size*len(self.gpus): # added times two to make sure enough
       print("spending time waiting for queue")
       time.sleep(1.01)
 
@@ -91,7 +93,7 @@ class DataQueue:
     batch_state = []
     batch_geometry = []
     batch_seq_state = []
-    for i in xrange(self.batch_size): 
+    for i in xrange(self.batch_size*len(self.gpus)): 
       batch_state.append(self.queue_batches[0][0])
       batch_geometry.append(self.queue_batches[0][1])
       batch_seq_state.append(self.queue_batches[0][2])
@@ -107,15 +109,12 @@ class DataQueue:
 
     # make feed dict
     feed_dict = {}
-    #feed_dict['state'] = np.zeros_like(batch_state)
-    #feed_dict['state'] = np.zeros_like(batch_state)
-    feed_dict['state'] = batch_state
-    #feed_dict['boundary'] = np.zeros_like(batch_geometry)
-    feed_dict['boundary'] = batch_geometry
-    for i in xrange(self.seq_length):
-      #feed_dict['true_state_' + str(i)] = np.zeros_like(batch_seq_state[i])
-      #feed_dict['true_state_' + str(i)] = np.zeros_like(batch_seq_state[i]) + 1.0
-      feed_dict['true_state_' + str(i)] = batch_seq_state[i]
+    for i in xrange(len(self.gpus)):
+      gpu_str = '_gpu_' + str(self.gpus[i])
+      feed_dict['state' + gpu_str] = batch_state[i*self.batch_size:(i+1)*self.batch_size]
+      feed_dict['boundary' + gpu_str] = batch_geometry[i*self.batch_size:(i+1)*self.batch_size]
+      for j in xrange(self.seq_length):
+        feed_dict['true_state_' + str(j) + gpu_str] = batch_seq_state[j][i*self.batch_size:(i+1)*self.batch_size]
       
     return feed_dict
 

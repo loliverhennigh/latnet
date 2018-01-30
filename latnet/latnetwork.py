@@ -25,6 +25,8 @@ class LatNet:
     self.network_dir  = config.latnet_network_dir
     self.network_name = config.network_name
     self.seq_length = config.seq_length
+    gpus = config.gpus.split(',')
+    self.gpus = map(int, gpus)
 
     if self.network_name == "basic_network":
       import network_architectures.basic_network as net
@@ -52,53 +54,73 @@ class LatNet:
       # global step counter
       self.add_tensor('global_step', tf.get_variable('global_step', [], 
                        initializer=tf.constant_initializer(0), trainable=False))
-      # make input state and boundary
-      self.add_tensor('state', tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.DxQy.Q]))
-      tf.summary.image('state', self.DxQy.lattice_to_norm(self.in_tensors['state']))
-      self.add_tensor('boundary', tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [4]))
-      tf.summary.image('boundary', self.in_tensors['boundary'][...,0:1])
-      # make seq of output states
-      for i in xrange(self.seq_length):
-        self.add_tensor('true_state_' + str(i), tf.placeholder(tf.float32, (2 + self.DxQy.dims) * [None]))
-        tf.summary.image('true_state_' + str(i), self.DxQy.lattice_to_norm(self.in_tensors['true_state_' + str(i)]))
-  
-      ###### Unroll Graph ######
-      # encode
-      self.encoder_state(self, in_name="state", out_name="cstate_0")
-      self.encoder_boundary(self, in_name="boundary", out_name="cboundary")
-  
-      # unroll all
-      for i in xrange(self.seq_length):
-        # decode and add to list
-        self.decoder_state(self, in_name="cstate_" + str(i), out_name="pred_state_" + str(i))
 
-        # apply boundary
-        self.compression_mapping_boundary(self, in_cstate_name="cstate_" + str(i), 
-                                                in_cboundary_name="cboundary", 
-                                                out_name="cstate_" + str(i))
+      for i in xrange(len(self.gpus)):
+        gpu_str = '_gpu_' + str(self.gpus[i])
+        with tf.device('/gpu:%d' % self.gpus[i]):
+          # make input state and boundary
+          self.add_tensor('state' + gpu_str, tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.DxQy.Q]))
+          self.add_tensor('boundary' + gpu_str, tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [4]))
+          if i == 0:
+            with tf.device('/cpu:0'):
+              tf.summary.image('state', self.DxQy.lattice_to_norm(self.in_tensors['state' + gpu_str]))
+              tf.summary.image('boundary', self.in_tensors['boundary' + gpu_str][...,0:1])
+          # make seq of output states
+          for j in xrange(self.seq_length):
+            self.add_tensor('true_state_' + str(j) + gpu_str, tf.placeholder(tf.float32, (2 + self.DxQy.dims) * [None]))
+            if i == 0:
+              with tf.device('/cpu:0'):
+                tf.summary.image('true_state_' + str(j), self.DxQy.lattice_to_norm(self.in_tensors['true_state_' + str(j) + gpu_str]))
+      
+          ###### Unroll Graph ######
+          # encode
+          self.encoder_state(self, in_name="state" + gpu_str, out_name="cstate_0" + gpu_str)
+          self.encoder_boundary(self, in_name="boundary" + gpu_str, out_name="cboundary" + gpu_str)
+      
+          # unroll all
+          for j in xrange(self.seq_length):
+            # decode and add to list
+            self.decoder_state(self, in_name="cstate_" + str(j) + gpu_str, out_name="pred_state_" + str(j) + gpu_str)
+    
+            # apply boundary
+            self.compression_mapping_boundary(self, in_cstate_name="cstate_" + str(j) + gpu_str, 
+                                                    in_cboundary_name="cboundary" + gpu_str, 
+                                                    out_name="cstate_" + str(j) + gpu_str)
+    
+            # compression mapping
+            self.compression_mapping(self, in_name="cstate_" + str(j) + gpu_str, out_name="cstate_" + str(j+1) + gpu_str)
+            self.out_tensors['cboundary' + gpu_str] = self.out_tensors['cboundary' + gpu_str][:,4:-4,4:-4] # TODO fix this
+   
+            if i == 0:
+              with tf.device('/cpu:0'):
+                # make image summary
+                tf.summary.image('predicted_state_vel_' + str(j), self.DxQy.lattice_to_norm(self.out_tensors['pred_state_' + str(i) + gpu_str]))
+      
+          ###### Loss Operation ######
+          # define mse loss
+          self.out_tensors["loss" + gpu_str] = 0.0
+          for j in xrange(self.seq_length):
+            self.mse(true_name='true_state_' + str(j) + gpu_str,
+                     pred_name='pred_state_' + str(j) + gpu_str,
+                     loss_name='loss_' + str(j) + gpu_str)
+            self.out_tensors['loss' + gpu_str] += self.out_tensors['loss_' + str(j) + gpu_str]
+ 
+          ###### Grad Operation ######
+          if i == 0:
+            all_params = tf.trainable_variables()
+          self.out_tensors['grads' + gpu_str] = tf.gradients(self.out_tensors['loss' + gpu_str], all_params)
 
-        # compression mapping
-        self.compression_mapping(self, in_name="cstate_" + str(i), out_name="cstate_" + str(i+1))
-        self.out_tensors['cboundary'] = self.out_tensors['cboundary'][:,6:-6,6:-6] # TODO fix this
+      # store up the loss and gradients on gpu:0
+      with tf.device('/gpu:0'):
+        for i in range(1, len(self.gpus)):
+          self.out_tensors['loss_gpu_' + str(self.gpus[0])] += self.out_tensors['loss_gpu_' + str(self.gpus[i])]
+          for j in range(len(self.out_tensors['grads_gpu_' + str(self.gpus[0])])):
+            self.out_tensors['grads_gpu_' + str(self.gpus[0])][j] += self.out_tensors['grads_gpu_' + str(self.gpus[i])][j]
+      tf.summary.scalar('total_loss', self.out_tensors['loss_gpu_' + str(self.gpus[0])])
 
-        # make image summary
-        tf.summary.image('predicted_state_vel_', self.DxQy.lattice_to_norm(self.out_tensors['pred_state_' + str(i)]))
-  
-      ###### Loss Operation ######
-      # define mse loss
-      self.out_tensors["loss"] = 0.0
-      for i in xrange(self.seq_length):
-        self.mse(true_name='true_state_' + str(i),
-                 pred_name='pred_state_' + str(i),
-                 loss_name='loss_' + str(i))
-        self.out_tensors['loss'] += self.out_tensors['loss_' + str(i)]
-      tf.summary.scalar('loss', self.out_tensors['loss'])
-  
       ###### Train Operation ######
-      all_params = tf.trainable_variables()
       self.optimizer = Optimizer(self.config)
-      self.optimizer.compute_gradients(self.out_tensors['loss'], all_params)
-      self.out_tensors['train_op'] = self.optimizer.train_op(all_params, self.out_tensors['global_step'])
+      self.out_tensors['train_op'] = self.optimizer.train_op(all_params, self.out_tensors['grads_gpu_' + str(self.gpus[0])], self.out_tensors['global_step'])
   
       ###### Start Session ######
       self.sess = self.start_session()
@@ -110,9 +132,11 @@ class LatNet:
 
   def train_shape_converter(self):
     shape_converters = {}
-    for i in xrange(self.seq_length):
-      name = ("state", "pred_state_" + str(i))
-      shape_converters[name] = self.shape_converters[name]
+    for i in xrange(len(self.gpus)):
+      gpu_str = '_gpu_' + str(self.gpus[i])
+      for j in xrange(self.seq_length):
+        name = ("state" + gpu_str, "pred_state_" + str(j) + gpu_str)
+        shape_converters[name] = self.shape_converters[name]
     return shape_converters
 
   def train_step(self, feed_dict):
@@ -121,11 +145,7 @@ class LatNet:
     tf_feed_dict = {}
     for name in feed_dict.keys():
       tf_feed_dict[self.in_tensors[name]] = feed_dict[name]
-    _, l = self.sess.run([self.out_tensors['train_op'], self.out_tensors['loss']], feed_dict=tf_feed_dict)
-    #print("feed dict")
-    #print(feed_dict['true_state_1'][0, 100, 100, :])
-    #print("out")
-    #print(self.sess.run(self.out_tensors['pred_state_1'], feed_dict=tf_feed_dict)[0, 100, 100, :])
+    _, l = self.sess.run([self.out_tensors['train_op'], self.out_tensors['loss_gpu_' + str(self.gpus[0])]], feed_dict=tf_feed_dict)
    
     # print required data and save
     step = self.sess.run(self.out_tensors['global_step'])
@@ -300,7 +320,7 @@ class LatNet:
   def mse(self, true_name, pred_name, loss_name):
     self.out_tensors[loss_name] = tf.nn.l2_loss(self.in_tensors[ true_name] 
                                               - self.out_tensors[pred_name])
-    tf.summary.scalar('loss_' + true_name + "_and_" + pred_name, self.out_tensors[loss_name])
+    #tf.summary.scalar('loss_' + true_name + "_and_" + pred_name, self.out_tensors[loss_name])
 
   def combine_pipe(self, other_pipe):
     self.in_tensors.update(other_pipe.in_tensors)
@@ -331,8 +351,9 @@ class LatNet:
         self.shape_converters[name[0],new_name] = self.shape_converters.pop(name)
 
   def start_session(self):
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.8)
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.9)
     sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+    #sess = tf.Session()
     init = tf.global_variables_initializer()
     sess.run(init)
     return sess

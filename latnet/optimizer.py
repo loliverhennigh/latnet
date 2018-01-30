@@ -16,10 +16,7 @@ class Optimizer:
     if config.optimizer == "adam":
       self.train_op = self.adam_updates
 
-  def compute_gradients(self, loss, params):
-    self.gradients = tf.gradients(loss, params)
-
-  def adam_updates(self, params, global_step, mom1=0.9, mom2=0.999):
+  def adam_updates(self, params, gradients, global_step, mom1=0.9, mom2=0.999):
     ''' Adam optimizer '''
     updates = []
 
@@ -28,7 +25,7 @@ class Optimizer:
     updates.append(tf.group(ema.apply(params)))
  
     t = tf.Variable(1., 'adam_t')
-    for p, g in zip(params, self.gradients):
+    for p, g in zip(params, gradients):
       mg = tf.Variable(tf.zeros(p.get_shape()), p.name + '_adam_mg')
       if mom1>0:
         v = tf.Variable(tf.zeros(p.get_shape()), p.name + '_adam_v')
