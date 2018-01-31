@@ -11,22 +11,21 @@ import numpy as np
 import cv2
 import glob
 
-def rand_vel(max_vel=.25, min_vel=.05):
-  vel_x = np.random.uniform(max_vel, min_vel)
-  return (vel_x, 0.0)
+def rand_vel():
+  vel_x = np.random.uniform(0.2, 0.1)
+  vel_y = np.random.uniform(0.0, -0.005)
+  return (vel_x, vel_y)
 
 class TrainDomain(Domain):
   script_name = __file__
 
-  #vel = rand_vel()
-  vel = (0.2, 0.0)
+  vel = rand_vel()
 
   def geometry_boundary_conditions(self, hx, hy, shape):
     where_boundary = (hx == shape[0]-1) | (hx == 0) | (hy == 0)
     return where_boundary
 
   def velocity_boundary_conditions(self, hx, hy, shape):
-    #where_velocity = (hx == 0) & np.logical_not(walls)
     where_velocity = (hy == shape[1]-1) & (hx > 0) & (hx < shape[0]-1)
     velocity = self.vel
     return where_velocity, velocity
@@ -42,6 +41,13 @@ class TrainDomain(Domain):
   def density_initial_conditions(self, hx, hy, shape):
     rho = 1.0
     return rho
+
+  @classmethod
+  def update_defaults(cls, defaults):
+    defaults.update({
+        'lat_nx': 256,
+        'lat_ny': 256})
+
 
   def __init__(self, *args, **kwargs):
     super(TrainDomain, self).__init__(*args, **kwargs)

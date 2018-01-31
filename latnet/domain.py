@@ -167,6 +167,10 @@ class Domain(object):
                               default=1000)
         group.add_argument('--restore_geometry', help='all modes', type=bool,
                               default=False)
+        group.add_argument('--sim_shape', help='all modes', type=str,
+                              default='512x512')
+        group.add_argument('--lb_to_ln', help='all modes', type=int,
+                              default=60)
 
       @classmethod
       def update_defaults(cls, defaults):
@@ -184,7 +188,7 @@ class Domain(object):
       @classmethod
       def modify_config(cls, config):
         config.visc   = visc
-        config.mode   = "batch"
+        #config.mode   = "batch"
 
       def __init__(self, *args, **kwargs):
         super(SailfishSimulation, self).__init__(*args, **kwargs)

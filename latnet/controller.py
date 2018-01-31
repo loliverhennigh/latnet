@@ -98,11 +98,17 @@ class LatNetController(object):
       group.add_argument('--restore_from', help='all mode', type=str,
                         default='')
       group.add_argument('--max_sim_iters', help='all mode', type=int,
-                        default=50000)
+                        default=50)
       group.add_argument('--visc', help='all mode', type=float,
                         default=0.1)
       group.add_argument('--restore_geometry', help='all mode', type=bool,
                         default=False)
+      group.add_argument('--scr_scale', help='all mode', type=float,
+                        default=.5)
+      group.add_argument('--debug_sailfish', help='all mode', type=bool,
+                        default=False)
+      group.add_argument('--every', help='all mode', type=int,
+                        default=100)
 
     def run(self):
 

@@ -15,6 +15,7 @@ class SailfishRunner:
     self.lb_to_ln = config.lb_to_ln
     self.max_sim_iters = config.max_sim_iters
     self.script_name = script_name
+    self.debug_sailfish = config.debug_sailfish
  
     sim_shape = config.sim_shape.split('x')
     sim_shape = map(int, sim_shape)
@@ -95,9 +96,13 @@ class SailfishRunner:
 
     cmd = ('./' + self.script_name 
          + ' --run_mode=generate_data'
-         + ' --train_sim_dir=' + self.save_dir + '/store/flow'
          + ' --max_sim_iters=' + str(self.lb_to_ln*num_iters + 1)
          + ' --checkpoint_from=0')
+    if self.debug_sailfish:
+      cmd += ' --mode=visualization'
+      cmd += ' --scr_scale=.5'
+    else:
+      cmd += ' --train_sim_dir=' + self.save_dir + '/store/flow'
     p = ps.subprocess.Popen(cmd.split(' '), 
                             env=dict(os.environ, CUDA_VISIBLE_DEVICES='1'))
     p.communicate()
@@ -113,12 +118,16 @@ class SailfishRunner:
 
     cmd = ('./' + self.script_name 
          + ' --run_mode=generate_data'
-         + ' --train_sim_dir=' + self.save_dir + '/store/flow'
          + ' --max_sim_iters=' + str(self.latnet_iter_to_sailfish_iter(num_iters
                                                                     + last_iter) + 1)
          + ' --checkpoint_from=0'
          + ' --restore_geometry=True'
          + ' --restore_from=' + last_cpoint[:-13])
+    if self.debug_sailfish:
+      cmd += ' --mode=visualization'
+      cmd += ' --scr_scale=.5'
+    else:
+      cmd += ' --train_sim_dir=' + self.save_dir + '/store/flow'
     p = ps.subprocess.Popen(cmd.split(' '), 
                             env=dict(os.environ, CUDA_VISIBLE_DEVICES='1'))
     p.communicate()
@@ -161,7 +170,7 @@ class TrainSailfishRunner(SailfishRunner):
 
   def __init__(self, config, save_dir, script_name):
     SailfishRunner.__init__(self, config, save_dir, script_name)
-    self.num_cpoints = 20
+    self.num_cpoints = config.max_sim_iters
     # more configs will probably be added later
 
   def read_train_data(self, state_subdomain, boundary_subdomain, seq_state_subdomain):
