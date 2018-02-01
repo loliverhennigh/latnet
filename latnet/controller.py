@@ -28,8 +28,6 @@ class LatNetController(object):
       group = self._config_parser.add_group('Network Details')
       group.add_argument('--latnet_network_dir', help='all mode', type=str,
                         default='./network_checkpoint')
-      group.add_argument('--network_name', help='all mode', type=str,
-                        default='advanced_network')
 
       group = self._config_parser.add_group('Network Input Details')
       group.add_argument('--input_shape', help='all mode', type=str,
@@ -47,19 +45,19 @@ class LatNetController(object):
       group.add_argument('--seq_length', help='all mode', type=int, 
                         default=5)
       group.add_argument('--batch_size', help='all mode', type=int,
-                        default=2)
+                        default=4)
       group.add_argument('--gpus', help='all mode', type=str,
                         default='0')
       group.add_argument('--optimizer', help='all mode', type=str,
                         default='adam')
       group.add_argument('--lr', help='all mode', type=float,
-                        default=0.0010)
+                        default=0.0001)
       group.add_argument('--train_iterations', help='all mode', type=int,
                         default=1000000)
 
       group = self._config_parser.add_group('Data Queue Details')
       group.add_argument('--train_sim_dir', help='train mode', type=str,
-                        default='./data_train/sailfish_sim/')
+                        default='./data_train/sailfish_sim')
       group.add_argument('--gpu_fraction', help='all mode', type=float,
                         default=0.9)
       group.add_argument('--num_simulations', help='all mode', type=int,
@@ -75,11 +73,11 @@ class LatNetController(object):
       group.add_argument('--num_iters', help='eval mode', type=int,
                         default=15)
       group.add_argument('--sim_restore_iter', help='if 0 then it will not restore', type=int,
-                        default=1)
+                        default=10)
 
       group = self._config_parser.add_group('Simulation Saver Details')
       group.add_argument('--sim_dir', help='eval mode', type=str,
-                        default='./simulation/')
+                        default='./simulation')
       group.add_argument('--sim_save_every', help='eval mode', type=int,
                         default=1)
 
@@ -110,6 +108,19 @@ class LatNetController(object):
       group.add_argument('--every', help='all mode', type=int,
                         default=100)
 
+      self.network_name = _sim.network_name
+      group = self._config_parser.add_group('Network Configs')
+      # add network specific configs
+      for base in LatNet.mro():
+          if 'add_options' in base.__dict__:
+              base.add_options(group, self.network_name)
+
+      # update default configs based on simulation-specific class.
+      if self._sim is not None:
+        defaults = {}
+        self._sim.update_defaults(defaults)
+        self._config_parser.set_defaults(defaults)
+
     def run(self):
 
       # parse config
@@ -126,7 +137,7 @@ class LatNetController(object):
     def train(self, config):
 
       # make network
-      self.network = LatNet(self.config)
+      self.network = LatNet(self.config, self.network_name, self._sim.script_name)
 
       # unroll train_unroll
       self.network.train_unroll()
@@ -134,12 +145,12 @@ class LatNetController(object):
       # construct dataset
       self.dataset = DataQueue(self.config, self._sim, self.network.train_shape_converter())
 
+      # train network
+      self.network.train()
       while True:
+        queue_stats = self.dataset.queue_stats()
         feed_dict = self.dataset.minibatch()
-        self.network.train_step(feed_dict)
-        #if finished:
-        #  print("finished training")
-        #  break
+        self.network.train_step(feed_dict, queue_stats)
 
     def generate_data(self, config):
 
@@ -148,7 +159,7 @@ class LatNetController(object):
 
     def eval(self, config):
 
-      self.network = LatNet(self.config)
+      self.network = LatNet(self.config, self.network_name, self._sim.script_name)
 
       with tf.Graph().as_default():
 
@@ -158,7 +169,7 @@ class LatNetController(object):
          decoder_shape_converter) = self.network.eval_unroll()
 
         # run simulation
-        self.domain = self._sim(config, self.network.network_config['nr_downsamples'])
+        self.domain = self._sim(config, self.config.nr_downsamples)
 
         self.domain.run(state_encoder, 
                         boundary_encoder, 

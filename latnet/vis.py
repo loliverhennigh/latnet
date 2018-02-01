@@ -12,6 +12,7 @@ class Visualizations:
     self.DxQy = lattice.TYPES[config.DxQy]
 
   def update_vel_rho(self, iteration, vel, rho):
-    plt.imshow(vel[0,:,:,0])
-    plt.savefig('./figs/out_vel_' + str(iteration) + '.png')
+    #plt.imshow(vel[0,:,:,0])
+    #plt.savefig('./figs/out_vel_' + str(iteration) + '.png')
+    pass
 

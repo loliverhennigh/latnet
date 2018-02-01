@@ -5,11 +5,25 @@ import os
 
 class NetworkSaver:
 
-  def __init__(self, config, network_config, graph_def):
+  def __init__(self, config, network_name, script_name, graph_def):
 
     self.network_dir = config.latnet_network_dir
-    self.network_name = config.network_name
-    self.network_config = network_config
+    self.config = config
+    self.network_name = network_name
+    self.script_name = script_name
+
+    # a bit messy this way but oh well
+    self.none_save_args = ['mode', 'run_mode', 'latnet_network_dir', 'input_shape',
+                           'input_cshape', 'save_network_freq', 'seq_length',
+                           'batch_size', 'gpus', 'train_iterations', 'train_sim_dir',
+                           'gpu_fraction', 'num_simulations', 'max_queue', 'sim_shape',
+                           'num_iters', 'sim_restore_iter', 'sim_dir', 'sim_save_every',
+                           'compare', 'save_format', 'save_cstate', 'checkpoint_from',
+                           'restore_from', 'max_sim_iters', 'restore_geometry', 'scr_scale',
+                           'debug_sailfish', 'every', 'unit_test', 'propagation_enabled',
+                           'time_dependence', 'space_dependence', 'incompressible', 
+                           'relaxation_enabled', 'quiet']
+
     self.checkpoint_path = self._make_checkpoint_path()
     self.saver = self._make_saver()
     self.summary_writer = self._make_summary_writer(graph_def)
@@ -20,8 +34,9 @@ class NetworkSaver:
  
     # run through all params and add them to the base path
     base_path = self.network_dir + '/' + self.network_name
-    for k, v in self.network_config.items():
-      base_path += '/' + k + '.' + str(v)
+    for k, v in self.config.__dict__.items():
+      if k not in self.none_save_args:
+        base_path += '/' + k + '.' + str(v)
     return base_path
 
   def _make_saver(self):

@@ -16,10 +16,11 @@ import numpy as np
 import cv2
 import glob
 
-class LDCDomain(Domain):
+class EvalDomain(Domain):
   script_name = __file__
+  network_name = 'advanced_network'
 
-  vel = (0.2, 0.0)
+  vel = (0.2, -0.005)
 
   def geometry_boundary_conditions(self, hx, hy, shape):
     where_boundary = (hx == shape[0]-1) | (hx == 0) | (hy == 0)
@@ -42,13 +43,36 @@ class LDCDomain(Domain):
     rho = 1.0
     return rho
 
-  def compare_script(self, iteration, sailfish_state, network_state):
-    sailfish_vel = self.DxQy.lattice_to_vel(sailfish_state)
-    latnet_vel = self.DxQy.lattice_to_vel(network_state)
-    plt.imshow(np.concatenate([sailfish_vel[:,:,:,0], latnet_vel[:,:,:,0]], axis=0))
-    plt.show()
+  @classmethod
+  def update_defaults(cls, defaults):
+    defaults.update({
+        'latnet_network_dir': './network_checkpoint_lid_driven_cavity',
+        'sim_dir': './eval_data_lid_driven_cavity',
+        'visc': 0.01,
+        'lb_to_ln': 500,
+        'seq_length': 5,
+        'input_shape': '512x512',
+        'nr_downsamples': 3,
+        'nr_residual_encoder': 1,
+        'nr_residual_compression': 2,
+        'nonlinearity': 'relu',
+        'filter_size': 32,
+        'filter_size_compression': 32,
+        'gated': True,
+        'max_sim_iters': 200,
+        'sim_shape': '512x512',
+        'num_iters': 15,
+        'run_mode': 'eval'})
+
+  def compare_script(self, iteration, true_vel, true_rho, generated_vel, generated_rho):
+    #plt.imshow(np.concatenate([true_vel[:,:,0], generated_vel[:,:,0]], axis=0))
+    plt.imshow(self.DxQy.vel_to_norm(true_vel)[:,:,0])
+    plt.savefig('./figs/compare_' + str(iteration) + '.png')
+
+  def __init__(self, *args, **kwargs):
+    super(EvalDomain, self).__init__(*args, **kwargs)
 
 if __name__ == '__main__':
-  sim = LatNetController(_sim=LDCDomain)
+  sim = LatNetController(_sim=EvalDomain)
   sim.run()
 

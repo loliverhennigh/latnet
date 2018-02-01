@@ -200,3 +200,14 @@ class TrainSailfishRunner(SailfishRunner):
   def generate_train_data(self):
     self.new_sim(self.num_cpoints)
 
+  def need_to_generate(self):
+    # check if need to generate train data or not
+    need = False
+    cpoints = self.list_cpoints()
+    if len(cpoints) != self.num_cpoints:
+      need = True 
+    boundary_file = self.boundary_file()
+    if not os.path.isfile(boundary_file):
+      need = True 
+    return need 
+

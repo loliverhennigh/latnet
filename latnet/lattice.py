@@ -61,7 +61,7 @@ class DxQy:
   @classmethod
   def vel_to_norm(cls, vel):
     if is_numpy(vel):
-      norm = np.norm(vel, axis=-1)
+      norm = np.linalg.norm(vel, axis=-1)
       norm = np.expand_dims(norm, axis=-1)
     else:
       norm = tf.norm(vel, axis=-1)
@@ -98,6 +98,10 @@ class DxQy:
       vec = tf.constant(vec, dtype=1)
     return vec
 
+  @classmethod
+  def vel_to_freq(cls, vel):
+    pass
+
 class D2Q9(DxQy):
   dims = 2
   Q = 9
@@ -131,11 +135,11 @@ class D2Q9(DxQy):
     vel = np.array(vel)
     vel_dot_vel = np.sum(vel * vel)
     vel_dot_c = np.sum(np.expand_dims(vel, axis=0) * self.c, axis=-1)
-    feq = self.w * (1.0 + 
-                    3.0*vel_dot_c + 
-                    4.5*vel_dot_c*vel_dot_c - 
-                    1.5*vel_dot_vel)
-    feq = feq - self.w
+    feq = self.weights * (1.0 + 
+                          3.0*vel_dot_c + 
+                          4.5*vel_dot_c*vel_dot_c - 
+                          1.5*vel_dot_vel)
+    feq = feq - self.weights
     return feq 
 
 class D3Q15(DxQy):

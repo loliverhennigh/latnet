@@ -2,6 +2,7 @@
 
 from copy import copy
 import tensorflow as tf
+import numpy as np
 
 import lattice
 import nn as nn
@@ -10,8 +11,11 @@ from shape_converter import ShapeConverter
 from optimizer import Optimizer
 from network_saver import NetworkSaver
 
-class LatNet:
-  def __init__(self, config):
+class LatNet(object):
+  # default network name
+  network_name = 'advanced_network'
+
+  def __init__(self, config, network_name, script_name):
     # in and out tensors
     self.in_tensors = {}
     self.out_tensors = {}
@@ -21,9 +25,10 @@ class LatNet:
 
     # needed configs
     self.config = config # TODO remove this when config is corrected
-    self.DxQy = lattice.TYPES[config.DxQy]
+    self.DxQy = lattice.TYPES[config.DxQy]()
     self.network_dir  = config.latnet_network_dir
-    self.network_name = config.network_name
+    self.network_name = network_name
+    self.script_name = script_name
     self.seq_length = config.seq_length
     gpus = config.gpus.split(',')
     self.gpus = map(int, gpus)
@@ -42,8 +47,14 @@ class LatNet:
     self.compression_mapping_boundary = tf.make_template('compression_mapping_boundary', net.compression_mapping_boundary)
     self.compression_mapping          = tf.make_template('compression_mapping', net.compression_mapping)
     self.decoder_state                = tf.make_template('decoder_state', net.decoder_state)
-    self.network_config               = net.CONFIGS
-    self.padding                      = net.PADDING
+
+  @classmethod
+  def add_options(cls, group, network_name):
+    if network_name == "basic_network":
+      from network_architectures.basic_network import add_options
+    elif network_name == "advanced_network":
+      from network_architectures.advanced_network import add_options
+    add_options(group)
 
   def train_unroll(self):
 
@@ -74,35 +85,38 @@ class LatNet:
       
           ###### Unroll Graph ######
           # encode
-          self.encoder_state(self, in_name="state" + gpu_str, out_name="cstate_0" + gpu_str)
-          self.encoder_boundary(self, in_name="boundary" + gpu_str, out_name="cboundary" + gpu_str)
+          self.encoder_state(self, self.config, in_name="state" + gpu_str, out_name="cstate_0" + gpu_str)
+          self.encoder_boundary(self, self.config, in_name="boundary" + gpu_str, out_name="cboundary" + gpu_str)
       
           # unroll all
           for j in xrange(self.seq_length):
             # decode and add to list
-            self.decoder_state(self, in_name="cstate_" + str(j) + gpu_str, out_name="pred_state_" + str(j) + gpu_str)
+            self.decoder_state(self, self.config, in_name="cstate_" + str(j) + gpu_str, out_name="pred_state_" + str(j) + gpu_str)
     
             # apply boundary
-            self.compression_mapping_boundary(self, in_cstate_name="cstate_" + str(j) + gpu_str, 
+            self.compression_mapping_boundary(self, self.config, in_cstate_name="cstate_" + str(j) + gpu_str, 
                                                     in_cboundary_name="cboundary" + gpu_str, 
                                                     out_name="cstate_" + str(j) + gpu_str)
     
             # compression mapping
-            self.compression_mapping(self, in_name="cstate_" + str(j) + gpu_str, out_name="cstate_" + str(j+1) + gpu_str)
-            self.out_tensors['cboundary' + gpu_str] = self.out_tensors['cboundary' + gpu_str][:,4:-4,4:-4] # TODO fix this
+            self.compression_mapping(self, self.config, in_name="cstate_" + str(j) + gpu_str, out_name="cstate_" + str(j+1) + gpu_str)
+            self.out_tensors['cboundary' + gpu_str] = self.out_tensors['cboundary' + gpu_str][:,6:-6,6:-6] # TODO fix this
    
             if i == 0:
               with tf.device('/cpu:0'):
                 # make image summary
-                tf.summary.image('predicted_state_vel_' + str(j), self.DxQy.lattice_to_norm(self.out_tensors['pred_state_' + str(i) + gpu_str]))
+                tf.summary.image('predicted_state_vel_' + str(j), self.DxQy.lattice_to_norm(self.out_tensors['pred_state_' + str(j) + gpu_str]))
       
           ###### Loss Operation ######
           # define mse loss
           self.out_tensors["loss" + gpu_str] = 0.0
           for j in xrange(self.seq_length):
+            factor = np.power(2.0, j)
+            #factor = (tf.cast(tf.reduce_prod(tf.shape(self.out_tensors['true_state_' + str(0) + gpu_str])[1:3]), dtype=tf.float32)
+            #        / tf.cast(tf.reduce_prod(tf.shape(self.out_tensors['true_state_' + str(j) + gpu_str])[1:3]), dtype=tf.float32))
             self.mse(true_name='true_state_' + str(j) + gpu_str,
                      pred_name='pred_state_' + str(j) + gpu_str,
-                     loss_name='loss_' + str(j) + gpu_str)
+                     loss_name='loss_' + str(j) + gpu_str, factor=factor)
             self.out_tensors['loss' + gpu_str] += self.out_tensors['loss_' + str(j) + gpu_str]
  
           ###### Grad Operation ######
@@ -127,7 +141,7 @@ class LatNet:
   
       ###### Saver Operation ######
       graph_def = self.sess.graph.as_graph_def(add_shapes=True)
-      self.saver = NetworkSaver(self.config, self.network_config, graph_def)
+      self.saver = NetworkSaver(self.config, self.network_name, self.script_name, graph_def)
       self.saver.load_checkpoint(self.sess)
 
   def train_shape_converter(self):
@@ -139,24 +153,50 @@ class LatNet:
         shape_converters[name] = self.shape_converters[name]
     return shape_converters
 
-  def train_step(self, feed_dict):
-
-    # perform train step
-    tf_feed_dict = {}
-    for name in feed_dict.keys():
-      tf_feed_dict[self.in_tensors[name]] = feed_dict[name]
-    _, l = self.sess.run([self.out_tensors['train_op'], self.out_tensors['loss_gpu_' + str(self.gpus[0])]], feed_dict=tf_feed_dict)
+  def train(self, dataset):
    
-    # print required data and save
-    step = self.sess.run(self.out_tensors['global_step'])
-    if step % 10 == 0:
-      print("current loss is " + str(l))
-      print("current step is " + str(step))
-    if step % self.config.save_network_freq == 0:
-      print("saving...")
-      self.saver.save_summary(self.sess, tf_feed_dict, int(self.sess.run(self.out_tensors['global_step'])))
-      self.saver.save_checkpoint(self.sess, int(self.sess.run(self.out_tensors['global_step'])))
+    # start timer
+    t = time.time()
+
+    while True: 
+      # get batch of data
+      feed_dict = self.dataset.minibatch()
+
+      # perform train step
+      tf_feed_dict = {}
+      for name in feed_dict.keys():
+        tf_feed_dict[self.in_tensors[name]] = feed_dict[name]
+      _, l = self.sess.run([self.out_tensors['train_op'], self.out_tensors['loss_gpu_' + str(self.gpus[0])]], feed_dict=tf_feed_dict)
  
+      # print required data and save
+      step = self.sess.run(self.out_tensors['global_step'])
+      if step % 10 == 0:
+        queue_stats = self.dataset.queue_stats()
+        elapsed = time.time() - t
+        t = time.time()
+     
+        self.print_train_info(time_per_sample, loss, step, queue_stats)
+        print("current loss is " + str(l))
+        print("current step is " + str(step))
+        print("queue stats " + str(queue_stats))
+        print("time per batch is " + str(elapsed/200.))
+      if step % self.config.save_network_freq == 0:
+        self.saver.save_summary(self.sess, tf_feed_dict, int(self.sess.run(self.out_tensors['global_step'])))
+        self.saver.save_checkpoint(self.sess, int(self.sess.run(self.out_tensors['global_step'])))
+
+  def print_train_info(self):
+    print_string = (colored('cmd is ', 'blue') + ' '.join(self.cmd) + '\n').ljust(40)
+    print_string = print_string + (colored('status ', 'blue') + self.status + '\n').ljust(30)
+    if self.return_status == "SUCCESS":
+      print_string = print_string + (colored('return status ', 'blue') + colored(self.return_status, 'green') + '\n').ljust(40)
+    elif self.return_status == "FAIL":
+      print_string = print_string + (colored('return status ', 'blue') + colored(self.return_status, 'red') + '\n').ljust(40)
+    else:
+      print_string = print_string + (colored('return status ', 'blue') + colored(self.return_status, 'yellow') + '\n').ljust(40)
+    print_string = print_string + (colored('run time ', 'blue') + str(self.run_time)).ljust(40)
+    print(print_string)
+
+
   def eval_unroll(self):
 
     # graph
@@ -166,22 +206,22 @@ class LatNet:
       # make input state and boundary
       self.add_tensor('state',     tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.DxQy.Q]))
       self.add_tensor('boundary',  tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [4]))
-      self.add_tensor('cstate',    tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.network_config['filter_size_compression']]))
-      self.add_tensor('cboundary', tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [2*self.network_config['filter_size_compression']]))
+      self.add_tensor('cstate',    tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression]))
+      self.add_tensor('cboundary', tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression]))
   
       ###### Unroll Graph ######
       # encoders
-      self.encoder_state(self, in_name="state", out_name="cstate_from_state")
-      self.encoder_boundary(self, in_name="boundary", out_name="cboundary_from_boundary")
+      self.encoder_state(self, self.config, in_name="state", out_name="cstate_from_state")
+      self.encoder_boundary(self, self.config, in_name="boundary", out_name="cboundary_from_boundary")
   
       # compression mapping
-      self.compression_mapping_boundary(self, in_cstate_name="cstate", 
+      self.compression_mapping_boundary(self, self.config, in_cstate_name="cstate", 
                                               in_cboundary_name="cboundary", 
                                               out_name="cstate_from_cstate")
-      self.compression_mapping(self, in_name="cstate_from_cstate", out_name="cstate_from_cstate")
+      self.compression_mapping(self, self.config, in_name="cstate_from_cstate", out_name="cstate_from_cstate")
   
       # decoder
-      self.decoder_state(self, in_name="cstate", out_name="state_from_cstate")
+      self.decoder_state(self, self.config, in_name="cstate", out_name="state_from_cstate")
       self.out_tensors['vel_from_cstate'] = self.DxQy.lattice_to_vel(self.out_tensors['state_from_cstate'])
       self.out_tensors['rho_from_cstate'] = self.DxQy.lattice_to_rho(self.out_tensors['state_from_cstate'])
 
@@ -190,7 +230,7 @@ class LatNet:
   
       ###### Saver Operation ######
       graph_def = self.sess.graph.as_graph_def(add_shapes=True)
-      self.saver = NetworkSaver(self.config, self.network_config, graph_def)
+      self.saver = NetworkSaver(self.config, self.network_name, self.script_name, graph_def)
       self.saver.load_checkpoint(self.sess)
   
     ###### Function Wrappers ######
@@ -317,9 +357,9 @@ class LatNet:
     nonlin = nn.set_nonlinearity(nonlinearity_name)
     self.out_tensors[name] = nonlin(self.out_tensors[name])
 
-  def mse(self, true_name, pred_name, loss_name):
-    self.out_tensors[loss_name] = tf.nn.l2_loss(self.in_tensors[ true_name] 
-                                              - self.out_tensors[pred_name])
+  def mse(self, true_name, pred_name, loss_name, factor):
+    self.out_tensors[loss_name] = factor * tf.nn.l2_loss(self.in_tensors[ true_name] 
+                                                       - self.out_tensors[pred_name])
     #tf.summary.scalar('loss_' + true_name + "_and_" + pred_name, self.out_tensors[loss_name])
 
   def combine_pipe(self, other_pipe):

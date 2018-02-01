@@ -51,8 +51,9 @@ class DataQueue:
     self.sim_runners = []
     print("generating dataset")
     for i in tqdm(xrange(self.num_simulations)):
-      sim = TrainSailfishRunner(config, self.base_dir + 'sim_' + str(i), self.script_name) 
-      sim.generate_train_data()
+      sim = TrainSailfishRunner(config, self.base_dir + '/sim_' + str(i), self.script_name) 
+      if sim.need_to_generate():
+        sim.generate_train_data()
       thr = threading.Thread(target= (lambda: self.data_worker(sim)))
       thr.daemon = True
       thr.start()
@@ -117,4 +118,9 @@ class DataQueue:
         feed_dict['true_state_' + str(j) + gpu_str] = batch_seq_state[j][i*self.batch_size:(i+1)*self.batch_size]
       
     return feed_dict
+
+  def queue_stats(self):
+    stats = {}
+    stats['percent_full'] = int(100*float(len(self.queue_batches))/float(self.max_queue))
+    return stats
 

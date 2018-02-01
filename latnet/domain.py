@@ -1,5 +1,6 @@
 
 import sys
+import time
 
 import matplotlib.pyplot as plt
 
@@ -51,13 +52,18 @@ class Domain(object):
     self.max_sim_iters = config.max_sim_iters
     self.lb_to_ln = config.lb_to_ln
     self.visc = config.visc
-    self.DxQy = lattice.TYPES[config.DxQy]
+    self.DxQy = lattice.TYPES[config.DxQy]()
     self.restore_geometry = config.restore_geometry
     self.sim_dir = config.sim_dir
     self.num_iters = config.num_iters
     self.sim_save_every = config.sim_save_every
     self.sim_restore_iter = config.sim_restore_iter
     self.compare = config.compare
+
+  @classmethod
+  def update_defaults(cls, defaults):
+      pass
+
 
   def boundary_conditions(self, hx, hy):
     pass
@@ -119,8 +125,9 @@ class Domain(object):
         if restore_geometry:
           restore_boundary_conditions = np.load(train_sim_dir[:-10] + "flow_geometry.npy")
           where_boundary = restore_boundary_conditions[:,:,0].astype(np.bool)
-          where_velocity = restore_boundary_conditions[:,:,1].astype(np.bool)
-          velocity = (restore_boundary_conditions[-1,-1,1], restore_boundary_conditions[-1,-1,2])
+          where_velocity = np.logical_or(restore_boundary_conditions[:,:,1].astype(np.bool), restore_boundary_conditions[:,:,1].astype(np.bool))
+          velocity = (restore_boundary_conditions[np.where(where_velocity)[0][0], np.where(where_velocity)[1][0], 1],
+                      restore_boundary_conditions[np.where(where_velocity)[0][0], np.where(where_velocity)[1][0], 2])
           where_density  = restore_boundary_conditions[:,:,3].astype(np.bool)
           density = 1.0
         else:
@@ -212,7 +219,7 @@ class Domain(object):
 
     # possibly generate start state and boundary (really just used for testing)
     if self.sim_restore_iter > 0:
-      self.sailfish_runner = SailfishRunner(self.config, self.sim_dir + 'sailfish', self.script_name)
+      self.sailfish_runner = SailfishRunner(self.config, self.sim_dir + '/sailfish', self.script_name)
       self.sailfish_runner.new_sim(self.sim_restore_iter)
       self.start_state = self.sailfish_runner.read_state(self.sim_restore_iter)
       self.start_boundary = self.sailfish_runner.read_boundary()
@@ -228,7 +235,7 @@ class Domain(object):
                                            encoder_shape_converter)
 
     # run simulation
-    for i in xrange(self.num_iters):
+    for i in tqdm(xrange(self.num_iters)):
       if i % self.sim_save_every == 0:
         # decode state
         vel, rho = self.cstate_to_state(decoder, 
@@ -247,7 +254,7 @@ class Domain(object):
       if self.sailfish_runner is not None:
         self.sailfish_runner.restart_sim(self.num_iters)
       else:
-        self.sailfish_runner = SailfishRunner(self.config, self.sim_dir + 'sailfish', self.script_name)
+        self.sailfish_runner = SailfishRunner(self.config, self.sim_dir + '/sailfish', self.script_name)
         self.sailfish_runner.new_sim(self.num_iters)
 
       # run comparision function
@@ -267,7 +274,6 @@ class Domain(object):
       subdomain = SubDomain(pos, self.input_cshape)
       input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
       if self.start_state is not None:
-        print("aaaaaaaa")
         start_state = numpy_utils.mobius_extract(self.start_state, input_subdomain, has_batch=False)
         start_state = np.expand_dims(start_state, axis=0)
       else:
@@ -294,7 +300,6 @@ class Domain(object):
       input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
       if self.start_boundary is not None:
         input_geometry = numpy_utils.mobius_extract(self.start_boundary, input_subdomain, has_batch=False)
-        print("aaaaaaaa")
       else:
         h = np.mgrid[input_subdomain.pos[0]:input_subdomain.pos[0] + input_subdomain.size[0],
                      input_subdomain.pos[1]:input_subdomain.pos[1] + input_subdomain.size[1]]
@@ -318,7 +323,6 @@ class Domain(object):
   def cstate_to_cstate(self, cmapping, cmapping_shape_converter, cstate, cboundary):
 
     nr_subdomains = [int(math.ceil(x/float(y))) for x, y in zip(self.sim_cshape, self.input_cshape)]
-    print(nr_subdomains)
     new_cstate = []
     for i, j in itertools.product(xrange(nr_subdomains[0]), xrange(nr_subdomains[1])):
       pos = [i * self.input_cshape[0], j * self.input_cshape[1]]

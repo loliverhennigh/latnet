@@ -13,11 +13,12 @@ import glob
 
 def rand_vel():
   vel_x = np.random.uniform(0.2, 0.1)
-  vel_y = np.random.uniform(0.0, -0.005)
+  vel_y = np.random.uniform(-0.005, -0.005)
   return (vel_x, vel_y)
 
 class TrainDomain(Domain):
   script_name = __file__
+  network_name = 'advanced_network'
 
   vel = rand_vel()
 
@@ -45,9 +46,22 @@ class TrainDomain(Domain):
   @classmethod
   def update_defaults(cls, defaults):
     defaults.update({
-        'lat_nx': 256,
-        'lat_ny': 256})
-
+        'latnet_network_dir': './network_checkpoint_lid_driven_cavity',
+        'train_sim_dir': './train_data_lid_driven_cavity',
+        'visc': 0.01,
+        'lb_to_ln': 500,
+        'seq_length': 5,
+        'input_shape': '768x768',
+        'nr_downsamples': 3,
+        'nr_residual_encoder': 2,
+        'nr_residual_compression': 3,
+        'nonlinearity': 'relu',
+        'filter_size': 32,
+        'filter_size_compression': 64,
+        'gated': True,
+        'max_sim_iters': 200,
+        'num_simulations': 10,
+        'sim_shape': '512x512'})
 
   def __init__(self, *args, **kwargs):
     super(TrainDomain, self).__init__(*args, **kwargs)

@@ -20,7 +20,7 @@ class SimSaver:
     self.latnet_files = []
 
   def iter_to_filename(self, iteration, with_format=False):
-    file_name = self.save_dir + str(iteration).zfill(6) + ".cpoint"
+    file_name = self.save_dir + '/' + str(iteration).zfill(6) + ".cpoint"
     if with_format and (self.save_format == 'npy'):
       file_name += ".npz"
     elif with_format and (self.save_format == 'vtk'):
@@ -37,7 +37,7 @@ class SimSaver:
 
   def save_numpy(self, iteration, vel, rho, cstate):
     file_name = self.iter_to_filename(iteration)
-    plt.imshow(vel[0,:,:,0])
+    plt.imshow(self.DxQy.vel_to_norm(vel)[0,:,:,0])
     plt.savefig('figs/out_state_' + str(iteration) + '.png')
     if self.save_cstate:
       np.savez(file_name, vel=vel[0], rho=rho[0], cstate=cstate[0])
