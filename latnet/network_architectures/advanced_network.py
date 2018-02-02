@@ -144,11 +144,11 @@ def decoder_state(pipe, configs, in_name, out_name, lattice_size=9):
   # set nonlinearity
   nonlinearity = set_nonlinearity(configs.nonlinearity)
 
-  for i in xrange(configs.nr_downsamples):
+  for i in xrange(configs.nr_downsamples-1):
     filter_size = int(configs.filter_size*pow(2,configs.nr_downsamples-i-2))
     pipe.trans_conv(in_name=in_name, out_name=out_name,
                     kernel_size=4, stride=2, 
-                    filter_size=filter_size, 
+                    filter_size=filter_size,
                     weight_name="up_conv_" + str(i))
     in_name=out_name
     for j in xrange(configs.nr_residual_encoder):
@@ -159,13 +159,9 @@ def decoder_state(pipe, configs, in_name, out_name, lattice_size=9):
                      gated=configs.gated,
                      weight_name="res_" + str(i) + '_' + str(j))
 
-  pipe.res_block(in_name=in_name, out_name=out_name, 
-                 filter_size=lattice_size,
-                 nonlinearity=nonlinearity,
-                 stride=1,
-                 gated=configs.gated,
-                 weight_name="last_res")
+  pipe.trans_conv(in_name=in_name, out_name=out_name,
+                  kernel_size=4, stride=2,
+                  filter_size=lattice_size,
+                  weight_name="last_up_conv")
 
   pipe.nonlinearity(name=out_name, nonlinearity_name='tanh')
-
-

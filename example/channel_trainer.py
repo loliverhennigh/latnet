@@ -53,7 +53,7 @@ def make_boundary(hx, hy):
 
 class TrainDomain(Domain):
   script_name = __file__
-  network_name = 'test_network'
+  network_name = 'advanced_network'
   vel = (0.10, 0.00)
 
   def geometry_boundary_conditions(self, hx, hy, shape):

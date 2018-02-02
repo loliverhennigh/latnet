@@ -62,6 +62,7 @@ class TrainDomain(Domain):
         'gated': True,
         'max_sim_iters': 200,
         'num_simulations': 10,
+        'batch_size': 2,
         'sim_shape': '512x512'})
 
   def __init__(self, *args, **kwargs):

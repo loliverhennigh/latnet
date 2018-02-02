@@ -165,12 +165,14 @@ class LatNet(object):
       for j in xrange(self.seq_length):
         name = ("state" + gpu_str, "pred_state_" + str(j) + gpu_str)
         shape_converters[name] = self.shape_converters[name]
+        name = ("state" + gpu_str, "cstate_" + str(j) + gpu_str)
+        shape_converters[name] = self.shape_converters[name]
     return shape_converters
 
   def train(self, dataset):
   
     # steps per print (hard set for now)
-    steps_per_print = 10
+    steps_per_print = 50
     ave_loss_length = 300
  
     # start timer
