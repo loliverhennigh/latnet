@@ -90,18 +90,20 @@ class LatNet(object):
           ###### Unroll Graph ######
           # encode
           self.encoder_state(self, self.config, in_name="state" + gpu_str, out_name="cstate_0" + gpu_str)
-          self.encoder_boundary(self, self.config, in_name="boundary" + gpu_str, out_name="cboundary" + gpu_str)
+          if self.seq_length >= 2: 
+            self.encoder_boundary(self, self.config, in_name="boundary" + gpu_str, out_name="cboundary" + gpu_str)
       
           # unroll all
           for j in xrange(self.seq_length):
-            # apply boundary
-            self.compression_mapping_boundary(self, self.config, in_cstate_name="cstate_" + str(j) + gpu_str, 
-                                                    in_cboundary_name="cboundary" + gpu_str, 
-                                                    out_name="cstate_" + str(j) + gpu_str)
             # decode and add to list
             self.decoder_state(self, self.config, in_name="cstate_" + str(j) + gpu_str, out_name="pred_state_" + str(j) + gpu_str)
    
             if self.seq_length >= 2: 
+              # apply boundary
+              self.compression_mapping_boundary(self, self.config, in_cstate_name="cstate_" + str(j) + gpu_str, 
+                                                      in_cboundary_name="cboundary" + gpu_str, 
+                                                      out_name="cstate_" + str(j) + gpu_str)
+
               # compression mapping
               self.compression_mapping(self, self.config, in_name="cstate_" + str(j) + gpu_str, out_name="cstate_" + str(j+1) + gpu_str)
               self.out_tensors['cboundary' + gpu_str] = self.out_tensors['cboundary' + gpu_str][:,6:-6,6:-6] # TODO fix this

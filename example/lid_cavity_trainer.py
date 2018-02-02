@@ -2,6 +2,10 @@
 
 import sys
 
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
 # import latnet
 sys.path.append('../latnet')
 from domain import Domain
@@ -64,6 +68,12 @@ class TrainDomain(Domain):
         'num_simulations': 10,
         'batch_size': 2,
         'sim_shape': '512x512'})
+
+  def compare_script(self, iteration, true_vel, true_rho, generated_vel, generated_rho):
+    #plt.imshow(np.concatenate([true_vel[:,:,0], generated_vel[:,:,0]], axis=0))
+    plt.imshow(self.DxQy.vel_to_norm(true_vel)[:,:,0])
+    plt.savefig('./figs/compare_' + str(iteration) + '.png')
+
 
   def __init__(self, *args, **kwargs):
     super(TrainDomain, self).__init__(*args, **kwargs)
