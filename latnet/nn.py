@@ -138,11 +138,11 @@ def transpose_conv_layer(x, kernel_size, stride, filter_size, name, nonlinearity
     batch_size = tf.shape(x)[0]
 
     if length_input == 2:
-      output_shape = tf.stack([tf.shape(x)[0], tf.shape(x)[1]*stride+2, tf.shape(x)[2]*stride+2, filter_size]) 
-      conv = tf.nn.conv2d_transpose(x, weights, output_shape, strides=[1,stride,stride,1], padding='VALID')
+      output_shape = tf.stack([tf.shape(x)[0], tf.shape(x)[1]*stride, tf.shape(x)[2]*stride, filter_size]) 
+      conv = tf.nn.conv2d_transpose(x, weights, output_shape, strides=[1,stride,stride,1], padding='SAME')
     elif length_input == 3:
       output_shape = tf.stack([tf.shape(x)[0], tf.shape(x)[1]*stride, tf.shape(x)[2]*stride, tf.shape(x)[3]*stride, filter_size]) 
-      conv = tf.nn.conv3d_transpose(x, weights, output_shape, strides=[1,stride,stride,stride,1], padding='VALID')
+      conv = tf.nn.conv3d_transpose(x, weights, output_shape, strides=[1,stride,stride,stride,1], padding='SAME')
 
     conv = tf.nn.bias_add(conv, biases)
     if nonlinearity is not None:
@@ -151,11 +151,14 @@ def transpose_conv_layer(x, kernel_size, stride, filter_size, name, nonlinearity
     #reshape (transpose conv causes output to have ? size)
     #shape = int_shape(x)
     if  length_input == 2:
-      #conv = tf.reshape(conv, [shape[0], shape[1]*stride, shape[2]*stride, filter_size])
       conv = conv[:,2:-2,2:-2]
+      pass
+      #conv = tf.reshape(conv, [shape[0], shape[1]*stride, shape[2]*stride, filter_size])
     if  length_input == 3:
-      #conv = tf.reshape(conv, [shape[0], shape[1]*stride, shape[2]*stride, shape[3]*stride, filter_size])
       conv = conv[:,2:-2,2:-2,2:-2]
+      pass
+      #conv = tf.reshape(conv, [shape[0], shape[1]*stride, shape[2]*stride, shape[3]*stride, filter_size])
+      #conv = conv[:,2:-2,2:-2,2:-2]
     return conv
 
 def fc_layer(x, hiddens, name, nonlinearity=None, flat = False):

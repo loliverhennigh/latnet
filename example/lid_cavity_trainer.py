@@ -48,6 +48,7 @@ class TrainDomain(Domain):
     defaults.update({
         'latnet_network_dir': './network_checkpoint_lid_driven_cavity',
         'train_sim_dir': './train_data_lid_driven_cavity',
+        'sim_dir': './eval_data_lid_driven_cavity',
         'visc': 0.01,
         'lb_to_ln': 500,
         'seq_length': 5,

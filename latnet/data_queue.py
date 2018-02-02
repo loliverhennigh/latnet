@@ -63,7 +63,8 @@ class DataQueue:
       self.queue.get()
 
       # select random piece to grab from data
-      rand_pos = [np.random.randint(0, self.sim_shape[0]), np.random.randint(0, self.sim_shape[1])]
+      #rand_pos = [np.random.randint(0, self.sim_shape[0]), np.random.randint(0, self.sim_shape[1])]
+      rand_pos = [1, 1]
       state_subdomain = SubDomain(rand_pos, self.input_shape)
       geometry_subdomain = SubDomain(rand_pos, self.input_shape)
       seq_state_subdomain = []

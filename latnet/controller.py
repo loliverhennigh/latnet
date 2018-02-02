@@ -51,7 +51,7 @@ class LatNetController(object):
       group.add_argument('--optimizer', help='all mode', type=str,
                         default='adam')
       group.add_argument('--lr', help='all mode', type=float,
-                        default=0.0001)
+                        default=0.0004)
       group.add_argument('--train_iterations', help='all mode', type=int,
                         default=1000000)
 
@@ -146,11 +146,7 @@ class LatNetController(object):
       self.dataset = DataQueue(self.config, self._sim, self.network.train_shape_converter())
 
       # train network
-      self.network.train()
-      while True:
-        queue_stats = self.dataset.queue_stats()
-        feed_dict = self.dataset.minibatch()
-        self.network.train_step(feed_dict, queue_stats)
+      self.network.train(self.dataset)
 
     def generate_data(self, config):
 

@@ -1,6 +1,9 @@
 
 
+import time
 from copy import copy
+import os
+from termcolor import colored, cprint
 import tensorflow as tf
 import numpy as np
 
@@ -33,8 +36,8 @@ class LatNet(object):
     gpus = config.gpus.split(',')
     self.gpus = map(int, gpus)
 
-    if self.network_name == "basic_network":
-      import network_architectures.basic_network as net
+    if self.network_name == "test_network":
+      import network_architectures.test_network as net
     elif self.network_name == "advanced_network":
       import network_architectures.advanced_network as net
     else:
@@ -45,13 +48,14 @@ class LatNet(object):
     self.encoder_state                = tf.make_template('encoder_state', net.encoder_state)
     self.encoder_boundary             = tf.make_template('encoder_boundary', net.encoder_boundary)
     self.compression_mapping_boundary = tf.make_template('compression_mapping_boundary', net.compression_mapping_boundary)
-    self.compression_mapping          = tf.make_template('compression_mapping', net.compression_mapping)
+    if self.seq_length >= 2:
+      self.compression_mapping          = tf.make_template('compression_mapping', net.compression_mapping)
     self.decoder_state                = tf.make_template('decoder_state', net.decoder_state)
 
   @classmethod
   def add_options(cls, group, network_name):
-    if network_name == "basic_network":
-      from network_architectures.basic_network import add_options
+    if network_name == "test_network":
+      from network_architectures.test_network import add_options
     elif network_name == "advanced_network":
       from network_architectures.advanced_network import add_options
     add_options(group)
@@ -90,17 +94,17 @@ class LatNet(object):
       
           # unroll all
           for j in xrange(self.seq_length):
-            # decode and add to list
-            self.decoder_state(self, self.config, in_name="cstate_" + str(j) + gpu_str, out_name="pred_state_" + str(j) + gpu_str)
-    
             # apply boundary
             self.compression_mapping_boundary(self, self.config, in_cstate_name="cstate_" + str(j) + gpu_str, 
                                                     in_cboundary_name="cboundary" + gpu_str, 
                                                     out_name="cstate_" + str(j) + gpu_str)
-    
-            # compression mapping
-            self.compression_mapping(self, self.config, in_name="cstate_" + str(j) + gpu_str, out_name="cstate_" + str(j+1) + gpu_str)
-            self.out_tensors['cboundary' + gpu_str] = self.out_tensors['cboundary' + gpu_str][:,6:-6,6:-6] # TODO fix this
+            # decode and add to list
+            self.decoder_state(self, self.config, in_name="cstate_" + str(j) + gpu_str, out_name="pred_state_" + str(j) + gpu_str)
+   
+            if self.seq_length >= 2: 
+              # compression mapping
+              self.compression_mapping(self, self.config, in_name="cstate_" + str(j) + gpu_str, out_name="cstate_" + str(j+1) + gpu_str)
+              self.out_tensors['cboundary' + gpu_str] = self.out_tensors['cboundary' + gpu_str][:,6:-6,6:-6] # TODO fix this
    
             if i == 0:
               with tf.device('/cpu:0'):
@@ -111,13 +115,23 @@ class LatNet(object):
           # define mse loss
           self.out_tensors["loss" + gpu_str] = 0.0
           for j in xrange(self.seq_length):
-            factor = np.power(2.0, j)
-            #factor = (tf.cast(tf.reduce_prod(tf.shape(self.out_tensors['true_state_' + str(0) + gpu_str])[1:3]), dtype=tf.float32)
-            #        / tf.cast(tf.reduce_prod(tf.shape(self.out_tensors['true_state_' + str(j) + gpu_str])[1:3]), dtype=tf.float32))
+            #factor = np.power(2.0, j)
+            # normalize loss to 256 by 256 state for now
+            factor = ((256.0*256.0)
+                    / tf.cast(tf.reduce_prod(tf.shape(self.out_tensors['true_state_' + str(j) + gpu_str])[1:3]), dtype=tf.float32))
             self.mse(true_name='true_state_' + str(j) + gpu_str,
                      pred_name='pred_state_' + str(j) + gpu_str,
-                     loss_name='loss_' + str(j) + gpu_str, factor=factor)
-            self.out_tensors['loss' + gpu_str] += self.out_tensors['loss_' + str(j) + gpu_str]
+                     loss_name='loss_mse_' + str(j) + gpu_str, factor=factor)
+            self.gradient_difference(true_name='true_state_' + str(j) + gpu_str,
+                     pred_name='pred_state_' + str(j) + gpu_str,
+                     loss_name='loss_gd_' + str(j) + gpu_str, factor=factor)
+
+            # add up losses
+            self.out_tensors['loss' + gpu_str] +=       self.out_tensors['loss_mse_' + str(j) + gpu_str] 
+            self.out_tensors['loss' + gpu_str] += 0.2 * self.out_tensors['loss_gd_' + str(j) + gpu_str] 
+
+          # factor out batch size and num gpus and seq length
+          self.out_tensors['loss' + gpu_str] = self.out_tensors['loss' + gpu_str]/(self.seq_length * self.config.batch_size * len(self.config.gpus))
  
           ###### Grad Operation ######
           if i == 0:
@@ -154,48 +168,55 @@ class LatNet(object):
     return shape_converters
 
   def train(self, dataset):
-   
+  
+    # steps per print (hard set for now)
+    steps_per_print = 10
+    ave_loss_length = 300
+ 
     # start timer
     t = time.time()
 
+    prev_losses = []
     while True: 
       # get batch of data
-      feed_dict = self.dataset.minibatch()
+      feed_dict = dataset.minibatch()
 
       # perform train step
       tf_feed_dict = {}
       for name in feed_dict.keys():
         tf_feed_dict[self.in_tensors[name]] = feed_dict[name]
-      _, l = self.sess.run([self.out_tensors['train_op'], self.out_tensors['loss_gpu_' + str(self.gpus[0])]], feed_dict=tf_feed_dict)
+      _, loss = self.sess.run([self.out_tensors['train_op'], self.out_tensors['loss_gpu_' + str(self.gpus[0])]], feed_dict=tf_feed_dict)
+
+      # calc ave loss
+      prev_losses.append(loss)
+      if len(prev_losses) > ave_loss_length:
+        prev_losses.pop(0)
  
       # print required data and save
       step = self.sess.run(self.out_tensors['global_step'])
-      if step % 10 == 0:
-        queue_stats = self.dataset.queue_stats()
+      if step % steps_per_print == 0:
+        queue_stats = dataset.queue_stats()
         elapsed = time.time() - t
         t = time.time()
-     
-        self.print_train_info(time_per_sample, loss, step, queue_stats)
-        print("current loss is " + str(l))
-        print("current step is " + str(step))
-        print("queue stats " + str(queue_stats))
-        print("time per batch is " + str(elapsed/200.))
+        time_per_sample = elapsed/(steps_per_print * self.config.batch_size * len(self.config.gpus))
+        ave_loss = np.sum(np.array(prev_losses))/len(prev_losses)
+        self.saver.save_summary(self.sess, tf_feed_dict, int(self.sess.run(self.out_tensors['global_step'])))
+        self.print_train_info(time_per_sample, loss, ave_loss, step, queue_stats)
+
       if step % self.config.save_network_freq == 0:
         self.saver.save_summary(self.sess, tf_feed_dict, int(self.sess.run(self.out_tensors['global_step'])))
         self.saver.save_checkpoint(self.sess, int(self.sess.run(self.out_tensors['global_step'])))
 
-  def print_train_info(self):
-    print_string = (colored('cmd is ', 'blue') + ' '.join(self.cmd) + '\n').ljust(40)
-    print_string = print_string + (colored('status ', 'blue') + self.status + '\n').ljust(30)
-    if self.return_status == "SUCCESS":
-      print_string = print_string + (colored('return status ', 'blue') + colored(self.return_status, 'green') + '\n').ljust(40)
-    elif self.return_status == "FAIL":
-      print_string = print_string + (colored('return status ', 'blue') + colored(self.return_status, 'red') + '\n').ljust(40)
-    else:
-      print_string = print_string + (colored('return status ', 'blue') + colored(self.return_status, 'yellow') + '\n').ljust(40)
-    print_string = print_string + (colored('run time ', 'blue') + str(self.run_time)).ljust(40)
+  def print_train_info(self, time_per_sample, loss, ave_loss, step, queue_stats):
+    print_string  = (colored('time per sample ', 'green') + str(round(time_per_sample, 3)) + '\n')
+    print_string += (colored('loss ', 'blue') + str(round(loss, 3)) + '\n')
+    print_string += (colored('ave loss ', 'blue') + str(round(ave_loss, 3)) + '\n')
+    print_string += (colored('step ', 'yellow') + str(step) + '\n')
+    for k in queue_stats.keys():
+      print_string += (colored(k + ' ', 'magenta') + str(queue_stats[k]) + '\n')
+    os.system('clear')
+    print("TRAIN INFO")
     print(print_string)
-
 
   def eval_unroll(self):
 
@@ -361,6 +382,70 @@ class LatNet(object):
     self.out_tensors[loss_name] = factor * tf.nn.l2_loss(self.in_tensors[ true_name] 
                                                        - self.out_tensors[pred_name])
     #tf.summary.scalar('loss_' + true_name + "_and_" + pred_name, self.out_tensors[loss_name])
+
+  def gradient_difference(self, true_name, pred_name, loss_name, factor):
+    true = self.in_tensors[ true_name] 
+    generated = self.out_tensors[ pred_name] 
+
+    # seen in here https://arxiv.org/abs/1511.05440
+    if len(true.get_shape()) == 4:
+      true_x_shifted_right = true[:,1:,:,:]
+      true_x_shifted_left = true[:,:-1,:,:]
+      true_x_gradient = tf.abs(true_x_shifted_right - true_x_shifted_left)
+  
+      generated_x_shifted_right = generated[:,1:,:,:]
+      generated_x_shifted_left = generated[:,:-1,:,:]
+      generated_x_gradient = tf.abs(generated_x_shifted_right - generated_x_shifted_left)
+  
+      loss_x_gradient = tf.nn.l2_loss(true_x_gradient - generated_x_gradient)
+  
+      true_y_shifted_right = true[:,:,1:,:]
+      true_y_shifted_left = true[:,:,:-1,:]
+      true_y_gradient = tf.abs(true_y_shifted_right - true_y_shifted_left)
+  
+      generated_y_shifted_right = generated[:,:,1:,:]
+      generated_y_shifted_left = generated[:,:,:-1,:]
+      generated_y_gradient = tf.abs(generated_y_shifted_right - generated_y_shifted_left)
+      
+      loss_y_gradient = tf.nn.l2_loss(true_y_gradient - generated_y_gradient)
+  
+      loss = loss_x_gradient + loss_y_gradient
+  
+    else:
+      true_x_shifted_right = true[:,1:,:,:,:]
+      true_x_shifted_left = true[:,:-1,:,:,:]
+      true_x_gradient = tf.abs(true_x_shifted_right - true_x_shifted_left)
+  
+      generated_x_shifted_right = generated[:,1:,:,:,:]
+      generated_x_shifted_left = generated[:,:-1,:,:,:]
+      generated_x_gradient = tf.abs(generated_x_shifted_right - generated_x_shifted_left)
+  
+      loss_x_gradient = tf.nn.l2_loss(true_x_gradient - generated_x_gradient)
+  
+      true_y_shifted_right = true[:,:,1:,:,:]
+      true_y_shifted_left = true[:,:,:-1,:,:]
+      true_y_gradient = tf.abs(true_y_shifted_right - true_y_shifted_left)
+  
+      generated_y_shifted_right = generated[:,:,1:,:,:]
+      generated_y_shifted_left = generated[:,:,:-1,:,:]
+      generated_y_gradient = tf.abs(generated_y_shifted_right - generated_y_shifted_left)
+      
+      loss_y_gradient = tf.nn.l2_loss(true_y_gradient - generated_y_gradient)
+  
+      true_z_shifted_right = true[:,:,:,1:,:]
+      true_z_shifted_left = true[:,:,:,:-1,:]
+      true_z_gradient = tf.abs(true_z_shifted_right - true_z_shifted_left)
+  
+      generated_z_shifted_right = generated[:,:,:,1:,:]
+      generated_z_shifted_left = generated[:,:,:,:-1,:]
+      generated_z_gradient = tf.abs(generated_z_shifted_right - generated_z_shifted_left)
+      
+      loss_z_gradient = tf.nn.l2_loss(true_z_gradient - generated_z_gradient)
+  
+      loss = loss_x_gradient + loss_y_gradient + loss_z_gradient
+  
+    self.out_tensors[loss_name] = factor * loss
+    return loss
 
   def combine_pipe(self, other_pipe):
     self.in_tensors.update(other_pipe.in_tensors)
