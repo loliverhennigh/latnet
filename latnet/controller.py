@@ -165,7 +165,7 @@ class LatNetController(object):
          decoder_shape_converter) = self.network.eval_unroll()
 
         # run simulation
-        self.domain = self._sim(config, self.config.nr_downsamples)
+        self.domain = self._sim(config)
 
         self.domain.run(state_encoder, 
                         boundary_encoder, 

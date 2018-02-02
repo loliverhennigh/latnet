@@ -63,8 +63,8 @@ class DataQueue:
     while True:
       self.queue.get()
 
-      # edge padding to line up
-      cstate_subdomain = SubDomain([0,0], [1,1])
+      # edge padding to line up (TODO clean this)
+      cstate_subdomain = SubDomain(self.DxQy.dim*[0], self.DxQy.dim*[1])
       state_subdomain = self.shape_converters['state' + '_gpu_' + str(self.gpus[0]),
                                               'cstate_0_gpu_' + str(self.gpus[0])].out_in_subdomain(copy(cstate_subdomain)) 
 
@@ -72,8 +72,7 @@ class DataQueue:
       cratio = pow(2, self.nr_downsamples)
       rand_pos = [cratio * np.random.randint(0, self.sim_shape[0]/cratio), 
                   cratio * np.random.randint(0, self.sim_shape[1]/cratio)]
-      rand_pos[0] = rand_pos[0] + state_subdomain.pos[0] # pad edges
-      rand_pos[1] = rand_pos[1] + state_subdomain.pos[1]
+      rand_pos = [x + y for x, y in zip(rand_pos, state_subdomain.pos)]
       
 
       state_subdomain = SubDomain(rand_pos, self.input_shape)

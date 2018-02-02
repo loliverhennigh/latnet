@@ -32,20 +32,22 @@ from copy import copy
 
 class Domain(object):
 
-  def __init__(self, config, nr_downsamples=0): # once network config is in correctly will just need config
+  def __init__(self, config):
 
     sim_shape = config.sim_shape.split('x')
     sim_shape = map(int, sim_shape)
     self.sim_shape = sim_shape
 
-    downsample_factor = pow(2, nr_downsamples)
+    downsample_factor = pow(2, config.nr_downsamples)
     self.sim_cshape = [x/downsample_factor for x in sim_shape] 
 
     input_shape = config.input_shape.split('x')
     input_shape = map(int, input_shape)
     self.input_shape = input_shape
 
-    self.input_cshape = [128,128] # hard set for now
+    input_cshape = config.input_cshape.split('x')
+    input_cshape = map(int, input_cshape)
+    self.input_cshape = input_cshape
 
     self.config = config
     self.train_sim_dir = config.train_sim_dir
@@ -87,9 +89,12 @@ class Domain(object):
     pass
 
   def make_geometry_input(self, where_boundary, velocity, where_velocity, density, where_density):
+    # TODO Clean this
     input_geometry = np.concatenate([np.expand_dims(where_boundary, axis=-1).astype(np.float32),
-                                     np.array(velocity).reshape(1,1,2) * np.expand_dims(where_velocity, axis=-1).astype(np.float32),
-                                     density *  np.expand_dims(where_density, axis=-1).astype(np.float32)], axis=-1)
+                                     np.array(velocity).reshape(len(where_velocity.shape) * [1] + [2]) 
+                                       * np.expand_dims(where_velocity, axis=-1).astype(np.float32),
+                                     density 
+                                       *  np.expand_dims(where_density, axis=-1).astype(np.float32)], axis=-1)
     return input_geometry
 
   def create_sailfish_simulation(self):
@@ -124,11 +129,11 @@ class Domain(object):
         # restore from old dir or make new geometry
         if restore_geometry:
           restore_boundary_conditions = np.load(train_sim_dir[:-10] + "flow_geometry.npy")
-          where_boundary = restore_boundary_conditions[:,:,0].astype(np.bool)
-          where_velocity = np.logical_or(restore_boundary_conditions[:,:,1].astype(np.bool), restore_boundary_conditions[:,:,1].astype(np.bool))
+          where_boundary = restore_boundary_conditions[...,0].astype(np.bool)
+          where_velocity = np.logical_or(restore_boundary_conditions[...,1].astype(np.bool), restore_boundary_conditions[...,1].astype(np.bool))
           velocity = (restore_boundary_conditions[np.where(where_velocity)[0][0], np.where(where_velocity)[1][0], 1],
                       restore_boundary_conditions[np.where(where_velocity)[0][0], np.where(where_velocity)[1][0], 2])
-          where_density  = restore_boundary_conditions[:,:,3].astype(np.bool)
+          where_density  = restore_boundary_conditions[...,3].astype(np.bool)
           density = 1.0
         else:
           where_boundary = geometry_boundary_conditions(hx, hy, [self.gx, self.gy])
@@ -191,11 +196,16 @@ class Domain(object):
           'lat_nx': shape[0],
           'lat_ny': shape[1]
           })
+        if len(shape) == 3:
+          defaults.update({
+            'periodic_z': True,
+            'lat_nz': shape[0],
+            'grid': 'D3Q15'
+          })
 
       @classmethod
       def modify_config(cls, config):
         config.visc   = visc
-        #config.mode   = "batch"
 
       def __init__(self, *args, **kwargs):
         super(SailfishSimulation, self).__init__(*args, **kwargs)
@@ -278,24 +288,21 @@ class Domain(object):
         start_state = np.expand_dims(start_state, axis=0)
       else:
         vel = self.velocity_initial_conditions(0,0,None)
-        feq = self.DxQy.vel_to_feq(vel)
-        start_state = np.zeros([1] + input_subdomain.size + [self.DxQy.Q]) + feq.reshape((1,1,1,9))
+        feq = self.DxQy.vel_to_feq(vel).reshape([1] + self.DxQy.dims*[1] + [self.DxQy.Q])
+        start_state = np.zeros([1] + input_subdomain.size + [self.DxQy.Q]) + feq
       cstate.append(encoder(start_state))
 
     # list to full tensor
     cstate = numpy_utils.stack_grid(cstate, nr_subdomains, has_batch=True)
 
-    # trim edges TODO add smarter padding making this unnessasary
-    cstate = cstate[:,:self.sim_cshape[0],:self.sim_cshape[1]]
-
     return cstate
 
   def boundary_to_cboundary(self, encoder, encoder_shape_converter):
 
-    nr_subdomains = [int(math.ceil(x/float(y))) for x, y in zip(self.sim_cshape, self.input_cshape)]
+    nr_subdomains = [xrange(int(math.ceil(x/float(y)))) for x, y in zip(self.sim_cshape, self.input_cshape)]
     cboundary = []
-    for i, j in itertools.product(xrange(nr_subdomains[0]), xrange(nr_subdomains[1])):
-      pos = [i * self.input_cshape[0], j * self.input_cshape[1]]
+    for ind in itertools.product(*nr_subdomains):
+      pos = [x * y for x, y in zip(ind, self.input_cshape)]
       subdomain = SubDomain(pos, self.input_cshape)
       input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
       if self.start_boundary is not None:
@@ -315,9 +322,6 @@ class Domain(object):
     # list to full tensor
     cboundary = numpy_utils.stack_grid(cboundary, nr_subdomains, has_batch=True)
 
-    # trim edges TODO add smarter padding making this unnessasary
-    cboundary = cboundary[:,:self.sim_cshape[0],:self.sim_cshape[1]]
-
     return cboundary
 
   def cstate_to_cstate(self, cmapping, cmapping_shape_converter, cstate, cboundary):
@@ -333,9 +337,6 @@ class Domain(object):
 
     # list to full tensor
     new_cstate = numpy_utils.stack_grid(new_cstate, nr_subdomains, has_batch=True)
-
-    # trim edges TODO add smarter padding making this unnessasary
-    new_cstate = new_cstate[:,:self.sim_cshape[0],:self.sim_cshape[1]]
 
     return new_cstate
 
