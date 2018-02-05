@@ -1,0 +1,7 @@
+
+Goals:
+
+- 3D simulations working.
+
+
+

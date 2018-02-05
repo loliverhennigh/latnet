@@ -1,0 +1,17 @@
+
+Goals:
+
+- Be able to generate fluid simulations of similar quality as original work in Phy-Net repo
+- add 3D simulations
+
+Achieved:
+
+- I was able to generate fluid simulations of similar quality as original work but there are some odd instabilities that I still need to address
+- Multi-GPU training
+- Mostly got 3d sims working but spend more time cleaning up code and making testing faster and easier
+
+Notes:
+
+- I think there may still be some problems with how the network is generating simulations. I think padding the edges that have pressure, boundary, and velocity conditions with zeros could fix this problem
+
+
