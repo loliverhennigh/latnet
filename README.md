@@ -8,5 +8,6 @@ A library for performing Lattice Boltzmann fluid simulations using neural networ
 
 [![IMAGE ALT TEXT HERE](http://img.youtube.com/vi/-lkJwtK4qWU/0.jpg)](https://www.youtube.com/watch?v=-lkJwtK4qWU)
 
+Not great but a good validation that the new dataset creation works and training.
 
 

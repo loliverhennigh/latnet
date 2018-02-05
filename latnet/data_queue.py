@@ -67,27 +67,27 @@ class DataQueue:
       self.queue.get()
 
       # edge padding to line up (TODO clean this)
-      cstate_subdomain = SubDomain(self.DxQy.dims*[0], self.DxQy.dims*[1])
-      state_subdomain = self.shape_converters['state' + '_gpu_' + str(self.gpus[0]),
-                                              'cstate_0_gpu_' + str(self.gpus[0])].out_in_subdomain(copy(cstate_subdomain)) 
+      gpu_str = '_gpu_' +  + str(self.gpus[0])
+      cstate_subdomain = SubDomain(self.DxQy.dims*[0], self.input_shape)
+      state_subdomain = self.shape_converters['state' + gpu_str),
+                                              'cstate_' + str(self.seq_length-1) + gpu_str].out_in_subdomain(copy(cstate_subdomain)) 
 
       # select random piece to grab from data
       cratio = pow(2, self.nr_downsamples)
-      rand_pos = [cratio * np.random.randint(0, self.sim_shape[0]/cratio), 
+      rand_pos = [cratio * np.random.randint(0, self.sim_shape[0]/cratio),
                   cratio * np.random.randint(0, self.sim_shape[1]/cratio)]
-      rand_pos = [x + y for x, y in zip(rand_pos, state_subdomain.pos)]
-      
+      rand_pos = [(x + y) for x, y in zip(rand_pos, state_subdomain.pos)]
 
       state_subdomain = SubDomain(rand_pos, self.input_shape)
       geometry_subdomain = SubDomain(rand_pos, self.input_shape)
-      seq_state_subdomain = []
-      for i in xrange(self.seq_length):
-        seq_state_subdomain.append(self.shape_converters['state' + '_gpu_' + str(self.gpus[0]), 'pred_state_' + str(i) + '_gpu_' + str(self.gpus[0])].in_out_subdomain(copy(state_subdomain)))
+      seq_state_shape_converter = self.shape_converters['state' + gpu_str, 'pred_state_' + str(self.seq_length-1) + gpu_str]
+      seq_state_subdomain = seq_state_shape_converter.in_out_subdomain(copy(state_subdomain))
 
       # get geometry and lat data
       state, geometry, seq_state = sim.read_train_data(state_subdomain,
                                                        geometry_subdomain,
-                                                       seq_state_subdomain)
+                                                       seq_state_subdomain,
+                                                       self.seq_length)
 
       # add to que
       self.queue_batches.append((state, geometry, seq_state))

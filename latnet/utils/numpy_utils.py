@@ -3,24 +3,39 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-def mobius_extract(dat, subdomain, has_batch=False):
+def mobius_extract(dat, subdomain, padding_type=['periodic', 'periodic'], has_batch=False):
   # extracts a chunk at pos and with size from a dat tensor 
   shape = dat.shape
   if has_batch:
     shape = shape[1:]
+
+  # pad x
   pad_bottom_x = abs(min(subdomain.pos[0], 0))
   pad_top_x = max((subdomain.pos[0] + subdomain.size[0]) - shape[0], 0)
+  padding_x = [[pad_bottom_x, pad_top_x], [0,0], [0,0]]
+  if has_batch:
+    padding_x = [[0,0]] + padding_x
+  if padding_type[0] == 'periodic':
+    dat = np.pad(dat, padding_x, 'wrap')
+  elif padding_type[0] == 'zero':
+    dat = np.pad(dat, padding_x, 'constant')
+  new_pos_x = subdomain.pos[0] + pad_bottom_x
+  dat = dat[..., new_pos_x:new_pos_x + subdomain.size[0], :, :]
+
+  # pad y
   pad_bottom_y = abs(min(subdomain.pos[1], 0))
   pad_top_y = max((subdomain.pos[1] + subdomain.size[1]) - shape[1], 0)
-  padding = [[pad_bottom_x, pad_top_x], [pad_bottom_y, pad_top_y], [0,0]]
+  padding_y = [[0,0], [pad_bottom_y, pad_top_y], [0,0]]
   if has_batch:
-    padding = [[0,0]] + padding
-  dat = np.pad(dat, padding, 'wrap')
-  new_pos_x = subdomain.pos[0] + pad_bottom_x
-  new_pos_y = subdomain.pos[1] + pad_bottom_y
-  dat_extract_pad = dat[..., new_pos_x:new_pos_x + subdomain.size[0], 
-                             new_pos_y:new_pos_y + subdomain.size[1], :]
-  return dat_extract_pad
+    padding_y = [[0,0]] + padding_y
+  if padding_type[0] == 'periodic':
+    dat = np.pad(dat, padding_y, 'wrap')
+  elif padding_type[0] == 'zero':
+    dat = np.pad(dat, padding_y, 'constant')
+  new_pos_y = subdomain.pos[0] + pad_bottom_y
+  dat = dat[..., new_pos_y:new_pos_y + subdomain.size[0], :]
+
+  return dat
 
 def stack_grid(dat, shape, has_batch=False):
   if has_batch:

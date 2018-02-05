@@ -95,48 +95,36 @@ def encoder_boundary(pipe, configs, in_name, out_name):
 
 
   pipe.res_block(in_name=in_name, out_name=out_name,
-                 filter_size=2*configs.filter_size_compression,
+                 filter_size=configs.filter_size_compression,
                  nonlinearity=nonlinearity, 
                  stride=1, 
                  gated=configs.gated, 
                  weight_name="final_res")
 
-# compression mapping boundary
-def compression_mapping_boundary(pipe, configs, in_cstate_name, in_cboundary_name, out_name):
-
-  # set nonlinearity
-  nonlinearity = set_nonlinearity(configs.nonlinearity)
-
-  # split tensor
-  pipe.split_tensor(in_name=in_cboundary_name, 
-                    a_out_name=in_cboundary_name + "_add", 
-                    b_out_name=in_cboundary_name + "_mask", 
-                    num_split=2, axis=3)
-
-  # normalize cboundary_mask between 0 and 1
-  pipe.nonlinearity(name=in_cboundary_name + "_mask", 
-                    nonlinearity_name="sigmoid")
-
-  # apply image mask
-  pipe.image_combine(a_name=in_cstate_name, 
-                      b_name=in_cboundary_name + "_add", 
-                      mask_name=in_cboundary_name + "_mask", 
-                      out_name=out_name)
-
 # compression mapping
-def compression_mapping(pipe, configs, in_name, out_name):
+def compression_mapping(pipe, configs, in_cstate_name, in_cboundary_name, out_name):
 
   # set nonlinearity
   nonlinearity = set_nonlinearity(configs.nonlinearity)
 
+  # just concat tensors
+  pipe.concat_tensors(in_name_a=in_cstate_name, 
+                      in_name_b=in_cboundary_name, 
+                     out_name=out_name, axis=-1)
+
+  # apply residual blocks
   for i in xrange(configs.nr_residual_compression):
-    pipe.res_block(in_name=in_name, out_name=out_name, 
+    pipe.res_block(in_name=out_name, out_name=out_name, 
                    filter_size=configs.filter_size_compression, 
                    nonlinearity=nonlinearity, 
                    stride=1, 
                    gated=configs.gated, 
                    weight_name="res_" + str(i+1))
-    in_name=out_name
+
+  # trim cboundary
+  pipe.trim_tensor(in_name=in_cboundary_name, 
+                  out_name=in_cboundary_name, 
+                  trim=configs.nr_residual_compression*2)
 
 # decoder state
 def decoder_state(pipe, configs, in_name, out_name, lattice_size=9):

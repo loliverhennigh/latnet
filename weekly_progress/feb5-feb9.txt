@@ -2,6 +2,8 @@
 Goals:
 
 - 3D simulations working.
+- Get lid driven cavity simulation working. (This is probably the hardest test for the method so far)
+- Possibly get GAN training implemented if needed for lid driven cavity.
 
 
 

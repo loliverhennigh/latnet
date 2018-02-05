@@ -68,6 +68,10 @@ class LatNetController(object):
       group = self._config_parser.add_group('Simulation Details')
       group.add_argument('--sim_shape', help='all mode', type=str,
                         default='512x512')
+      group.add_argument('--periodic_x', help='all mode', type=bool,
+                        default=True)
+      group.add_argument('--periodic_y', help='all mode', type=bool,
+                        default=True)
       group.add_argument('--DxQy', help='all mode', type=str,
             choices=['D2Q9'], default='D2Q9')
       group.add_argument('--num_iters', help='eval mode', type=int,

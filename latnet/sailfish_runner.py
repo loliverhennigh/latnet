@@ -20,7 +20,18 @@ class SailfishRunner:
     sim_shape = config.sim_shape.split('x')
     sim_shape = map(int, sim_shape)
     self.sim_shape = sim_shape
+
     self.DxQy = lattice.TYPES[config.DxQy]
+
+    # set padding config
+    if config.periodic_x:
+      self.padding_type.append('periodic')
+    else:
+      self.padding_type.append('zero')
+    if config.periodic_y:
+      self.padding_type.append('periodic')
+    else:
+      self.padding_type.append('zero')
 
   def list_cpoints(self):
     cpoints = glob.glob(self.save_dir + "/*.0.cpoint.npz")
@@ -144,7 +155,8 @@ class SailfishRunner:
       boundary = boundary.astype(np.float32)
       boundary = boundary[1:-1,1:-1]
       if subdomain is not None:
-        boundary = numpy_utils.mobius_extract(boundary, subdomain)
+        boundary = numpy_utils.mobius_extract(boundary, subdomain, 
+                                              padding_type=self.padding_type)
     return boundary
 
   def read_state(self, iteration, subdomain=None):
@@ -157,7 +169,8 @@ class SailfishRunner:
     state = np.swapaxes(state, 1, 2)
     state = self.DxQy.subtract_lattice(state)
     if subdomain is not None:
-      state = numpy_utils.mobius_extract(state, subdomain)
+      state = numpy_utils.mobius_extract(state, subdomain, 
+                                         padding_type=self.padding_type)
     return state
 
   def read_vel_rho(self, iteration, subdomain=None):
@@ -173,17 +186,11 @@ class TrainSailfishRunner(SailfishRunner):
     self.num_cpoints = config.max_sim_iters
     # more configs will probably be added later
 
-  def read_train_data(self, state_subdomain, boundary_subdomain, seq_state_subdomain):
-
-    # if read boundary too many times generate new data
-    #self.times_called += 1
-    #if self.times_called > self.max_times_called:
-    #  self.generate_cpoint()
-    #  self.times_called = 0
+  def read_train_data(self, state_subdomain, boundary_subdomain, seq_state_subdomain, seq_length):
 
     # read state
     state_files = glob.glob(self.save_dir + "/*.0.cpoint.npz")
-    ind = np.random.randint(1, len(state_files) - len(seq_state_subdomain))
+    ind = np.random.randint(1, len(state_files) - seq_length)
     state = self.read_state(ind, state_subdomain)
 
     # read boundary
@@ -192,9 +199,8 @@ class TrainSailfishRunner(SailfishRunner):
 
     # read seq states
     seq_state = []
-    for i in xrange(len(seq_state_subdomain)):
-      #print(seq_state_subdomain[i].size)
-      seq_state.append(self.read_state(ind + i, seq_state_subdomain[i]))
+    for i in xrange(seq_length):
+      seq_state.append(self.read_state(ind + i, seq_state_subdomain))
 
     return state, boundary, seq_state
 
