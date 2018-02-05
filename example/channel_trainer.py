@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 import sys
+import os
+import time
 
 import matplotlib
 matplotlib.use('Agg')
@@ -85,6 +87,7 @@ class TrainDomain(Domain):
     defaults.update({
         'latnet_network_dir': './network_checkpoint_channel',
         'train_sim_dir': './train_data_channel',
+        'sim_dir': './eval_channel',
         'visc': 0.1,
         'lb_to_ln': 100,
         'seq_length': 5,
@@ -101,9 +104,9 @@ class TrainDomain(Domain):
         'sim_shape': '512x512'})
 
   def compare_script(self, iteration, true_vel, true_rho, generated_vel, generated_rho):
-    #plt.imshow(np.concatenate([true_vel[:,:,0], generated_vel[:,:,0]], axis=0))
-    plt.imshow(self.DxQy.vel_to_norm(true_vel)[:,:,0])
-    plt.savefig('./figs/compare_' + str(iteration) + '.png')
+    plt.imshow(np.concatenate([self.DxQy.vel_to_norm(true_vel)[:,:,0], self.DxQy.vel_to_norm(generated_vel)[:,:,0]], axis=0))
+    #plt.imshow(self.DxQy.vel_to_norm(true_vel)[:,:,0])
+    plt.savefig('./figs/compare_' + str(iteration).zfill(4) + '.png')
 
   def __init__(self, *args, **kwargs):
     super(TrainDomain, self).__init__(*args, **kwargs)
@@ -111,5 +114,13 @@ class TrainDomain(Domain):
 if __name__ == '__main__':
   sim = LatNetController(_sim=TrainDomain)
   sim.run()
+
+  # generate video of plots
+  time.sleep(5.0)
+  os.system("rm ./figs/channel_video.mp4")
+  os.system("cat ./figs/compare* | ffmpeg -f image2pipe -r 10 -vcodec png -i - -vcodec libx264 ./figs/channel_video.mp4")
+  os.system("rm ./figs/compare*")
+
+
     
 

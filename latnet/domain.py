@@ -133,6 +133,7 @@ class Domain(object):
           where_velocity = np.logical_or(restore_boundary_conditions[...,1].astype(np.bool), restore_boundary_conditions[...,1].astype(np.bool))
           velocity = (restore_boundary_conditions[np.where(where_velocity)[0][0], np.where(where_velocity)[1][0], 1],
                       restore_boundary_conditions[np.where(where_velocity)[0][0], np.where(where_velocity)[1][0], 2])
+          print(velocity)
           where_density  = restore_boundary_conditions[...,3].astype(np.bool)
           density = 1.0
         else:
@@ -285,6 +286,8 @@ class Domain(object):
       input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
       if self.start_state is not None:
         start_state = numpy_utils.mobius_extract(self.start_state, input_subdomain, has_batch=False)
+        input_geometry = numpy_utils.mobius_extract(self.start_boundary, input_subdomain, has_batch=False)
+        start_state = np.concatenate([start_state, input_geometry], axis=-1)
         start_state = np.expand_dims(start_state, axis=0)
       else:
         vel = self.velocity_initial_conditions(0,0,None)
@@ -299,10 +302,13 @@ class Domain(object):
 
   def boundary_to_cboundary(self, encoder, encoder_shape_converter):
 
-    nr_subdomains = [xrange(int(math.ceil(x/float(y)))) for x, y in zip(self.sim_cshape, self.input_cshape)]
+    #nr_subdomains = [xrange(int(math.ceil(x/float(y)))) for x, y in zip(self.sim_cshape, self.input_cshape)]
+    #for ind in itertools.product(*nr_subdomains):
+      #pos = [x * y for x, y in zip(ind, self.input_cshape)]
+    nr_subdomains = [int(math.ceil(x/float(y))) for x, y in zip(self.sim_cshape, self.input_cshape)]
     cboundary = []
-    for ind in itertools.product(*nr_subdomains):
-      pos = [x * y for x, y in zip(ind, self.input_cshape)]
+    for i, j in itertools.product(xrange(nr_subdomains[0]), xrange(nr_subdomains[1])):
+      pos = [i * self.input_cshape[0], j * self.input_cshape[1]]
       subdomain = SubDomain(pos, self.input_cshape)
       input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
       if self.start_boundary is not None:

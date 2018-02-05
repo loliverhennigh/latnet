@@ -63,7 +63,7 @@ class LatNetController(object):
       group.add_argument('--num_simulations', help='all mode', type=int,
                         default=10)
       group.add_argument('--max_queue', help='all mode', type=int,
-                        default=30)
+                        default=10)
 
       group = self._config_parser.add_group('Simulation Details')
       group.add_argument('--sim_shape', help='all mode', type=str,

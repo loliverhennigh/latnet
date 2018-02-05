@@ -188,6 +188,7 @@ class TrainSailfishRunner(SailfishRunner):
 
     # read boundary
     boundary = self.read_boundary(boundary_subdomain)
+    state = np.concatenate([state, boundary], axis=-1)
 
     # read seq states
     seq_state = []

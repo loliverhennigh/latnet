@@ -52,7 +52,7 @@ class TrainDomain(Domain):
     defaults.update({
         'latnet_network_dir': './network_checkpoint_lid_driven_cavity',
         'train_sim_dir': './train_data_lid_driven_cavity',
-        'sim_dir': './eval_data_lid_driven_cavity',
+        'sim_dir': './eval_lid_driven_cavity',
         'visc': 0.01,
         'lb_to_ln': 500,
         'seq_length': 5,
@@ -66,7 +66,6 @@ class TrainDomain(Domain):
         'gated': True,
         'max_sim_iters': 200,
         'num_simulations': 10,
-        'batch_size': 2,
         'sim_shape': '512x512'})
 
   def compare_script(self, iteration, true_vel, true_rho, generated_vel, generated_rho):

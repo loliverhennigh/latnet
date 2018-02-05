@@ -74,11 +74,11 @@ class LatNet(object):
         gpu_str = '_gpu_' + str(self.gpus[i])
         with tf.device('/gpu:%d' % self.gpus[i]):
           # make input state and boundary
-          self.add_tensor('state' + gpu_str, tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.DxQy.Q]))
+          self.add_tensor('state' + gpu_str, tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.DxQy.Q+4]))
           self.add_tensor('boundary' + gpu_str, tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [4]))
           if i == 0:
             with tf.device('/cpu:0'):
-              tf.summary.image('state', self.DxQy.lattice_to_norm(self.in_tensors['state' + gpu_str]))
+              tf.summary.image('state', self.DxQy.lattice_to_norm(self.in_tensors['state' + gpu_str][...,0:9]))
               tf.summary.image('boundary', self.in_tensors['boundary' + gpu_str][...,0:1])
           # make seq of output states
           for j in xrange(self.seq_length):
@@ -100,13 +100,15 @@ class LatNet(object):
    
             if self.seq_length >= 2: 
               # apply boundary
-              self.compression_mapping_boundary(self, self.config, in_cstate_name="cstate_" + str(j) + gpu_str, 
-                                                      in_cboundary_name="cboundary" + gpu_str, 
-                                                      out_name="cstate_" + str(j) + gpu_str)
+              #self.compression_mapping_boundary(self, self.config, in_cstate_name="cstate_" + str(j) + gpu_str, 
+              #                                        in_cboundary_name="cboundary" + gpu_str, 
+              #                                        out_name="cstate_" + str(j) + gpu_str)
+              self.out_tensors["cstate_" + str(j) + gpu_str] = tf.concat([self.out_tensors["cstate_" + str(j) + gpu_str],
+                                                                          self.out_tensors['cboundary' + gpu_str]], axis=-1)
 
               # compression mapping
               self.compression_mapping(self, self.config, in_name="cstate_" + str(j) + gpu_str, out_name="cstate_" + str(j+1) + gpu_str)
-              self.out_tensors['cboundary' + gpu_str] = self.out_tensors['cboundary' + gpu_str][:,6:-6,6:-6] # TODO fix this
+              self.out_tensors['cboundary' + gpu_str] = self.out_tensors['cboundary' + gpu_str][:,10:-10,10:-10] # TODO fix this
    
             if i == 0:
               with tf.device('/cpu:0'):
@@ -229,7 +231,7 @@ class LatNet(object):
 
       ###### Inputs to Graph ######
       # make input state and boundary
-      self.add_tensor('state',     tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.DxQy.Q]))
+      self.add_tensor('state',     tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.DxQy.Q + 4]))
       self.add_tensor('boundary',  tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [4]))
       self.add_tensor('cstate',    tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression]))
       self.add_tensor('cboundary', tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression]))
@@ -240,9 +242,12 @@ class LatNet(object):
       self.encoder_boundary(self, self.config, in_name="boundary", out_name="cboundary_from_boundary")
   
       # compression mapping
-      self.compression_mapping_boundary(self, self.config, in_cstate_name="cstate", 
-                                              in_cboundary_name="cboundary", 
-                                              out_name="cstate_from_cstate")
+      #self.compression_mapping_boundary(self, self.config, in_cstate_name="cstate", 
+      #                                        in_cboundary_name="cboundary", 
+      #                                        out_name="cstate_from_cstate")
+      self.out_tensors["cstate_from_cstate"] = tf.concat([self.out_tensors["cstate"],
+                                              self.out_tensors['cboundary']], axis=-1)
+      self.shape_converters['cstate', 'cstate_from_cstate'] = copy(self.shape_converters['cstate', 'cstate'])
       self.compression_mapping(self, self.config, in_name="cstate_from_cstate", out_name="cstate_from_cstate")
   
       # decoder

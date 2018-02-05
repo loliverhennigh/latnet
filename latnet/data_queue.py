@@ -16,6 +16,7 @@ from sailfish_runner import TrainSailfishRunner
 
 from Queue import Queue
 from shape_converter import SubDomain
+import lattice
 import threading
 
 class DataQueue:
@@ -24,6 +25,7 @@ class DataQueue:
     # base dir where all the xml files are
     self.base_dir = config.train_sim_dir
     self.script_name = train_sim.script_name
+    self.waiting_time = 0.0
 
     # configs
     self.batch_size      = config.batch_size
@@ -33,6 +35,7 @@ class DataQueue:
     self.free_gpu        = True
     gpus = config.gpus.split(',')
     self.gpus = map(int, gpus)
+    self.DxQy = lattice.TYPES[config.DxQy]()
 
     # shape
     sim_shape = config.sim_shape.split('x')
@@ -64,7 +67,7 @@ class DataQueue:
       self.queue.get()
 
       # edge padding to line up (TODO clean this)
-      cstate_subdomain = SubDomain(self.DxQy.dim*[0], self.DxQy.dim*[1])
+      cstate_subdomain = SubDomain(self.DxQy.dims*[0], self.DxQy.dims*[1])
       state_subdomain = self.shape_converters['state' + '_gpu_' + str(self.gpus[0]),
                                               'cstate_0_gpu_' + str(self.gpus[0])].out_in_subdomain(copy(cstate_subdomain)) 
 
@@ -98,8 +101,8 @@ class DataQueue:
    
     # possibly wait if data needs time to queue up
     while len(self.queue_batches) < 2*self.batch_size*len(self.gpus): # added times two to make sure enough
-      print("spending time waiting for queue")
-      time.sleep(1.01)
+      self.waiting_time += 1.0
+      time.sleep(1.0)
 
     # generate batch of data in the form of a feed dict
     batch_state = []
@@ -133,5 +136,6 @@ class DataQueue:
   def queue_stats(self):
     stats = {}
     stats['percent_full'] = int(100*float(len(self.queue_batches))/float(self.max_queue))
+    stats['total_time_waiting (min)'] = int(self.waiting_time/60)
     return stats
 
