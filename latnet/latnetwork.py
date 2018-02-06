@@ -12,6 +12,7 @@ import nn as nn
 
 from shape_converter import ShapeConverter
 from optimizer import Optimizer
+from shape_converter import SubDomain
 from network_saver import NetworkSaver
 
 class LatNet(object):
@@ -74,10 +75,12 @@ class LatNet(object):
           # make input state and boundary
           self.add_tensor('state' + gpu_str, tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.DxQy.Q]))
           self.add_tensor('boundary' + gpu_str, tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [4]))
+          self.add_tensor('mask' + gpu_str, tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [1]))
           if i == 0:
             with tf.device('/cpu:0'):
               tf.summary.image('state', self.DxQy.lattice_to_norm(self.in_tensors['state' + gpu_str]))
               tf.summary.image('boundary', self.in_tensors['boundary' + gpu_str][...,0:1])
+              tf.summary.image('mask', self.in_tensors['mask' + gpu_str])
           # make seq of output states
           for j in xrange(self.seq_length):
             self.add_tensor('true_state_' + str(j) + gpu_str, tf.placeholder(tf.float32, (2 + self.DxQy.dims) * [None]))
@@ -95,9 +98,9 @@ class LatNet(object):
                                 out_name="cboundary" + gpu_str)
       
           # unroll all compression ma
-          for j in xrange(self.seq_length-1):
+          for j in xrange(self.seq_length):
             # compression mapping
-            self.add_shape_converter("cstate_" + str(j) + gpu_str):
+            self.add_shape_converter("cstate_" + str(j) + gpu_str)
             self.compression_mapping(self, self.config,
                                      in_cstate_name="cstate_" + str(j) + gpu_str,
                                      in_cboundary_name="cboundary" + gpu_str,
@@ -106,11 +109,16 @@ class LatNet(object):
           for j in xrange(self.seq_length):
             # decode and add to list
             self.match_trim_tensor(in_name="cstate_" + str(j) + gpu_str, 
-                                   match_name=in_name="cstate_" + str(self.seq_length-1) + gpu_str, 
+                                   match_name="cstate_" + str(self.seq_length-1) + gpu_str, 
                                    out_name="cstate_" + str(j) + gpu_str)
             self.decoder_state(self, self.config, 
                                in_name="cstate_" + str(j) + gpu_str, 
                                out_name="pred_state_" + str(j) + gpu_str)
+            self.out_tensors["pred_state_" + str(j) + gpu_str] = (self.out_tensors['mask' + gpu_str]
+                                                                * self.out_tensors["pred_state_" + str(j) + gpu_str])
+
+          if self.gan_loss is not None:
+            s
    
             if i == 0:
               with tf.device('/cpu:0'):
@@ -132,7 +140,7 @@ class LatNet(object):
             #         loss_name='loss_gd_' + str(j) + gpu_str, factor=factor)
 
             # add up losses
-            self.out_tensors['loss' + gpu_str] +=       self.out_tensors['loss_mse_' + str(j) + gpu_str] 
+            self.out_tensors['loss' + gpu_str] += self.out_tensors['loss_mse_' + str(j) + gpu_str] 
             #self.out_tensors['loss' + gpu_str] += 0.2 * self.out_tensors['loss_gd_' + str(j) + gpu_str] 
 
           # factor out batch size and num gpus and seq length
@@ -144,7 +152,7 @@ class LatNet(object):
           self.out_tensors['grads' + gpu_str] = tf.gradients(self.out_tensors['loss' + gpu_str], all_params)
 
       # store up the loss and gradients on gpu:0
-      with tf.device('/gpu:0'):
+      with tf.device('/gpu:%d' % self.gpus[0]):
         for i in range(1, len(self.gpus)):
           self.out_tensors['loss_gpu_' + str(self.gpus[0])] += self.out_tensors['loss_gpu_' + str(self.gpus[i])]
           for j in range(len(self.out_tensors['grads_gpu_' + str(self.gpus[0])])):
@@ -177,7 +185,7 @@ class LatNet(object):
   def train(self, dataset):
   
     # steps per print (hard set for now)
-    steps_per_print = 50
+    steps_per_print = 20
     ave_loss_length = 300
  
     # start timer
@@ -235,7 +243,7 @@ class LatNet(object):
       self.add_tensor('state',     tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.DxQy.Q]))
       self.add_tensor('boundary',  tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [4]))
       self.add_tensor('cstate',    tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression]))
-      self.add_tensor('cboundary', tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression]))
+      self.add_tensor('cboundary', tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression]))
   
       ###### Unroll Graph ######
       # encoders
@@ -243,9 +251,10 @@ class LatNet(object):
       self.encoder_boundary(self, self.config, in_name="boundary", out_name="cboundary_from_boundary")
   
       # compression mapping
-      self.compression_mapping(self, self.config, in_cstate_name="cstate", 
-                                                  in_cboundary_name="cboundary")
-                                                  out_name="cstate_from_cstate")
+      self.compression_mapping(self, self.config, 
+                               in_cstate_name="cstate", 
+                               in_cboundary_name="cboundary",
+                               out_name="cstate_from_cstate")
   
       # decoder
       self.decoder_state(self, self.config, in_name="cstate", out_name="state_from_cstate")
@@ -353,27 +362,28 @@ class LatNet(object):
         self.shape_converters[name[0], a_out_name] = copy(self.shape_converters[name])
         self.shape_converters[name[0], b_out_name] = copy(self.shape_converters[name])
 
-  def concat_tensors(self, in_name_a, in_name_b, out_name, axis=-1):
-    self.out_tensors[out_name] = tf.concat([self.out_tensors[in_name_a,
-                                                             in_name_b], 
-                                                             axis=axis) 
+  def concat_tensors(self, in_names, out_name, axis=-1):
+    in_tensors = [self.out_tensors[name] for name in in_names]
+    self.out_tensors[out_name] = tf.concat(in_tensors, 
+                                           axis=axis)
 
     # add to shape converters
     for name in self.shape_converters.keys():
-      if (name[1] == in_name_a) or (name[1] == in_name_b):
+      if name[1] in in_names:
         self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
 
   def trim_tensor(self, in_name, out_name, trim):
-    if len(self.out_tensors[in_name].get_shape()) == 4:
-      self.out_tensors[out_name] = self.in_tensors[in_name][:,trim:-trim, trim:-trim]
-    elif len(self.out_tensors[in_name].get_shape()) == 5:
-      self.out_tensors[out_name] = self.in_tensors[in_name][:,trim:-trim, trim:-trim, trim:-trim]
+    if trim > 0:
+      if len(self.out_tensors[in_name].get_shape()) == 4:
+        self.out_tensors[out_name] = self.out_tensors[in_name][:,trim:-trim, trim:-trim]
+      elif len(self.out_tensors[in_name].get_shape()) == 5:
+        self.out_tensors[out_name] = self.out_tensors[in_name][:,trim:-trim, trim:-trim, trim:-trim]
 
   def match_trim_tensor(self, in_name, match_name, out_name):
 
     subdomain = SubDomain(self.DxQy.dims*[0], self.DxQy.dims*[1])
-    new_subdomain = self.shape_converter[in_name, match_name].out_in_subdomain(subdomain)
-    self.trim_tensor(self, in_name, out_name, abs(new_subdomain.pos[0]))
+    new_subdomain = self.shape_converters[in_name, match_name].out_in_subdomain(subdomain)
+    self.trim_tensor(in_name, out_name, abs(new_subdomain.pos[0]))
 
   def image_combine(self, a_name, b_name, mask_name, out_name):
     # as seen in "Generating Videos with Scene Dynamics" figure 1
@@ -429,9 +439,9 @@ class LatNet(object):
         self.shape_converters[name[0],new_name] = self.shape_converters.pop(name)
 
   def start_session(self):
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.9)
-    sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
-    #sess = tf.Session()
+    #gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.9)
+    #sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+    sess = tf.Session()
     init = tf.global_variables_initializer()
     sess.run(init)
     return sess

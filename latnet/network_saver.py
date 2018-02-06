@@ -22,7 +22,8 @@ class NetworkSaver:
                            'restore_from', 'max_sim_iters', 'restore_geometry', 'scr_scale',
                            'debug_sailfish', 'every', 'unit_test', 'propagation_enabled',
                            'time_dependence', 'space_dependence', 'incompressible', 
-                           'relaxation_enabled', 'quiet', 'lr']
+                           'relaxation_enabled', 'quiet', 'lr', 'periodic_x',
+                           'periodic_y']
 
     self.checkpoint_path = self._make_checkpoint_path()
     self.saver = self._make_saver()
@@ -62,7 +63,7 @@ class NetworkSaver:
         paths.append(root[len(self.network_dir)+1:])
     return paths
 
-  def load_checkpoint(self, sess, maybe_remove_prev=True):
+  def load_checkpoint(self, sess, maybe_remove_prev=False):
     ckpt = tf.train.get_checkpoint_state(self.checkpoint_path)
     if ckpt is not None:
       print("init from " + ckpt.model_checkpoint_path)

@@ -24,6 +24,7 @@ class SailfishRunner:
     self.DxQy = lattice.TYPES[config.DxQy]
 
     # set padding config
+    self.padding_type = []
     if config.periodic_x:
       self.padding_type.append('periodic')
     else:
@@ -195,14 +196,18 @@ class TrainSailfishRunner(SailfishRunner):
 
     # read boundary
     boundary = self.read_boundary(boundary_subdomain)
-    state = np.concatenate([state, boundary], axis=-1)
 
     # read seq states
     seq_state = []
     for i in xrange(seq_length):
       seq_state.append(self.read_state(ind + i, seq_state_subdomain))
 
-    return state, boundary, seq_state
+    # get mask for loss # TODO add boundary to loss
+    mask = np.ones(self.sim_shape + [1])
+    mask = numpy_utils.mobius_extract(mask, seq_state_subdomain, 
+                                      padding_type=self.padding_type)
+
+    return state, boundary, seq_state, mask
 
   def generate_train_data(self):
     self.new_sim(self.num_cpoints)

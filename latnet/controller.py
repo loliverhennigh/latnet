@@ -33,7 +33,7 @@ class LatNetController(object):
       group.add_argument('--input_shape', help='all mode', type=str,
                          default='256x256')
       group.add_argument('--input_cshape', help='all mode', type=str,
-                         default='128x128')
+                         default='32x32')
       group.add_argument('--lb_to_ln', help='all mode', type=int,
                         default=60)
 
@@ -63,7 +63,7 @@ class LatNetController(object):
       group.add_argument('--num_simulations', help='all mode', type=int,
                         default=10)
       group.add_argument('--max_queue', help='all mode', type=int,
-                        default=10)
+                        default=30)
 
       group = self._config_parser.add_group('Simulation Details')
       group.add_argument('--sim_shape', help='all mode', type=str,

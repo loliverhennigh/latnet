@@ -21,7 +21,7 @@ def add_options(group):
   group.add_argument('--nr_residual_compression', help='network config', type=int,
                          default=3)
   group.add_argument('--nr_residual_encoder', help='network config', type=int,
-                         default=2)
+                         default=1)
   group.add_argument('--nr_downsamples', help='network config', type=int,
                          default=3)
   group.add_argument('--nonlinearity', help='network config', type=str,
@@ -108,8 +108,7 @@ def compression_mapping(pipe, configs, in_cstate_name, in_cboundary_name, out_na
   nonlinearity = set_nonlinearity(configs.nonlinearity)
 
   # just concat tensors
-  pipe.concat_tensors(in_name_a=in_cstate_name, 
-                      in_name_b=in_cboundary_name, 
+  pipe.concat_tensors(in_names=[in_cstate_name, in_cboundary_name], 
                      out_name=out_name, axis=-1)
 
   # apply residual blocks
@@ -153,3 +152,32 @@ def decoder_state(pipe, configs, in_name, out_name, lattice_size=9):
                   weight_name="last_up_conv")
 
   pipe.nonlinearity(name=out_name, nonlinearity_name='tanh')
+
+# discriminator
+def discriminator(pipe, configs, in_boundary_name, in_state_name, in_seq_state_names, out_name):
+
+  # set nonlinearity
+  nonlinearity = set_nonlinearity(configs.nonlinearity)
+
+  # reshape boundary and state to mactch seq state
+  #pipe.resize_image(in_name=in_boundary_name, out_name=in_boundary_name + '_resized')
+  #pipe.resize_image(in_name=in_boundary_name, out_name=in_boundary_name + '_resized')
+
+  pipe.concat_tensors(in_names=in_seq_state_names, out_name=out_name, axis=0) # concat on batch
+  for i in xrange(configs.nr_residual_compression):
+    pipe.res_block(in_name=out_name, out_name=out_name, 
+                   filter_size=configs.filter_size,
+                   nonlinearity=nonlinearity,
+                   stride=1,
+                   gated=configs.gated,
+                   weight_name="res_" + str(i))
+
+  pipe.conv(in_name=in_name, out_name=out_name,
+            kernel_size=1, stride=1,
+            filter_size=1,
+            weight_name="discriminator_conv")
+
+  pipe.nonlinearity(name=out_name, nonlinearity_name='sigmoid')
+
+
+

@@ -26,6 +26,7 @@ class DataQueue:
     self.base_dir = config.train_sim_dir
     self.script_name = train_sim.script_name
     self.waiting_time = 0.0
+    self.needed_to_wait = False
 
     # configs
     self.batch_size      = config.batch_size
@@ -41,9 +42,10 @@ class DataQueue:
     sim_shape = config.sim_shape.split('x')
     sim_shape = map(int, sim_shape)
     self.sim_shape = sim_shape
-    input_shape = config.input_shape.split('x')
-    input_shape = map(int, input_shape)
-    self.input_shape = input_shape
+
+    input_cshape = config.input_cshape.split('x')
+    input_cshape = map(int, input_cshape)
+    self.input_cshape = input_cshape
     self.shape_converters = shape_converters
 
     # make queue
@@ -66,31 +68,32 @@ class DataQueue:
     while True:
       self.queue.get()
 
-      # edge padding to line up (TODO clean this)
-      gpu_str = '_gpu_' +  + str(self.gpus[0])
-      cstate_subdomain = SubDomain(self.DxQy.dims*[0], self.input_shape)
-      state_subdomain = self.shape_converters['state' + gpu_str),
-                                              'cstate_' + str(self.seq_length-1) + gpu_str].out_in_subdomain(copy(cstate_subdomain)) 
-
       # select random piece to grab from data
       cratio = pow(2, self.nr_downsamples)
-      rand_pos = [cratio * np.random.randint(0, self.sim_shape[0]/cratio),
-                  cratio * np.random.randint(0, self.sim_shape[1]/cratio)]
-      rand_pos = [(x + y) for x, y in zip(rand_pos, state_subdomain.pos)]
+      rand_pos = [np.random.randint(-self.input_cshape[0], self.sim_shape[0]/cratio),
+                  np.random.randint(-self.input_cshape[1], self.sim_shape[1]/cratio)]
+      cstate_subdomain = SubDomain(rand_pos, self.input_cshape)
 
-      state_subdomain = SubDomain(rand_pos, self.input_shape)
-      geometry_subdomain = SubDomain(rand_pos, self.input_shape)
-      seq_state_shape_converter = self.shape_converters['state' + gpu_str, 'pred_state_' + str(self.seq_length-1) + gpu_str]
+      # get state subdomain and geometry_subdomain
+      gpu_str = '_gpu_' + str(self.gpus[0])
+      state_shape_converter = self.shape_converters['state' + gpu_str,
+                                                   'cstate_' + str(self.seq_length-1) + gpu_str]
+      geometry_subdomain = state_shape_converter.out_in_subdomain(copy(cstate_subdomain))
+      state_subdomain = copy(geometry_subdomain)
+
+      # get seq state subdomain
+      seq_state_shape_converter = self.shape_converters['state' + gpu_str, 
+                                                   'pred_state_' + str(self.seq_length-1) + gpu_str]
       seq_state_subdomain = seq_state_shape_converter.in_out_subdomain(copy(state_subdomain))
 
       # get geometry and lat data
-      state, geometry, seq_state = sim.read_train_data(state_subdomain,
-                                                       geometry_subdomain,
-                                                       seq_state_subdomain,
-                                                       self.seq_length)
+      state, geometry, seq_state, mask = sim.read_train_data(state_subdomain,
+                                                             geometry_subdomain,
+                                                             seq_state_subdomain,
+                                                             self.seq_length)
 
       # add to que
-      self.queue_batches.append((state, geometry, seq_state))
+      self.queue_batches.append((state, geometry, seq_state, mask))
       self.queue.task_done()
  
   def minibatch(self):
@@ -102,21 +105,25 @@ class DataQueue:
     # possibly wait if data needs time to queue up
     while len(self.queue_batches) < 2*self.batch_size*len(self.gpus): # added times two to make sure enough
       self.waiting_time += 1.0
+      self.needed_to_wait = True
       time.sleep(1.0)
 
     # generate batch of data in the form of a feed dict
     batch_state = []
     batch_geometry = []
     batch_seq_state = []
+    batch_mask = []
     for i in xrange(self.batch_size*len(self.gpus)): 
       batch_state.append(self.queue_batches[0][0])
       batch_geometry.append(self.queue_batches[0][1])
       batch_seq_state.append(self.queue_batches[0][2])
+      batch_mask.append(self.queue_batches[0][3])
       self.queue_batches.pop(0)
 
     # concate batches together
     batch_state = np.stack(batch_state, axis=0)
     batch_geometry = np.stack(batch_geometry, axis=0)
+    batch_mask = np.stack(batch_mask, axis=0)
     new_batch_seq_state = []
     for i in xrange(self.seq_length):
       new_batch_seq_state.append(np.stack([x[i] for x in batch_seq_state], axis=0))
@@ -128,6 +135,7 @@ class DataQueue:
       gpu_str = '_gpu_' + str(self.gpus[i])
       feed_dict['state' + gpu_str] = batch_state[i*self.batch_size:(i+1)*self.batch_size]
       feed_dict['boundary' + gpu_str] = batch_geometry[i*self.batch_size:(i+1)*self.batch_size]
+      feed_dict['mask' + gpu_str] = batch_mask[i*self.batch_size:(i+1)*self.batch_size]
       for j in xrange(self.seq_length):
         feed_dict['true_state_' + str(j) + gpu_str] = batch_seq_state[j][i*self.batch_size:(i+1)*self.batch_size]
       
@@ -136,6 +144,11 @@ class DataQueue:
   def queue_stats(self):
     stats = {}
     stats['percent_full'] = int(100*float(len(self.queue_batches))/float(self.max_queue))
-    stats['total_time_waiting (min)'] = int(self.waiting_time/60)
+    stats['total_time_waiting (sec)'] = int(self.waiting_time)
+    stats['needed to wait on queue'] = self.needed_to_wait
+    if len(self.queue_batches) > 1:
+      stats['input_state_shape'] = self.queue_batches[0][0].shape
+      stats['output_state_shape'] = self.queue_batches[0][2][0].shape
+    self.needed_to_wait = False
     return stats
 

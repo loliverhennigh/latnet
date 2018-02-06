@@ -286,8 +286,6 @@ class Domain(object):
       input_subdomain = encoder_shape_converter.out_in_subdomain(subdomain)
       if self.start_state is not None:
         start_state = numpy_utils.mobius_extract(self.start_state, input_subdomain, has_batch=False)
-        input_geometry = numpy_utils.mobius_extract(self.start_boundary, input_subdomain, has_batch=False)
-        start_state = np.concatenate([start_state, input_geometry], axis=-1)
         start_state = np.expand_dims(start_state, axis=0)
       else:
         vel = self.velocity_initial_conditions(0,0,None)

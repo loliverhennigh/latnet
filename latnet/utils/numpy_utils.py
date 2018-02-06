@@ -28,12 +28,12 @@ def mobius_extract(dat, subdomain, padding_type=['periodic', 'periodic'], has_ba
   padding_y = [[0,0], [pad_bottom_y, pad_top_y], [0,0]]
   if has_batch:
     padding_y = [[0,0]] + padding_y
-  if padding_type[0] == 'periodic':
+  if padding_type[1] == 'periodic':
     dat = np.pad(dat, padding_y, 'wrap')
-  elif padding_type[0] == 'zero':
+  elif padding_type[1] == 'zero':
     dat = np.pad(dat, padding_y, 'constant')
-  new_pos_y = subdomain.pos[0] + pad_bottom_y
-  dat = dat[..., new_pos_y:new_pos_y + subdomain.size[0], :]
+  new_pos_y = subdomain.pos[1] + pad_bottom_y
+  dat = dat[..., new_pos_y:new_pos_y + subdomain.size[1], :]
 
   return dat
 
