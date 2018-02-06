@@ -165,11 +165,15 @@ def discriminator(pipe, configs, in_boundary_name, in_state_name, in_seq_state_n
 
   pipe.concat_tensors(in_names=in_seq_state_names, out_name=out_name, axis=0) # concat on batch
   for i in xrange(configs.nr_residual_compression):
+    begin_nonlinearity = True
+    if i == 0:
+      begin_nonlinearity = False
     pipe.res_block(in_name=out_name, out_name=out_name, 
                    filter_size=configs.filter_size,
                    nonlinearity=nonlinearity,
                    stride=1,
                    gated=configs.gated,
+                   begin_nonlinearity=begin_nonlinearity,
                    weight_name="res_" + str(i))
 
   pipe.conv(in_name=in_name, out_name=out_name,

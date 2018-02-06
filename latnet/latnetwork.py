@@ -34,6 +34,7 @@ class LatNet(object):
     self.network_name = network_name
     self.script_name = script_name
     self.seq_length = config.seq_length
+    self.gan_loss = config.gan_loss
     gpus = config.gpus.split(',')
     self.gpus = map(int, gpus)
 
@@ -50,6 +51,7 @@ class LatNet(object):
     self.encoder_boundary             = tf.make_template('encoder_boundary', net.encoder_boundary)
     self.compression_mapping          = tf.make_template('compression_mapping', net.compression_mapping)
     self.decoder_state                = tf.make_template('decoder_state', net.decoder_state)
+    self.discriminator                = tf.make_template('discriminator', net.discriminator)
 
   @classmethod
   def add_options(cls, group, network_name):
@@ -71,6 +73,7 @@ class LatNet(object):
 
       for i in xrange(len(self.gpus)):
         gpu_str = '_gpu_' + str(self.gpus[i])
+        seq_str = lambda x: '_' + str(x) + gpu_str
         with tf.device('/gpu:%d' % self.gpus[i]):
           # make input state and boundary
           self.add_tensor('state' + gpu_str, tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.DxQy.Q]))
@@ -83,85 +86,143 @@ class LatNet(object):
               tf.summary.image('mask', self.in_tensors['mask' + gpu_str])
           # make seq of output states
           for j in xrange(self.seq_length):
-            self.add_tensor('true_state_' + str(j) + gpu_str, tf.placeholder(tf.float32, (2 + self.DxQy.dims) * [None]))
+            self.add_tensor('true_state_' + seq_str(j), tf.placeholder(tf.float32, (2 + self.DxQy.dims) * [None]))
             if i == 0:
               with tf.device('/cpu:0'):
-                tf.summary.image('true_state_' + str(j), self.DxQy.lattice_to_norm(self.in_tensors['true_state_' + str(j) + gpu_str]))
+                tf.summary.image('true_state_' + str(j), self.DxQy.lattice_to_norm(self.in_tensors['true_state' + seq_str(j)]))
       
           ###### Unroll Graph ######
-          # encode
+          ### encode ###
           self.encoder_state(self, self.config, 
                              in_name="state" + gpu_str, 
-                             out_name="cstate_0" + gpu_str)
+                             out_name="cstate" seq_str(0))
           self.encoder_boundary(self, self.config, 
                                 in_name="boundary" + gpu_str, 
                                 out_name="cboundary" + gpu_str)
       
-          # unroll all compression ma
+          ### unroll on the compressed state ###
           for j in xrange(self.seq_length):
             # compression mapping
-            self.add_shape_converter("cstate_" + str(j) + gpu_str)
+            self.add_shape_converter("cstate" + seq_str(j))
             self.compression_mapping(self, self.config,
-                                     in_cstate_name="cstate_" + str(j) + gpu_str,
+                                     in_cstate_name="cstate" + seq_str(j),
                                      in_cboundary_name="cboundary" + gpu_str,
-                                     out_name="cstate_" + str(j+1) + gpu_str)
+                                     out_name="cstate" + seq_str(j+1))
 
+          ### decode all compressed states ###
           for j in xrange(self.seq_length):
-            # decode and add to list
-            self.match_trim_tensor(in_name="cstate_" + str(j) + gpu_str, 
-                                   match_name="cstate_" + str(self.seq_length-1) + gpu_str, 
-                                   out_name="cstate_" + str(j) + gpu_str)
+            self.match_trim_tensor(in_name="cstate" + seq_str(j), 
+                                   match_name="cstate" + seq_str(self.seq_length-1), 
+                                   out_name="cstate" + seq_str(j))
             self.decoder_state(self, self.config, 
-                               in_name="cstate_" + str(j) + gpu_str, 
-                               out_name="pred_state_" + str(j) + gpu_str)
-            self.out_tensors["pred_state_" + str(j) + gpu_str] = (self.out_tensors['mask' + gpu_str]
-                                                                * self.out_tensors["pred_state_" + str(j) + gpu_str])
-
-          if self.gan_loss is not None:
-            s
-   
+                               in_name="cstate" + seq_str(j), 
+                               out_name="pred_state" + seq_str(j))
+            self.out_tensors["pred_state" + seq_str(j)] = (self.out_tensors['mask' + gpu_str]
+                                                         * self.out_tensors["pred_state_" + seq_str(j)])
+  
             if i == 0:
               with tf.device('/cpu:0'):
                 # make image summary
-                tf.summary.image('predicted_state_vel_' + str(j), self.DxQy.lattice_to_norm(self.out_tensors['pred_state_' + str(j) + gpu_str]))
+                self.out_tensors['pred_norm' + seq_str(j)] = self.DxQy.lattice_to_norm(self.out_tensors['pred_state_' + seq_str(j)])
+                tf.summary.image('pred_vel_' + str(j), self.out_tensors['pred_norm' + seq_str(j)]))
+ 
+          ### discriminator of gan ###
+          if self.gan_loss is not None:
+            seq_pred_state_names = []
+            seq_true_state_names = []
+            for j in xrange(self.seq_length):
+              seq_pred_state_names.append(self.out_tensors["pred_state_" + seq_str(j)])
+              seq_true_state_names.append(self.out_tensors["true_state_" + seq_str(j)])
+            self.discriminator(self, self.config, 
+                               in_boundary_name=None,
+                               in_state_name=None,
+                               in_seq_state_names=seq_pred_state_names,
+                               out_name='D_pred' + gpu_str)
+            self.discriminator(self, self.config, 
+                               in_boundary_name=None,
+                               in_state_name=None,
+                               in_seq_state_names=seq_true_state_names,
+                               out_name='D_true' + gpu_str)
       
           ###### Loss Operation ######
-          # define mse loss
-          self.out_tensors["loss" + gpu_str] = 0.0
+          num_samples = (self.seq_length * self.config.batch_size * len(self.config.gpus))
+
+          ### MSE loss ###
+          self.out_tensors["loss_mse" + gpu_str] = 0.0
           for j in xrange(self.seq_length):
             # normalize loss to 256 by 256 state for now
-            factor = ((256.0*256.0)
-                    / tf.cast(tf.reduce_prod(tf.shape(self.out_tensors['true_state_' + str(j) + gpu_str])[1:3]), dtype=tf.float32))
+            pred_shape = tf.shape(self.out_tensors['true_state_' + seq_str(j)])
+            num_cells = tf.cast(tf.reduce_prod(pred_shape[1:3]), dtype=tf.float32)
+            mse_factor = ((256.0*256.0) / num_cells)
             self.mse(true_name='true_state_' + str(j) + gpu_str,
                      pred_name='pred_state_' + str(j) + gpu_str,
                      loss_name='loss_mse_' + str(j) + gpu_str, factor=factor)
-            #self.gradient_difference(true_name='true_state_' + str(j) + gpu_str,
-            #         pred_name='pred_state_' + str(j) + gpu_str,
-            #         loss_name='loss_gd_' + str(j) + gpu_str, factor=factor)
 
             # add up losses
-            self.out_tensors['loss' + gpu_str] += self.out_tensors['loss_mse_' + str(j) + gpu_str] 
-            #self.out_tensors['loss' + gpu_str] += 0.2 * self.out_tensors['loss_gd_' + str(j) + gpu_str] 
+            self.out_tensors['loss_mse' + gpu_str] += self.out_tensors['loss_mse_' + seq_str(j)] 
 
           # factor out batch size and num gpus and seq length
-          self.out_tensors['loss' + gpu_str] = self.out_tensors['loss' + gpu_str]/(self.seq_length * self.config.batch_size * len(self.config.gpus))
+          self.out_tensors['loss_mse' + gpu_str] = self.out_tensors['loss_mse' + gpu_str]/(num_samples)
+
+          ### GAN loss ###
+          if self.gan_loss is not None:
+            self.out_tensors['gen_loss' + gpu_str] = -tf.reduce_mean(tf.log(self.out_tensors['D_pred' + gpu_str]))
+            self.out_tensors['disc_loss' + gpu_str] = -tf.reduce_mean(tf.log(self.out_tensors['D_true' + gpu_str])
+                                                              + tf.log(1.0 - self.out_tensors['D_pred' + gpu_str]))
+
+          #### add all losses ###
+          self.out_tensors['loss' + gpu_str] =  self.out_tensors['loss_mse' + gpu_str]
+          if self.gan_loss is not None:
+            self.out_tensors['loss' + gpu_str] += self.out_tensors['gen_loss' + gpu_str]
  
           ###### Grad Operation ######
           if i == 0:
             all_params = tf.trainable_variables()
-          self.out_tensors['grads' + gpu_str] = tf.gradients(self.out_tensors['loss' + gpu_str], all_params)
+            if self.gan_loss is None:
+              self.out_tensors['grads' + gpu_str] = tf.gradients(self.out_tensors['loss' + gpu_str], all_params)
+            else:
+              gen_params = [v for i, v in enumerate(all_params) if "discriminator" not in v.name[:v.name.index(':')]]
+              disc_params = [v for i, v in enumerate(all_params) if "discriminator" in v.name[:v.name.index(':')]]
+              self.out_tensors['gen_grads' + gpu_str] = tf.gradients(self.out_tensors['loss' + gpu_str], gen_params)
+              self.out_tensors['disc_grads' + gpu_str] = tf.gradients(self.out_tensors['disc_loss' + gpu_str], disc_params)
 
-      # store up the loss and gradients on gpu:0
+      ###### Round up losses and Gradients on gpu:0 ######
       with tf.device('/gpu:%d' % self.gpus[0]):
+        gpu_str = lambda x: '_gpu_' + str(self.gpus[x])
         for i in range(1, len(self.gpus)):
-          self.out_tensors['loss_gpu_' + str(self.gpus[0])] += self.out_tensors['loss_gpu_' + str(self.gpus[i])]
+          # losses
+          self.out_tensors['loss_mse' + gpu_str(0)] += self.out_tensors['loss_mse' + gpu_str(i)]
+          if self.gan_loss is not None:
+            self.out_tensors['gen_loss' + gpu_str(0)] += self.out_tensors['gen_loss' + gpu_str(i)]
+            self.out_tensors['disc_loss' + gpu_str(0)] += self.out_tensors['disc_loss' + gpu_str(i)]
+          # gradients
           for j in range(len(self.out_tensors['grads_gpu_' + str(self.gpus[0])])):
-            self.out_tensors['grads_gpu_' + str(self.gpus[0])][j] += self.out_tensors['grads_gpu_' + str(self.gpus[i])][j]
-      tf.summary.scalar('total_loss', self.out_tensors['loss_gpu_' + str(self.gpus[0])])
+            if self.gan_loss is None:
+              self.out_tensors['grads' + gpu_str(0)][j] += self.out_tensors['grads' + gpu_str(i)][j]
+            else:
+              self.out_tensors['gen_grads' + gpu_str(0)][j] += self.out_tensors['gen_grads' + gpu_str(i)][j]
+              self.out_tensors['disc_grads' + gpu_str(0)][j] += self.out_tensors['disc_grads' + gpu_str(i)][j]
+
+      ### add loss summary ### 
+      tf.summary.scalar('loss_mse', self.out_tensors['loss_mse' + gpu_str(0)])
+      if self.gan_loss is not None:
+        tf.summary.scalar('gen_loss', self.out_tensors['gen_loss' + gpu_str(0)])
+        tf.summary.scalar('disc_loss', self.out_tensors['disc_loss_' + gpu_str(0)])
 
       ###### Train Operation ######
-      self.optimizer = Optimizer(self.config)
-      self.out_tensors['train_op'] = self.optimizer.train_op(all_params, self.out_tensors['grads_gpu_' + str(self.gpus[0])], self.out_tensors['global_step'])
+      if self.gan_loss is None:
+        self.optimizer = Optimizer(self.config)
+        self.out_tensors['train_op'] = self.optimizer.train_op(all_params, 
+                                               self.out_tensors['grads' + gpu_str(0)], 
+                                               self.out_tensors['global_step'])
+      else:
+        self.gen_optimizer = Optimizer(self.config)
+        self.out_tensors['gen_train_op'] = self.optimizer.train_op(gen_params, 
+                                                   self.out_tensors['gen_grads' + gpu_str(0)], 
+                                                   self.out_tensors['global_step'])
+        self.out_tensors['disc_train_op'] = self.optimizer.train_op(disc_params, 
+                                                   self.out_tensors['disc_grads' + gpu_str(0)], 
+                                                   self.out_tensors['global_step'])
   
       ###### Start Session ######
       self.sess = self.start_session()
@@ -195,12 +256,22 @@ class LatNet(object):
     while True: 
       # get batch of data
       feed_dict = dataset.minibatch()
-
-      # perform train step
       tf_feed_dict = {}
       for name in feed_dict.keys():
         tf_feed_dict[self.in_tensors[name]] = feed_dict[name]
-      _, loss = self.sess.run([self.out_tensors['train_op'], self.out_tensors['loss_gpu_' + str(self.gpus[0])]], feed_dict=tf_feed_dict)
+
+      # perform optimization step
+      if self.gan_loss is None:
+        output = [self.out_tensors['train_op'], 
+                  self.out_tensors['loss_gpu_' + str(self.gpus[0])]]
+        _, loss = self.sess.run(output, feed_dict=tf_feed_dict)
+      else:
+        output = [self.out_tensors['gen_train_op'], 
+                  self.out_tensors['disc_train_op'], 
+                  self.out_tensors['gen_loss_gpu_' + str(self.gpus[0])],
+                  self.out_tensors['disc_loss_gpu_' + str(self.gpus[0])]]
+        _, _, gen_loss, disc_loss = self.sess.run(output, feed_dict=tf_feed_dict)
+        loss = gen_loss
 
       # calc ave loss
       prev_losses.append(loss)

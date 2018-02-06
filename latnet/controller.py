@@ -50,6 +50,8 @@ class LatNetController(object):
                         default='0')
       group.add_argument('--optimizer', help='all mode', type=str,
                         default='adam')
+      group.add_argument('--gan_loss', help='all mode', type=str,
+                        default='normal')
       group.add_argument('--lr', help='all mode', type=float,
                         default=0.0004)
       group.add_argument('--train_iterations', help='all mode', type=int,
