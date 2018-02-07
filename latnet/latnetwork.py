@@ -86,7 +86,7 @@ class LatNet(object):
               tf.summary.image('mask', self.in_tensors['mask' + gpu_str])
           # make seq of output states
           for j in xrange(self.seq_length):
-            self.add_tensor('true_state_' + seq_str(j), tf.placeholder(tf.float32, (2 + self.DxQy.dims) * [None]))
+            self.add_tensor('true_state' + seq_str(j), tf.placeholder(tf.float32, (2 + self.DxQy.dims) * [None]))
             if i == 0:
               with tf.device('/cpu:0'):
                 tf.summary.image('true_state_' + str(j), self.DxQy.lattice_to_norm(self.in_tensors['true_state' + seq_str(j)]))
@@ -95,7 +95,7 @@ class LatNet(object):
           ### encode ###
           self.encoder_state(self, self.config, 
                              in_name="state" + gpu_str, 
-                             out_name="cstate" seq_str(0))
+                             out_name="cstate" + seq_str(0))
           self.encoder_boundary(self, self.config, 
                                 in_name="boundary" + gpu_str, 
                                 out_name="cboundary" + gpu_str)
@@ -118,21 +118,21 @@ class LatNet(object):
                                in_name="cstate" + seq_str(j), 
                                out_name="pred_state" + seq_str(j))
             self.out_tensors["pred_state" + seq_str(j)] = (self.out_tensors['mask' + gpu_str]
-                                                         * self.out_tensors["pred_state_" + seq_str(j)])
+                                                         * self.out_tensors["pred_state" + seq_str(j)])
   
             if i == 0:
               with tf.device('/cpu:0'):
                 # make image summary
-                self.out_tensors['pred_norm' + seq_str(j)] = self.DxQy.lattice_to_norm(self.out_tensors['pred_state_' + seq_str(j)])
-                tf.summary.image('pred_vel_' + str(j), self.out_tensors['pred_norm' + seq_str(j)]))
+                self.out_tensors['pred_norm' + seq_str(j)] = self.DxQy.lattice_to_norm(self.out_tensors['pred_state' + seq_str(j)])
+                tf.summary.image('pred_vel_' + str(j), self.out_tensors['pred_norm' + seq_str(j)])
  
           ### discriminator of gan ###
           if self.gan_loss is not None:
             seq_pred_state_names = []
             seq_true_state_names = []
             for j in xrange(self.seq_length):
-              seq_pred_state_names.append(self.out_tensors["pred_state_" + seq_str(j)])
-              seq_true_state_names.append(self.out_tensors["true_state_" + seq_str(j)])
+              seq_pred_state_names.append("pred_state" + seq_str(j))
+              seq_true_state_names.append("true_state" + seq_str(j))
             self.discriminator(self, self.config, 
                                in_boundary_name=None,
                                in_state_name=None,
@@ -151,12 +151,12 @@ class LatNet(object):
           self.out_tensors["loss_mse" + gpu_str] = 0.0
           for j in xrange(self.seq_length):
             # normalize loss to 256 by 256 state for now
-            pred_shape = tf.shape(self.out_tensors['true_state_' + seq_str(j)])
+            pred_shape = tf.shape(self.out_tensors['true_state' + seq_str(j)])
             num_cells = tf.cast(tf.reduce_prod(pred_shape[1:3]), dtype=tf.float32)
             mse_factor = ((256.0*256.0) / num_cells)
-            self.mse(true_name='true_state_' + str(j) + gpu_str,
-                     pred_name='pred_state_' + str(j) + gpu_str,
-                     loss_name='loss_mse_' + str(j) + gpu_str, factor=factor)
+            self.mse(true_name='true_state_' + seq_str(j),
+                     pred_name='pred_state_' + seq_str(j),
+                     loss_name='loss_mse_' + seq_str(j), factor=factor)
 
             # add up losses
             self.out_tensors['loss_mse' + gpu_str] += self.out_tensors['loss_mse_' + seq_str(j)] 
@@ -437,6 +437,7 @@ class LatNet(object):
     in_tensors = [self.out_tensors[name] for name in in_names]
     self.out_tensors[out_name] = tf.concat(in_tensors, 
                                            axis=axis)
+    print(self.out_tensors[out_name].get_shape())
 
     # add to shape converters
     for name in self.shape_converters.keys():

@@ -176,7 +176,7 @@ def discriminator(pipe, configs, in_boundary_name, in_state_name, in_seq_state_n
                    begin_nonlinearity=begin_nonlinearity,
                    weight_name="res_" + str(i))
 
-  pipe.conv(in_name=in_name, out_name=out_name,
+  pipe.conv(in_name=out_name, out_name=out_name,
             kernel_size=1, stride=1,
             filter_size=1,
             weight_name="discriminator_conv")
