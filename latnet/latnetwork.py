@@ -86,7 +86,7 @@ class LatNet(object):
               tf.summary.image('mask', self.in_tensors['mask' + gpu_str])
           # make seq of output states
           for j in xrange(self.seq_length):
-            self.add_tensor('true_state' + seq_str(j), tf.placeholder(tf.float32, (2 + self.DxQy.dims) * [None]))
+            self.add_tensor('true_state' + seq_str(j), tf.placeholder(tf.float32, (1 + self.DxQy.dims) * [None] + [self.DxQy.Q]))
             if i == 0:
               with tf.device('/cpu:0'):
                 tf.summary.image('true_state_' + str(j), self.DxQy.lattice_to_norm(self.in_tensors['true_state' + seq_str(j)]))
@@ -154,12 +154,13 @@ class LatNet(object):
             pred_shape = tf.shape(self.out_tensors['true_state' + seq_str(j)])
             num_cells = tf.cast(tf.reduce_prod(pred_shape[1:3]), dtype=tf.float32)
             mse_factor = ((256.0*256.0) / num_cells)
-            self.mse(true_name='true_state_' + seq_str(j),
-                     pred_name='pred_state_' + seq_str(j),
-                     loss_name='loss_mse_' + seq_str(j), factor=factor)
+            self.mse(true_name='true_state' + seq_str(j),
+                     pred_name='pred_state' + seq_str(j),
+                     loss_name='loss_mse' + seq_str(j), 
+                     factor=mse_factor)
 
             # add up losses
-            self.out_tensors['loss_mse' + gpu_str] += self.out_tensors['loss_mse_' + seq_str(j)] 
+            self.out_tensors['loss_mse' + gpu_str] += self.out_tensors['loss_mse' + seq_str(j)] 
 
           # factor out batch size and num gpus and seq length
           self.out_tensors['loss_mse' + gpu_str] = self.out_tensors['loss_mse' + gpu_str]/(num_samples)
@@ -171,7 +172,8 @@ class LatNet(object):
                                                               + tf.log(1.0 - self.out_tensors['D_pred' + gpu_str]))
 
           #### add all losses ###
-          self.out_tensors['loss' + gpu_str] =  self.out_tensors['loss_mse' + gpu_str]
+          #self.out_tensors['loss' + gpu_str] =  self.out_tensors['loss_mse' + gpu_str]
+          self.out_tensors['loss' + gpu_str] =  0.0
           if self.gan_loss is not None:
             self.out_tensors['loss' + gpu_str] += self.out_tensors['gen_loss' + gpu_str]
  
@@ -207,7 +209,7 @@ class LatNet(object):
       tf.summary.scalar('loss_mse', self.out_tensors['loss_mse' + gpu_str(0)])
       if self.gan_loss is not None:
         tf.summary.scalar('gen_loss', self.out_tensors['gen_loss' + gpu_str(0)])
-        tf.summary.scalar('disc_loss', self.out_tensors['disc_loss_' + gpu_str(0)])
+        tf.summary.scalar('disc_loss', self.out_tensors['disc_loss' + gpu_str(0)])
 
       ###### Train Operation ######
       if self.gan_loss is None:
@@ -217,10 +219,11 @@ class LatNet(object):
                                                self.out_tensors['global_step'])
       else:
         self.gen_optimizer = Optimizer(self.config)
-        self.out_tensors['gen_train_op'] = self.optimizer.train_op(gen_params, 
+        self.disc_optimizer = Optimizer(self.config)
+        self.out_tensors['gen_train_op'] = self.gen_optimizer.train_op(gen_params, 
                                                    self.out_tensors['gen_grads' + gpu_str(0)], 
                                                    self.out_tensors['global_step'])
-        self.out_tensors['disc_train_op'] = self.optimizer.train_op(disc_params, 
+        self.out_tensors['disc_train_op'] = self.disc_optimizer.train_op(disc_params, 
                                                    self.out_tensors['disc_grads' + gpu_str(0)], 
                                                    self.out_tensors['global_step'])
   
@@ -437,7 +440,6 @@ class LatNet(object):
     in_tensors = [self.out_tensors[name] for name in in_names]
     self.out_tensors[out_name] = tf.concat(in_tensors, 
                                            axis=axis)
-    print(self.out_tensors[out_name].get_shape())
 
     # add to shape converters
     for name in self.shape_converters.keys():

@@ -93,7 +93,7 @@ class TrainDomain(Domain):
         'seq_length': 5,
         'input_cshape': '16x16',
         'periodic_x': True,
-        'periodic_y': False,
+        'periodic_y': True,
         'nr_downsamples': 3,
         'nr_residual_encoder': 2,
         'nr_residual_compression': 3,
