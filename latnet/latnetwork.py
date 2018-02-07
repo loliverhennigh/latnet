@@ -596,16 +596,11 @@ class LatNet(object):
     # start timer
     self.tick = time.time()
 
-  def print_train_info(self, loss_stats, time_stats, queue_stats, step):
-
-    print_string = ''
-    print(
-    print_string  = (colored('time per sample ', 'green') + str(round(time_per_sample, 3)) + '\n')
-    print_string += (colored('loss ', 'blue') + str(round(loss, 3)) + '\n')
-    print_string += (colored('ave loss ', 'blue') + str(round(ave_loss, 3)) + '\n')
-    print_string += (colored('step ', 'yellow') + str(step) + '\n')
-    for k in queue_stats.keys():
-      print_string += (colored(k + ' ', 'magenta') + str(queue_stats[k]) + '\n')
+  def print_stats(self, loss_stats, time_stats, queue_stats, step):
+	loss_string = print_dict('LOSS STATS', loss_stats, 'blue')
+	time_string = print_dict('TIME STATS', loss_stats, 'magenta')
+	queue_string = print_dict('QUEUE STATS', loss_stats, 'yellow')
+    print_string = loss_string + time_string + queue_string
     os.system('clear')
     print("TRAIN INFO")
     print(print_string)
@@ -617,4 +612,21 @@ class LatNet(object):
     init = tf.global_variables_initializer()
     sess.run(init)
     return sess
+
+def print_dict(name, dictionary, color):
+  print_string = name + '\n'
+  for name in dictionary.keys():
+    if type(dictionary[name]) is not list:
+      print_element = '   ' + name + ':'
+      print_element.ljust(15)
+      if type(dictionary[name]) is float:
+        print_element += str(round(dictionary[name], 3))
+      else:
+        print_element += str(dictionary[name])
+      print_element += '\n'
+      print_string += print_element
+  print_string = colored(print_string, color)
+  return print_string
+  
+
 
