@@ -154,7 +154,7 @@ def decoder_state(pipe, configs, in_name, out_name, lattice_size=9):
   pipe.nonlinearity(name=out_name, nonlinearity_name='tanh')
 
 # discriminator
-def discriminator(pipe, configs, in_boundary_name, in_state_name, in_seq_state_names, out_name):
+def discriminator_conditional(pipe, configs, in_boundary_name, in_state_name, in_seq_state_names, out_name):
 
   # set nonlinearity
   nonlinearity = set_nonlinearity(configs.nonlinearity)
@@ -164,8 +164,7 @@ def discriminator(pipe, configs, in_boundary_name, in_state_name, in_seq_state_n
   #pipe.resize_image(in_name=in_boundary_name, out_name=in_boundary_name + '_resized')
 
   pipe.concat_tensors(in_names=in_seq_state_names, out_name=out_name, axis=0) # concat on batch
-  #for i in xrange(configs.nr_residual_compression):
-  for i in xrange(3):
+  for i in xrange(configs.nr_residual_compression):
     begin_nonlinearity = True
     if i == 0:
       begin_nonlinearity = False
@@ -183,6 +182,44 @@ def discriminator(pipe, configs, in_boundary_name, in_state_name, in_seq_state_n
             weight_name="discriminator_conv")
 
   pipe.nonlinearity(name=out_name, nonlinearity_name='sigmoid')
+
+def discriminator_unconditional(pipe, configs, in_seq_state_names, out_layer, out_class):
+
+  # set nonlinearity
+  nonlinearity = set_nonlinearity(configs.nonlinearity)
+
+  # reshape boundary and state to mactch seq state
+  #pipe.resize_image(in_name=in_boundary_name, out_name=in_boundary_name + '_resized')
+  #pipe.resize_image(in_name=in_boundary_name, out_name=in_boundary_name + '_resized')
+
+  pipe.concat_tensors(in_names=in_seq_state_names, out_name=out_class, axis=0) # concat on batch
+  for i in xrange(configs.nr_residual_compression):
+    begin_nonlinearity = True
+    if i == 0:
+      begin_nonlinearity = False
+    pipe.res_block(in_name=out_class, out_name=out_class, 
+                   filter_size=configs.filter_size,
+                   nonlinearity=nonlinearity,
+                   stride=1,
+                   gated=configs.gated,
+                   begin_nonlinearity=begin_nonlinearity,
+                   weight_name="res_" + str(i))
+    if i == 0:
+      # for layer loss as seen in tempoGAN: A Temporally Coherent, Volumetric GAN for Super-resolution Fluid Flow
+      pipe.out_tensors[out_layer] = pipe.out_tensors[out_class]
+
+  pipe.conv(in_name=out_class, out_name=out_class,
+            kernel_size=1, stride=1,
+            filter_size=256,
+            nonlinearity=nonlinearity,
+            weight_name="fc_conv")
+
+  pipe.conv(in_name=out_class, out_name=out_class,
+            kernel_size=1, stride=1,
+            filter_size=1,
+            weight_name="discriminator_conv")
+
+  pipe.nonlinearity(name=out_class, nonlinearity_name='sigmoid')
 
 
 
