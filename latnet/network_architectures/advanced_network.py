@@ -164,7 +164,8 @@ def discriminator(pipe, configs, in_boundary_name, in_state_name, in_seq_state_n
   #pipe.resize_image(in_name=in_boundary_name, out_name=in_boundary_name + '_resized')
 
   pipe.concat_tensors(in_names=in_seq_state_names, out_name=out_name, axis=0) # concat on batch
-  for i in xrange(configs.nr_residual_compression):
+  #for i in xrange(configs.nr_residual_compression):
+  for i in xrange(3):
     begin_nonlinearity = True
     if i == 0:
       begin_nonlinearity = False

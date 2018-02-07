@@ -180,13 +180,15 @@ class LatNet(object):
           ###### Grad Operation ######
           if i == 0:
             all_params = tf.trainable_variables()
-            if self.gan_loss is None:
-              self.out_tensors['grads' + gpu_str] = tf.gradients(self.out_tensors['loss' + gpu_str], all_params)
-            else:
+            if self.gan_loss is not None:
               gen_params = [v for i, v in enumerate(all_params) if "discriminator" not in v.name[:v.name.index(':')]]
               disc_params = [v for i, v in enumerate(all_params) if "discriminator" in v.name[:v.name.index(':')]]
-              self.out_tensors['gen_grads' + gpu_str] = tf.gradients(self.out_tensors['loss' + gpu_str], gen_params)
-              self.out_tensors['disc_grads' + gpu_str] = tf.gradients(self.out_tensors['disc_loss' + gpu_str], disc_params)
+
+          if self.gan_loss is None:
+            self.out_tensors['grads' + gpu_str] = tf.gradients(self.out_tensors['loss' + gpu_str], all_params)
+          else:
+            self.out_tensors['gen_grads' + gpu_str] = tf.gradients(self.out_tensors['loss' + gpu_str], gen_params)
+            self.out_tensors['disc_grads' + gpu_str] = tf.gradients(self.out_tensors['disc_loss' + gpu_str], disc_params)
 
       ###### Round up losses and Gradients on gpu:0 ######
       with tf.device('/gpu:%d' % self.gpus[0]):
@@ -197,12 +199,14 @@ class LatNet(object):
           if self.gan_loss is not None:
             self.out_tensors['gen_loss' + gpu_str(0)] += self.out_tensors['gen_loss' + gpu_str(i)]
             self.out_tensors['disc_loss' + gpu_str(0)] += self.out_tensors['disc_loss' + gpu_str(i)]
-          # gradients
-          for j in range(len(self.out_tensors['grads_gpu_' + str(self.gpus[0])])):
-            if self.gan_loss is None:
-              self.out_tensors['grads' + gpu_str(0)][j] += self.out_tensors['grads' + gpu_str(i)][j]
-            else:
+          # gradients 
+          if self.gan_loss is None:
+            for j in range(len(self.out_tensors['grads' + gpu_str(0)])):
+                self.out_tensors['grads' + gpu_str(0)][j] += self.out_tensors['grads' + gpu_str(i)][j]
+          else:
+            for j in range(len(self.out_tensors['gen_grads' + gpu_str(0)])):
               self.out_tensors['gen_grads' + gpu_str(0)][j] += self.out_tensors['gen_grads' + gpu_str(i)][j]
+            for j in range(len(self.out_tensors['disc_grads' + gpu_str(0)])):
               self.out_tensors['disc_grads' + gpu_str(0)][j] += self.out_tensors['disc_grads' + gpu_str(i)][j]
 
       ### add loss summary ### 
@@ -249,7 +253,7 @@ class LatNet(object):
   def train(self, dataset):
   
     # steps per print (hard set for now)
-    steps_per_print = 20
+    steps_per_print = 1
     ave_loss_length = 300
  
     # start timer
@@ -269,12 +273,19 @@ class LatNet(object):
                   self.out_tensors['loss_gpu_' + str(self.gpus[0])]]
         _, loss = self.sess.run(output, feed_dict=tf_feed_dict)
       else:
+        #output = [self.out_tensors['gen_train_op'], 
+        #          self.out_tensors['disc_train_op'], 
+        #          self.out_tensors['gen_loss_gpu_' + str(self.gpus[0])],
+        #          self.out_tensors['disc_loss_gpu_' + str(self.gpus[0])]]
         output = [self.out_tensors['gen_train_op'], 
-                  self.out_tensors['disc_train_op'], 
                   self.out_tensors['gen_loss_gpu_' + str(self.gpus[0])],
                   self.out_tensors['disc_loss_gpu_' + str(self.gpus[0])]]
-        _, _, gen_loss, disc_loss = self.sess.run(output, feed_dict=tf_feed_dict)
+        #_, _, gen_loss, disc_loss = self.sess.run(output, feed_dict=tf_feed_dict)
+        #for i in xrange(10):
+        #  _ = self.sess.run(self.out_tensors['gen_train_op'], feed_dict=tf_feed_dict)
+        _, gen_loss, disc_loss = self.sess.run(output, feed_dict=tf_feed_dict)
         loss = gen_loss
+        #loss = disc_loss
 
       # calc ave loss
       prev_losses.append(loss)
