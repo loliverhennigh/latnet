@@ -15,7 +15,7 @@ class NetworkSaver:
     # a bit messy this way but oh well
     self.none_save_args = ['mode', 'run_mode', 'latnet_network_dir', 'input_shape',
                            'input_cshape', 'save_network_freq', 'seq_length',
-                           'batch_size', 'gpus', 'train_iterations', 'train_sim_dir',
+                           'batch_size', 'gpus', 'train_iters', 'train_sim_dir',
                            'gpu_fraction', 'num_simulations', 'max_queue', 'sim_shape',
                            'num_iters', 'sim_restore_iter', 'sim_dir', 'sim_save_every',
                            'compare', 'save_format', 'save_cstate', 'checkpoint_from',

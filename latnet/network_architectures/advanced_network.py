@@ -133,10 +133,11 @@ def decoder_state(pipe, configs, in_name, out_name, lattice_size=9):
 
   for i in xrange(configs.nr_downsamples-1):
     filter_size = int(configs.filter_size*pow(2,configs.nr_downsamples-i-2))
-    pipe.trans_conv(in_name=in_name, out_name=out_name,
-                    kernel_size=4, stride=2, 
-                    filter_size=filter_size,
-                    weight_name="up_conv_" + str(i))
+    pipe.upsample(in_name=in_name, out_name=out_name)
+    #pipe.trans_conv(in_name=in_name, out_name=out_name,
+    #                kernel_size=4, stride=2, 
+    #                filter_size=filter_size,
+    #                weight_name="up_conv_" + str(i))
     in_name=out_name
     for j in xrange(configs.nr_residual_encoder):
       pipe.res_block(in_name=in_name, out_name=out_name, 
@@ -146,10 +147,17 @@ def decoder_state(pipe, configs, in_name, out_name, lattice_size=9):
                      gated=configs.gated,
                      weight_name="res_" + str(i) + '_' + str(j))
 
-  pipe.trans_conv(in_name=in_name, out_name=out_name,
-                  kernel_size=4, stride=2,
-                  filter_size=lattice_size,
-                  weight_name="last_up_conv")
+  pipe.upsample(in_name=in_name, out_name=out_name)
+  pipe.conv(in_name=in_name, out_name=out_name,
+          kernel_size=3, stride=1,
+          filter_size=lattice_size,
+          weight_name="last_up_conv")
+
+
+  #pipe.trans_conv(in_name=in_name, out_name=out_name,
+  #                kernel_size=4, stride=2,
+  #                filter_size=lattice_size,
+  #                weight_name="last_up_conv")
 
   pipe.nonlinearity(name=out_name, nonlinearity_name='tanh')
 
@@ -157,69 +165,72 @@ def decoder_state(pipe, configs, in_name, out_name, lattice_size=9):
 def discriminator_conditional(pipe, configs, in_boundary_name, in_state_name, in_seq_state_names, out_name):
 
   # set nonlinearity
-  nonlinearity = set_nonlinearity(configs.nonlinearity)
+  nonlinearity = set_nonlinearity('leaky_relu')
 
-  # reshape boundary and state to mactch seq state
-  #pipe.resize_image(in_name=in_boundary_name, out_name=in_boundary_name + '_resized')
-  #pipe.resize_image(in_name=in_boundary_name, out_name=in_boundary_name + '_resized')
-
-  pipe.concat_tensors(in_names=in_seq_state_names, out_name=out_name, axis=0) # concat on batch
+  pipe.concat_tensors(in_names=[in_boundary_name]
+                             + [in_state_name] 
+                             + in_seq_state_names, 
+                      out_name=out_name, axis=-1) # concat on feature
+  filter_size=configs.filter_size
   for i in xrange(configs.nr_residual_compression):
     begin_nonlinearity = True
     if i == 0:
       begin_nonlinearity = False
     pipe.res_block(in_name=out_name, out_name=out_name, 
-                   filter_size=configs.filter_size,
+                   filter_size=filter_size,
                    nonlinearity=nonlinearity,
-                   stride=1,
+                   stride=2,
                    gated=configs.gated,
                    begin_nonlinearity=begin_nonlinearity,
                    weight_name="res_" + str(i))
+    filter_size = filter_size*2
 
   pipe.conv(in_name=out_name, out_name=out_name,
-            kernel_size=1, stride=1,
-            filter_size=1,
-            weight_name="discriminator_conv")
+          kernel_size=1, stride=1,
+          filter_size=256,
+          nonlinearity=nonlinearity,
+          weight_name="fc_1")
+
+  pipe.conv(in_name=out_name, out_name=out_name,
+          kernel_size=1, stride=1,
+          filter_size=1,
+          weight_name="fc_2")
 
   pipe.nonlinearity(name=out_name, nonlinearity_name='sigmoid')
 
 def discriminator_unconditional(pipe, configs, in_seq_state_names, out_layer, out_class):
 
   # set nonlinearity
-  nonlinearity = set_nonlinearity(configs.nonlinearity)
-
-  # reshape boundary and state to mactch seq state
-  #pipe.resize_image(in_name=in_boundary_name, out_name=in_boundary_name + '_resized')
-  #pipe.resize_image(in_name=in_boundary_name, out_name=in_boundary_name + '_resized')
+  nonlinearity = set_nonlinearity('leaky_relu')
 
   pipe.concat_tensors(in_names=in_seq_state_names, out_name=out_class, axis=0) # concat on batch
+  filter_size=configs.filter_size
   for i in xrange(configs.nr_residual_compression):
     begin_nonlinearity = True
     if i == 0:
       begin_nonlinearity = False
     pipe.res_block(in_name=out_class, out_name=out_class, 
-                   filter_size=configs.filter_size,
+                   filter_size=filter_size,
                    nonlinearity=nonlinearity,
-                   stride=1,
+                   stride=2,
                    gated=configs.gated,
                    begin_nonlinearity=begin_nonlinearity,
                    weight_name="res_" + str(i))
     if i == 0:
       # for layer loss as seen in tempoGAN: A Temporally Coherent, Volumetric GAN for Super-resolution Fluid Flow
-      pipe.out_tensors[out_layer] = pipe.out_tensors[out_class]
+      pipe.rename_tensor(out_class, out_layer)
+    filter_size = filter_size*2
 
   pipe.conv(in_name=out_class, out_name=out_class,
-            kernel_size=1, stride=1,
-            filter_size=256,
-            nonlinearity=nonlinearity,
-            weight_name="fc_conv")
+          kernel_size=1, stride=1,
+          filter_size=256,
+          nonlinearity=nonlinearity,
+          weight_name="fc_1")
 
   pipe.conv(in_name=out_class, out_name=out_class,
-            kernel_size=1, stride=1,
-            filter_size=1,
-            weight_name="discriminator_conv")
+          kernel_size=1, stride=1,
+          filter_size=1,
+          weight_name="fc_2")
 
   pipe.nonlinearity(name=out_class, nonlinearity_name='sigmoid')
-
-
 

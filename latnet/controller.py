@@ -50,12 +50,18 @@ class LatNetController(object):
                         default='0')
       group.add_argument('--optimizer', help='all mode', type=str,
                         default='adam')
-      group.add_argument('--gan_loss', help='all mode', type=str,
-                        default='normal')
+      group.add_argument('--gan', help='all mode', type=str2bool,
+                        default=True)
       group.add_argument('--lr', help='all mode', type=float,
-                        default=0.0004)
-      group.add_argument('--train_iterations', help='all mode', type=int,
-                        default=1000000)
+                        default=0.0002)
+      group.add_argument('--decay_steps', help='all mode', type=int,
+                        default=20000)
+      group.add_argument('--decay_rate', help='all mode', type=float,
+                        default=0.96)
+      group.add_argument('--beta1', help='all mode', type=float,
+                        default=0.5)
+      group.add_argument('--train_iters', help='all mode', type=int,
+                        default=20000)
 
       group = self._config_parser.add_group('Data Queue Details')
       group.add_argument('--train_sim_dir', help='train mode', type=str,
@@ -70,9 +76,9 @@ class LatNetController(object):
       group = self._config_parser.add_group('Simulation Details')
       group.add_argument('--sim_shape', help='all mode', type=str,
                         default='512x512')
-      group.add_argument('--periodic_x', help='all mode', type=bool,
+      group.add_argument('--periodic_x', help='all mode', type=str2bool,
                         default=True)
-      group.add_argument('--periodic_y', help='all mode', type=bool,
+      group.add_argument('--periodic_y', help='all mode', type=str2bool,
                         default=True)
       group.add_argument('--DxQy', help='all mode', type=str,
             choices=['D2Q9'], default='D2Q9')
@@ -88,11 +94,11 @@ class LatNetController(object):
                         default=1)
 
       group = self._config_parser.add_group('Simulation Process Details')
-      group.add_argument('--compare', help='compares to sailfish simulation', type=bool,
+      group.add_argument('--compare', help='compares to sailfish simulation', type=str2bool,
                         default=True)
       group.add_argument('--save_format', help='eval mode', type=str,
                         default='npy')
-      group.add_argument('--save_cstate', help='eval mode', type=bool,
+      group.add_argument('--save_cstate', help='eval mode', type=str2bool,
                         default=False)
 
       # TODO this group will be removed when the sailfish configs are integrated
@@ -105,11 +111,11 @@ class LatNetController(object):
                         default=50)
       group.add_argument('--visc', help='all mode', type=float,
                         default=0.1)
-      group.add_argument('--restore_geometry', help='all mode', type=bool,
+      group.add_argument('--restore_geometry', help='all mode', type=str2bool,
                         default=False)
       group.add_argument('--scr_scale', help='all mode', type=float,
                         default=.5)
-      group.add_argument('--debug_sailfish', help='all mode', type=bool,
+      group.add_argument('--debug_sailfish', help='all mode', type=str2bool,
                         default=False)
       group.add_argument('--every', help='all mode', type=int,
                         default=100)
@@ -179,4 +185,11 @@ class LatNetController(object):
                         encoder_shape_converter, 
                         cmapping_shape_converter, 
                         decoder_shape_converter)
+def str2bool(v):
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 

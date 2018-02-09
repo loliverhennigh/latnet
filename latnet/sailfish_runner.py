@@ -196,18 +196,22 @@ class TrainSailfishRunner(SailfishRunner):
 
     # read boundary
     boundary = self.read_boundary(boundary_subdomain)
+    boundary_small = self.read_boundary(seq_state_subdomain)
 
     # read seq states
     seq_state = []
     for i in xrange(seq_length):
       seq_state.append(self.read_state(ind + i, seq_state_subdomain))
 
-    # get mask for loss # TODO add boundary to loss
+    # get mask for loss
     mask = np.ones(self.sim_shape + [1])
     mask = numpy_utils.mobius_extract(mask, seq_state_subdomain, 
                                       padding_type=self.padding_type)
+    boundary_mask = np.expand_dims(np.sum(boundary_small, axis=-1), axis=-1) # TODO this wont work for halfway bounceback
+    boundary_mask = boundary_mask.astype(np.bool).astype(np.float32)
+    mask = (mask - boundary_mask)
 
-    return state, boundary, seq_state, mask
+    return state, boundary, boundary_small, seq_state, mask
 
   def generate_train_data(self):
     self.new_sim(self.num_cpoints)

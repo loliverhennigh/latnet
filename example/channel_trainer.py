@@ -93,7 +93,7 @@ class TrainDomain(Domain):
         'seq_length': 5,
         'input_cshape': '16x16',
         'periodic_x': True,
-        'periodic_y': True,
+        'periodic_y': False,
         'nr_downsamples': 3,
         'nr_residual_encoder': 2,
         'nr_residual_compression': 3,
@@ -117,11 +117,13 @@ if __name__ == '__main__':
   sim = LatNetController(_sim=TrainDomain)
   sim.run()
 
+  """
   # generate video of plots
   time.sleep(5.0)
   os.system("rm ./figs/channel_video.mp4")
   os.system("cat ./figs/compare* | ffmpeg -f image2pipe -r 10 -vcodec png -i - -vcodec libx264 ./figs/channel_video.mp4")
   os.system("rm ./figs/compare*")
+  """
 
 
     

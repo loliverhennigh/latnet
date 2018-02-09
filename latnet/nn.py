@@ -11,6 +11,11 @@ FLAGS = tf.app.flags.FLAGS
 def int_shape(x):
   return list(map(int, x.get_shape()))
 
+def leaky_relu(x, leak=0.1):
+  f1 = 0.5 * (1 + leak)
+  f2 = 0.5 * (1 - leak)
+  return f1 * x + f2 * abs(x)
+
 def concat_elu(x):
   """ like concatenated ReLU (http://arxiv.org/abs/1603.05201), but then with ELU """
   axis = len(x.get_shape())-1
@@ -35,6 +40,8 @@ def set_nonlinearity(name):
     return tf.nn.crelu
   elif name == 'relu':
     return tf.nn.relu
+  elif name == 'leaky_relu':
+    return leaky_relu
   elif name == 'sigmoid':
     return tf.nn.sigmoid
   elif name == 'hard_sigmoid':
@@ -163,14 +170,15 @@ def transpose_conv_layer(x, kernel_size, stride, filter_size, name, nonlinearity
 
 def fc_layer(x, hiddens, name, nonlinearity=None, flat = False):
   with tf.variable_scope(name) as scope:
-    input_shape = x.get_shape().as_list()
+    input_shape = tf.shape(x)
     if flat:
       dim = input_shape[1]*input_shape[2]*input_shape[3]
       inputs_processed = tf.reshape(x, [-1,dim])
     else:
       dim = input_shape[1]
       inputs_processed = x 
-    
+   
+    dim = 100 
     weights = _variable('weights', shape=[dim,hiddens],initializer=tf.contrib.layers.xavier_initializer())
     biases = _variable('biases', [hiddens], initializer=tf.contrib.layers.xavier_initializer())
     output = tf.add(tf.matmul(inputs_processed,weights),biases,name=name)
@@ -187,11 +195,12 @@ def nin(x, num_units, idx):
     #x = fc_layer(x, num_units, idx)
     #return tf.reshape(x, s[:-1]+[num_units])
 
-def upsampleing_resize(x, filter_size, name="upsample"):
-  x_shape = int_shape(x)
+def upsampleing_resize(x):
+  x_shape = tf.shape(x)
   x = tf.image.resize_images(x, [2*x_shape[1], 2*x_shape[2]])
+  x = x[:,1:-1,1:-1,1:-1]
   #x = tf.image.resize_nearest_neighbor(x, [2*x_shape[1], 2*x_shape[2]])
-  x = conv_layer(x, 3, 1, filter_size, name)
+  #x = conv_layer(x, 3, 1, filter_size, name)
   return x
 
 def avg_pool(x):
@@ -214,9 +223,9 @@ def res_block(x, a=None,
   length_input = len(x.get_shape())
 
   orig_x = x
-  if normalize == "batch_norm":
-    x = tcl.batch_norm(x)
-  elif normalize == "layer_norm":
+  if (normalize == "batch_norm") and (not begin_nonlinearity):
+    x = tcl.batch_norm(x, decay=0.9)
+  elif (normalize == "layer_norm") and (not begin_nonlinearity):
     x = tcl.layer_norm(x)
   if begin_nonlinearity: 
     x = nonlinearity(x) 
@@ -245,7 +254,7 @@ def res_block(x, a=None,
         [0, 0]])
     x += nin(nonlinearity(a), filter_size, name + '_nin')
   if normalize == "batch_norm":
-    x = tcl.batch_norm(x)
+    x = tcl.batch_norm(x, decay=0.9)
   elif normalize == "layer_norm":
     x = tcl.layer_norm(x)
   x = nonlinearity(x)
