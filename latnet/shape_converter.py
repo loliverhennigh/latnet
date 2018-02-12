@@ -92,12 +92,12 @@ class ShapeConverter:
     self.concat_function_in_out(in_out_helper)
     self.concat_function_out_in(out_in_helper)
 
-  def add_res_block(self, stride):
+  def add_res_block(self, kernel_size, stride):
     if stride == 1:
-      self.add_conv(3, stride)
+      self.add_conv(kernel_size, stride)
     elif stride == 2:
       self.add_conv(4, stride)
-    self.add_conv(3, 1)
+    self.add_conv(kernel_size, 1)
 
   def concat_function_in_out(self, func):
     old_in_out_subdomain = self.in_out_subdomain

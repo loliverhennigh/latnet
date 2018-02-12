@@ -36,6 +36,8 @@ class LatNetController(object):
                          default='32x32')
       group.add_argument('--lb_to_ln', help='all mode', type=int,
                         default=60)
+      group.add_argument('--boundary_mask', help='all mode', type=str2bool,
+                        default=False)
 
       group = self._config_parser.add_group('Network Saver Details')
       group.add_argument('--save_network_freq', help='all mode', type=int, 
@@ -55,11 +57,15 @@ class LatNetController(object):
       group.add_argument('--lr', help='all mode', type=float,
                         default=0.0002)
       group.add_argument('--decay_steps', help='all mode', type=int,
-                        default=20000)
+                        default=10000)
       group.add_argument('--decay_rate', help='all mode', type=float,
-                        default=0.96)
+                        default=0.5)
       group.add_argument('--beta1', help='all mode', type=float,
                         default=0.5)
+      group.add_argument('--l1_factor', help='all mode', type=float,
+                        default=1.0)
+      group.add_argument('--moving_average', help='all mode', type=str2bool,
+                        default=False)
       group.add_argument('--train_iters', help='all mode', type=int,
                         default=20000)
 
@@ -71,7 +77,7 @@ class LatNetController(object):
       group.add_argument('--num_simulations', help='all mode', type=int,
                         default=10)
       group.add_argument('--max_queue', help='all mode', type=int,
-                        default=30)
+                        default=50)
 
       group = self._config_parser.add_group('Simulation Details')
       group.add_argument('--sim_shape', help='all mode', type=str,

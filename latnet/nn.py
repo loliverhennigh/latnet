@@ -16,10 +16,23 @@ def leaky_relu(x, leak=0.1):
   f2 = 0.5 * (1 - leak)
   return f1 * x + f2 * abs(x)
 
+def selu(x):
+  with tf.variable_scope('elu') as scope:
+    alpha = 1.6732632423543772848170429916717
+    scale = 1.0507009873554804934193349852946
+    return scale*tf.where(x>=0.0, x, alpha*tf.nn.elu(x))
+
 def concat_elu(x):
   """ like concatenated ReLU (http://arxiv.org/abs/1603.05201), but then with ELU """
   axis = len(x.get_shape())-1
+  print(x)
   return tf.nn.elu(tf.concat([x, -x], axis))
+
+def concat_relu(x):
+  axis = len(x.get_shape())-1
+  print(x)
+  return tf.nn.relu(tf.concat([x, -x], axis))
+
 
 def hard_sigmoid(x):
   return tf.minimum(1.0, tf.maximum(0.00, x + 0.5))   
@@ -31,6 +44,10 @@ def triangle_wave(x):
   y = 0.5 * (8/(np.pi**2) * y) + .5
   return y
 
+def tanh(x):
+  print(x)
+  return tf.nn.tanh(x)
+
 def set_nonlinearity(name):
   if name == 'concat_elu':
     return concat_elu
@@ -40,6 +57,10 @@ def set_nonlinearity(name):
     return tf.nn.crelu
   elif name == 'relu':
     return tf.nn.relu
+  elif name == 'concat_relu':
+    return concat_relu
+  elif name == 'selu':
+    return selu
   elif name == 'leaky_relu':
     return leaky_relu
   elif name == 'sigmoid':
@@ -47,7 +68,7 @@ def set_nonlinearity(name):
   elif name == 'hard_sigmoid':
     return hard_sigmoid
   elif name == 'tanh':
-    return tf.nn.tanh
+    return tanh
   else:
     raise('nonlinearity ' + name + ' is not supported')
 
@@ -92,7 +113,7 @@ def simple_conv_3d(x, k):
   y = tf.nn.conv3d(x, k, [1, 1, 1, 1, 1], padding='VALID')
   return y
 
-def conv_layer(x, kernel_size, stride, filter_size, name, nonlinearity=None):
+def conv_layer(x, kernel_size, stride, filter_size, name, nonlinearity=None, normalize=None, phase=None):
   with tf.variable_scope(name) as scope:
     input_channels = x.get_shape()[-1]
  
@@ -103,14 +124,22 @@ def conv_layer(x, kernel_size, stride, filter_size, name, nonlinearity=None):
       exit()
 
     weights = _variable('weights', shape=length_input*[kernel_size] + [input_channels,filter_size],initializer=tf.contrib.layers.xavier_initializer_conv2d())
-    biases = _variable('biases',[filter_size],initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    #biases = _variable('biases',[filter_size],initializer=tf.constant_initializer(0.0))
 
     if length_input == 2:
       conv = tf.nn.conv2d(x, weights, strides=[1, stride, stride, 1], padding='VALID')
     elif length_input == 3:
       conv = tf.nn.conv3d(x, weights, strides=[1, stride, stride, stride, 1], padding='VALID')
 
-    conv = tf.nn.bias_add(conv, biases)
+    #conv = tf.nn.bias_add(conv, biases)
+
+    # normalize
+    if normalize == "batch_norm":
+      conv = tf.layers.batch_normalization(conv, training=True, momentum=0.9)
+    elif normalize == "layer_norm":
+      conv = tcl.layer_norm(conv)
+
+    # apply nonlinearity
     if nonlinearity is not None:
       conv = nonlinearity(conv)
     return conv
@@ -141,7 +170,7 @@ def transpose_conv_layer(x, kernel_size, stride, filter_size, name, nonlinearity
       exit()
 
     weights = _variable('weights', shape=length_input*[kernel_size] + [filter_size,input_channels],initializer=tf.contrib.layers.xavier_initializer_conv2d())
-    biases = _variable('biases',[filter_size],initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    biases = _variable('biases',[filter_size],initializer=tf.constant_initializer(0.0))
     batch_size = tf.shape(x)[0]
 
     if length_input == 2:
@@ -197,9 +226,9 @@ def nin(x, num_units, idx):
 
 def upsampleing_resize(x):
   x_shape = tf.shape(x)
-  x = tf.image.resize_images(x, [2*x_shape[1], 2*x_shape[2]])
-  x = x[:,1:-1,1:-1,1:-1]
-  #x = tf.image.resize_nearest_neighbor(x, [2*x_shape[1], 2*x_shape[2]])
+  x = tf.image.resize_nearest_neighbor(x, [2*x_shape[1], 2*x_shape[2]])
+  #x = tf.image.resize_images(x, [2*x_shape[1], 2*x_shape[2]])
+  #x = x[:,1:-1,1:-1,1:-1]
   #x = conv_layer(x, 3, 1, filter_size, name)
   return x
 
@@ -213,25 +242,28 @@ def avg_pool(x):
 
 def res_block(x, a=None, 
               filter_size=16, 
+              kernel_size=3, 
               nonlinearity=concat_elu, 
               keep_p=1.0, stride=1, 
               gated=True, name="resnet", 
               begin_nonlinearity=True, 
+              phase=None,
               normalize=None):
             
   # determine if 2d or 3d trans conv is needed
   length_input = len(x.get_shape())
 
   orig_x = x
-  if (normalize == "batch_norm") and (not begin_nonlinearity):
-    x = tcl.batch_norm(x, decay=0.9)
-  elif (normalize == "layer_norm") and (not begin_nonlinearity):
+  if (normalize == "batch_norm") and begin_nonlinearity:
+    x = tf.layers.batch_normalization(x, training=True, momentum=0.9)
+  elif (normalize == "layer_norm") and begin_nonlinearity:
     x = tcl.layer_norm(x)
   if begin_nonlinearity: 
     x = nonlinearity(x) 
   if stride == 1:
-    x = conv_layer(x, 3, stride, filter_size, name + '_conv_1')
-    orig_x = orig_x[:,1:-1,1:-1]
+    x = conv_layer(x, kernel_size, stride, filter_size, name + '_conv_1')
+    edge_cut = ((kernel_size-1)/2)
+    orig_x = orig_x[:,edge_cut:-edge_cut,edge_cut:-edge_cut]
   elif stride == 2:
     x = conv_layer(x, 4, stride, filter_size, name + '_conv_1')
     if length_input == 4:
@@ -254,7 +286,8 @@ def res_block(x, a=None,
         [0, 0]])
     x += nin(nonlinearity(a), filter_size, name + '_nin')
   if normalize == "batch_norm":
-    x = tcl.batch_norm(x, decay=0.9)
+    #x = tcl.batch_norm(x,  is_training=phase,center=True, scale=True)
+    x = tf.layers.batch_normalization(x, training=True, momentum=0.9)
   elif normalize == "layer_norm":
     x = tcl.layer_norm(x)
   x = nonlinearity(x)
@@ -262,11 +295,13 @@ def res_block(x, a=None,
   #  x = tf.nn.dropout(x, keep_prob=keep_p)
   if not gated:
     #pass
-    x = conv_layer(x, 3, 1, filter_size, name + '_conv_2')
-    orig_x = orig_x[:,1:-1,1:-1]
+    x = conv_layer(x, kernel_size, 1, filter_size, name + '_conv_2')
+    edge_cut = ((kernel_size-1)/2)
+    orig_x = orig_x[:,edge_cut:-edge_cut,edge_cut:-edge_cut]
   else:
-    x = conv_layer(x, 3, 1, filter_size*2, name + '_conv_2')
-    orig_x = orig_x[:,1:-1,1:-1]
+    x = conv_layer(x, kernel_size, 1, filter_size*2, name + '_conv_2')
+    edge_cut = ((kernel_size-1)/2)
+    orig_x = orig_x[:,edge_cut:-edge_cut,edge_cut:-edge_cut]
     x_1, x_2 = tf.split(x,2,length_input-1)
     x = x_1 * tf.nn.sigmoid(x_2)
 

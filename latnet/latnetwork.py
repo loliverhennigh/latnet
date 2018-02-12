@@ -17,7 +17,7 @@ from network_saver import NetworkSaver
 
 class LatNet(object):
   # default network name
-  network_name = 'advanced_network'
+  #network_name = 'advanced_network'
 
   def __init__(self, config, network_name, script_name):
     # in and out tensors
@@ -49,6 +49,8 @@ class LatNet(object):
       import network_architectures.test_network as net
     elif self.network_name == "advanced_network":
       import network_architectures.advanced_network as net
+    elif self.network_name == "tempogan_network":
+      import network_architectures.tempogan_network as net
     else:
       print("network name not found")
       exit()
@@ -67,6 +69,8 @@ class LatNet(object):
       from network_architectures.test_network import add_options
     elif network_name == "advanced_network":
       from network_architectures.advanced_network import add_options
+    elif network_name == "tempogan_network":
+      from network_architectures.tempogan_network import add_options
     add_options(group)
 
   def train_unroll(self):
@@ -89,6 +93,8 @@ class LatNet(object):
           self.add_tensor('boundary' + gpu_str, (1 + self.DxQy.dims) * [None] + [4])
           self.add_tensor('boundary_small' + gpu_str, (1 + self.DxQy.dims) * [None] + [4])
           self.add_tensor('mask' + gpu_str, (1 + self.DxQy.dims) * [None] + [1])
+          self.in_tensors['phase'] = tf.placeholder(tf.bool, name='phase')
+          self.out_tensors['phase'] = self.in_tensors['phase']
           if i == 0:
             with tf.device('/cpu:0'):
               self.lattice_summary(in_name='state' + gpu_str, summary_name='state')
@@ -107,10 +113,12 @@ class LatNet(object):
           ### encode ###
           self.encoder_state(self, self.config, 
                              in_name="state" + gpu_str, 
-                             out_name="cstate" + seq_str(0))
+                             out_name="cstate" + seq_str(0),
+                             phase='phase')
           self.encoder_boundary(self, self.config, 
                                 in_name="boundary" + gpu_str, 
-                                out_name="cboundary" + gpu_str)
+                                out_name="cboundary" + gpu_str,
+                                phase='phase')
       
           ### unroll on the compressed state ###
           for j in xrange(self.seq_length):
@@ -119,6 +127,7 @@ class LatNet(object):
             self.compression_mapping(self, self.config,
                                      in_cstate_name="cstate" + seq_str(j),
                                      in_cboundary_name="cboundary" + gpu_str,
+                                     phase='phase',
                                      out_name="cstate" + seq_str(j+1))
 
           ### decode all compressed states ###
@@ -128,6 +137,7 @@ class LatNet(object):
                                    out_name="cstate" + seq_str(j))
             self.decoder_state(self, self.config, 
                                in_name="cstate" + seq_str(j), 
+                               phase='phase',
                                out_name="pred_state" + seq_str(j))
             self.out_tensors["pred_state" + seq_str(j)] = (self.out_tensors['mask' + gpu_str]
                                                          * self.out_tensors["pred_state" + seq_str(j)])
@@ -146,10 +156,12 @@ class LatNet(object):
               seq_true_state_names.append("true_state" + seq_str(j))
             self.discriminator_unconditional(self, self.config, 
                                              in_seq_state_names=seq_pred_state_names,
+                                             phase='phase',
                                              out_layer='D_un_layer_pred' + gpu_str,
                                              out_class='D_un_class_pred' + gpu_str)
             self.discriminator_unconditional(self, self.config, 
                                              in_seq_state_names=seq_true_state_names,
+                                             phase='phase',
                                              out_layer='D_un_layer_true' + gpu_str,
                                              out_class='D_un_class_true' + gpu_str)
       
@@ -161,11 +173,13 @@ class LatNet(object):
               seq_pred_state_names.append("pred_state" + seq_str(j))
               seq_true_state_names.append("true_state" + seq_str(j))
             self.discriminator_conditional(self, self.config, 
+                                           phase='phase',
                                            in_boundary_name='boundary_small' + gpu_str,
                                            in_state_name='true_state' + seq_str(0),
                                            in_seq_state_names=seq_pred_state_names,
                                            out_name='D_con_class_pred' + gpu_str)
             self.discriminator_conditional(self, self.config, 
+                                           phase='phase',
                                            in_boundary_name='boundary_small' + gpu_str,
                                            in_state_name='true_state' + seq_str(0),
                                            in_seq_state_names=seq_true_state_names,
@@ -178,7 +192,7 @@ class LatNet(object):
           ### L1 loss ###
           self.out_tensors["loss_l1" + gpu_str] = 0.0
           for j in range(1, self.seq_length):
-            l1_factor = 5.0 # from paper TODO make config param
+            l1_factor = self.config.l1_factor # from paper TODO make config param
             #l1_factor = 0.0 # from paper TODO make config param
             self.l1_loss(true_name='true_state' + seq_str(j),
                          pred_name='pred_state' + seq_str(j),
@@ -192,30 +206,30 @@ class LatNet(object):
             # normal gan losses
             self.gen_loss(class_name='D_un_class_pred' + gpu_str,
                           loss_name='loss_gen_un_class' + gpu_str,
-                          factor=0.0/len(self.gpus))
+                          factor=1.0/len(self.gpus))
             self.disc_loss(true_class_name='D_un_class_true' + gpu_str,
                            pred_class_name='D_un_class_pred' + gpu_str,
                            loss_name='loss_disc_un_class' + gpu_str,
-                           factor=0.0/len(self.gpus))
+                           factor=1.0/len(self.gpus))
             # layer loss as seen in tempoGAN: A Temporally Coherent, Volumetric GAN for
             # Super-resolution Fluid Flow
-            l2_layer_factor = 1e-5 # from paper TODO make config param
-            #l2_layer_factor = 0.0 # from paper TODO make config param
+            #l2_layer_factor = 1e-5 # from paper TODO make config param
+            l2_layer_factor = 0.0 # from paper TODO make config param
             self.l2_loss(true_name='D_un_layer_true' + gpu_str,
                          pred_name='D_un_layer_pred' + gpu_str,
                          loss_name='loss_layer_l2' + gpu_str,
-                         factor=0.0*l2_layer_factor/len(self.gpus))
+                         factor=l2_layer_factor/len(self.gpus))
 
           ### Conditional GAN loss ###
           if self.gan:
             # normal gan losses
             self.gen_loss(class_name='D_con_class_pred' + gpu_str,
                           loss_name='loss_gen_con_class' + gpu_str,
-                          factor=0.0/len(self.gpus))
+                          factor=1.0/len(self.gpus))
             self.disc_loss(true_class_name='D_con_class_true' + gpu_str,
                            pred_class_name='D_con_class_pred' + gpu_str,
                            loss_name='loss_disc_con_class' + gpu_str,
-                           factor=0.0/len(self.gpus))
+                           factor=1.0/len(self.gpus))
 
           #### add all losses together ###
           self.out_tensors['loss_gen' + gpu_str] =  0.0
@@ -284,14 +298,17 @@ class LatNet(object):
 
       ###### Train Operation ######
       self.gen_optimizer = Optimizer(self.config, name='gen')
+      self.disc_optimizer = Optimizer(self.config, name='disc')
+      update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
       self.out_tensors['gen_train_op'] = self.gen_optimizer.train_op(gen_params, 
                                                self.out_tensors['gen_grads' + gpu_str(0)], 
-                                               self.out_tensors['gen_global_step'])
+                                               self.out_tensors['gen_global_step'],
+                                               other_update=update_ops)
       if self.gan:
-        self.disc_optimizer = Optimizer(self.config, name='disc')
         self.out_tensors['disc_train_op'] = self.disc_optimizer.train_op(disc_params, 
-                                                   self.out_tensors['disc_grads' + gpu_str(0)], 
-                                                   self.out_tensors['disc_global_step'])
+                                                     self.out_tensors['disc_grads' + gpu_str(0)], 
+                                                     self.out_tensors['disc_global_step'],
+                                                     other_update=update_ops)
   
       ###### Start Session ######
       self.sess = self.start_session()
@@ -316,29 +333,48 @@ class LatNet(object):
   
     # steps per print (hard set for now untill done debugging)
     steps_per_print = 50
- 
+
+    """
+    for i in xrange(500):
+      if self.gan:
+        disc_names = ['disc_train_op', 'loss_disc', 'loss_disc_un_class', 'loss_disc_con_class']
+        feed_dict = dataset.minibatch()
+        disc_output = self.run(disc_names, feed_dict=feed_dict, return_dict=True)
+        self.update_loss_stats(disc_output)
+        self.update_time_stats()
+        self.print_stats(self.loss_stats, self.time_stats, dataset.queue_stats(), i)
+    """
+
     while True: 
       # get batch of data
       feed_dict = dataset.minibatch()
+      feed_dict['phase'] = 1
 
       # perform optimization step for gen
       gen_names = ['gen_train_op', 'loss_gen', 'loss_l1']
+      #gen_names = ['loss_gen', 'loss_l1']
       if self.gan:
         gen_names += ['loss_gen_un_class', 'loss_layer_l2', 'loss_gen_con_class']
       gen_output = self.run(gen_names, feed_dict=feed_dict, return_dict=True)
+      #print(self.run('D_un_class_pred_gpu_0', feed_dict=feed_dict))
+      #print(self.run('D_un_class_true_gpu_0', feed_dict=feed_dict))
       if self.gan:
+        pass
         disc_names = ['disc_train_op', 'loss_disc', 'loss_disc_un_class', 'loss_disc_con_class']
         disc_output = self.run(disc_names, feed_dict=feed_dict, return_dict=True)
         gen_output.update(disc_output)
-
+         
       # update loss summary
       self.update_loss_stats(gen_output)
+
+      # possibly train D more
     
       # update time summary
       self.update_time_stats()
 
       # print required data and save
       step = self.run('gen_global_step')
+      step = self.run('disc_global_step')
       if step % steps_per_print == 0:
         self.print_stats(self.loss_stats, self.time_stats, dataset.queue_stats(), step)
         # TODO integrat this into self.saver
@@ -419,16 +455,20 @@ class LatNet(object):
     # add conv to tensor computation
     self.out_tensors[out_name] =  nn.fc_layer(self.out_tensors[in_name],
                                               hidden, name=weight_name, 
-                                              nonlinearity=None, flat=flat)
+                                              nonlinearity=nonlinearity, flat=flat)
 
   def conv(self, in_name, out_name,
            kernel_size, stride, filter_size, 
-           weight_name="conv", nonlinearity=None):
+           weight_name="conv", nonlinearity=None,
+           phase=None,
+           normalize=None):
 
     # add conv to tensor computation
     self.out_tensors[out_name] =  nn.conv_layer(self.out_tensors[in_name],
                                               kernel_size, stride, filter_size, 
-                                              name=weight_name, nonlinearity=None)
+                                              name=weight_name, nonlinearity=nonlinearity,
+                                              phase=self.out_tensors['phase'],
+                                              normalize=normalize)
 
     # add conv to the shape converter
     for name in self.shape_converters.keys():
@@ -460,30 +500,35 @@ class LatNet(object):
     for name in self.shape_converters.keys():
       if name[1] == in_name:
         self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
-        self.shape_converters[name[0], out_name].add_trans_conv(2, 2)
+        self.shape_converters[name[0], out_name].add_trans_conv(0, 2)
 
   def res_block(self, in_name, out_name,
                 filter_size=16, 
+                kernel_size=3, 
                 nonlinearity=nn.concat_elu, 
                 keep_p=1.0, stride=1, 
                 gated=True, weight_name="resnet", 
                 begin_nonlinearity=True, 
-                normalize='batch_norm'):
+                phase=None,
+                normalize=None):
+                #normalize='batch_norm'):
 
     # add res block to tensor computation
     self.out_tensors[out_name] = nn.res_block(self.out_tensors[in_name], a=None,
                                             filter_size=filter_size, 
+                                            kernel_size=kernel_size, 
                                             nonlinearity=nonlinearity, 
                                             keep_p=keep_p, stride=stride, 
                                             gated=gated, name=weight_name, 
                                             begin_nonlinearity=begin_nonlinearity, 
+                                            phase=self.out_tensors['phase'],
                                             normalize=normalize)
 
     # add res block to the shape converter
     for name in self.shape_converters.keys():
       if name[1] == in_name:
         self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
-        self.shape_converters[name[0], out_name].add_res_block(stride)
+        self.shape_converters[name[0], out_name].add_res_block(kernel_size, stride)
 
   def split_tensor(self, in_name,
                    a_out_name, b_out_name,
@@ -590,7 +635,7 @@ class LatNet(object):
     self.shape_converters[name,name] = ShapeConverter()
  
   def add_tensor(self, name, shape):
-    tensor = tf.placeholder(tf.float32, shape)
+    tensor = tf.placeholder(tf.float32, shape, name=name)
     self.in_tensors[name] = tensor
     self.out_tensors[name] = tensor
     self.shape_converters[name,name] = ShapeConverter()
@@ -651,6 +696,8 @@ class LatNet(object):
         # update ave loss
         self.loss_stats[name + '_ave'] = float(np.sum(np.array(self.loss_stats[name + '_history']))
                                          / len(self.loss_stats[name + '_history']))
+        # update var loss
+        self.loss_stats[name + '_var'] = np.var(np.array(self.loss_stats[name + '_history']))
 
   def update_time_stats(self):
     # stop timer

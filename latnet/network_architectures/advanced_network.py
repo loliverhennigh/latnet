@@ -29,7 +29,9 @@ def add_options(group):
   group.add_argument('--gated', help='network config', type=bool,
                          default=True)
   group.add_argument('--filter_size', help='network config', type=int,
-                         default=32)
+                         default=16)
+  group.add_argument('--upsampling', help='network config', type=str,
+                         default='trans_conv') # or upsample
   group.add_argument('--filter_size_compression', help='network config', type=int,
                          default=64)
 
@@ -131,33 +133,52 @@ def decoder_state(pipe, configs, in_name, out_name, lattice_size=9):
   # set nonlinearity
   nonlinearity = set_nonlinearity(configs.nonlinearity)
 
-  for i in xrange(configs.nr_downsamples-1):
-    filter_size = int(configs.filter_size*pow(2,configs.nr_downsamples-i-2))
-    pipe.upsample(in_name=in_name, out_name=out_name)
-    #pipe.trans_conv(in_name=in_name, out_name=out_name,
-    #                kernel_size=4, stride=2, 
-    #                filter_size=filter_size,
-    #                weight_name="up_conv_" + str(i))
-    in_name=out_name
-    for j in xrange(configs.nr_residual_encoder):
+  # transconv network
+  if configs.upsampling == 'trans_conv':
+    for i in xrange(configs.nr_downsamples-1):
+      filter_size = int(configs.filter_size*pow(2,configs.nr_downsamples-i-2))
+      pipe.trans_conv(in_name=in_name, out_name=out_name,
+                      kernel_size=4, stride=2, 
+                      filter_size=filter_size,
+                      weight_name="up_conv_" + str(i))
+      in_name=out_name
+      for j in xrange(configs.nr_residual_encoder):
+        pipe.res_block(in_name=in_name, out_name=out_name, 
+                       filter_size=filter_size,
+                       nonlinearity=nonlinearity,
+                       stride=1,
+                       gated=configs.gated,
+                       weight_name="res_" + str(i) + '_' + str(j))
+
+    pipe.trans_conv(in_name=in_name, out_name=out_name,
+                    kernel_size=4, stride=2,
+                    filter_size=lattice_size,
+                    weight_name="last_up_conv")
+
+  # image resize network
+  elif configs.upsampling == 'image_resize':
+    for i in xrange(configs.nr_downsamples):
+      filter_size = int(configs.filter_size*pow(2,configs.nr_downsamples-i-1))
+      pipe.upsample(in_name=in_name, out_name=out_name)
+      in_name=out_name
+      pipe.conv(in_name=in_name, out_name=out_name,
+              kernel_size=3, stride=1,
+              filter_size=filter_size,
+              weight_name="conv_" + str(i))
+
+    for i in xrange(5):
       pipe.res_block(in_name=in_name, out_name=out_name, 
                      filter_size=filter_size,
                      nonlinearity=nonlinearity,
                      stride=1,
                      gated=configs.gated,
-                     weight_name="res_" + str(i) + '_' + str(j))
-
-  pipe.upsample(in_name=in_name, out_name=out_name)
-  pipe.conv(in_name=in_name, out_name=out_name,
-          kernel_size=3, stride=1,
-          filter_size=lattice_size,
-          weight_name="last_up_conv")
-
-
-  #pipe.trans_conv(in_name=in_name, out_name=out_name,
-  #                kernel_size=4, stride=2,
-  #                filter_size=lattice_size,
-  #                weight_name="last_up_conv")
+                     weight_name="res_" + str(i))
+    pipe.res_block(in_name=in_name, out_name=out_name, 
+                   filter_size=lattice_size,
+                   nonlinearity=nonlinearity,
+                   stride=1,
+                   gated=configs.gated,
+                   weight_name="last_res")
 
   pipe.nonlinearity(name=out_name, nonlinearity_name='tanh')
 

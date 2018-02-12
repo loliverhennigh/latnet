@@ -22,7 +22,7 @@ class NetworkSaver:
                            'restore_from', 'max_sim_iters', 'restore_geometry', 'scr_scale',
                            'debug_sailfish', 'every', 'unit_test', 'propagation_enabled',
                            'time_dependence', 'space_dependence', 'incompressible', 
-                           'relaxation_enabled', 'quiet', 'lr', 'periodic_x',
+                           'relaxation_enabled', 'quiet', 'periodic_x',
                            'periodic_y']
 
     self.checkpoint_path = self._make_checkpoint_path()

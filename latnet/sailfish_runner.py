@@ -16,6 +16,7 @@ class SailfishRunner:
     self.max_sim_iters = config.max_sim_iters
     self.script_name = script_name
     self.debug_sailfish = config.debug_sailfish
+    self.boundary_mask = config.boundary_mask
  
     sim_shape = config.sim_shape.split('x')
     sim_shape = map(int, sim_shape)
@@ -207,9 +208,10 @@ class TrainSailfishRunner(SailfishRunner):
     mask = np.ones(self.sim_shape + [1])
     mask = numpy_utils.mobius_extract(mask, seq_state_subdomain, 
                                       padding_type=self.padding_type)
-    boundary_mask = np.expand_dims(np.sum(boundary_small, axis=-1), axis=-1) # TODO this wont work for halfway bounceback
-    boundary_mask = boundary_mask.astype(np.bool).astype(np.float32)
-    mask = (mask - boundary_mask)
+    if self.boundary_mask:
+      boundary_mask = np.expand_dims(np.sum(boundary_small, axis=-1), axis=-1) # TODO this wont work for halfway bounceback
+      boundary_mask = boundary_mask.astype(np.bool).astype(np.float32)
+      mask = (mask - boundary_mask)
 
     return state, boundary, boundary_small, seq_state, mask
 

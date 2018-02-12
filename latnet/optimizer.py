@@ -16,23 +16,27 @@ class Optimizer:
     self.decay_steps = config.decay_steps
     self.decay_rate = config.decay_rate
     self.beta1 = config.beta1
+    self.moving_average = config.moving_average
     self.name = name
     if config.optimizer == "adam":
       self.train_op = self.adam_updates
 
-  def adam_updates(self, params, gradients, global_step, mom2=0.999):
+  def adam_updates(self, params, gradients, global_step, mom2=0.999, other_update=None):
     ''' Adam optimizer '''
     updates = []
 
     # make moving average
-    #ema = tf.train.ExponentialMovingAverage(decay=.9995)
-    #updates.append(tf.group(ema.apply(params)))
+    if self.moving_average:
+      ema = tf.train.ExponentialMovingAverage(decay=.9995)
+      updates.append(tf.group(ema.apply(params)))
     learning_rate = tf.train.exponential_decay(self.lr, global_step, 
                                                self.decay_steps, self.decay_rate)
-    tf.summary.scalar('learning_rate', learning_rate)
+    tf.summary.scalar('learning_rate_' + self.name, learning_rate)
  
     t = tf.Variable(1., self.name + '_adam_t')
     for p, g in zip(params, gradients):
+      if g is None:
+        continue
       mg = tf.Variable(tf.zeros(p.get_shape()), p.name + '_adam_mg')
       if self.beta1>0:
         v = tf.Variable(tf.zeros(p.get_shape()), p.name + '_adam_v')
@@ -49,6 +53,9 @@ class Optimizer:
       updates.append(p.assign(p_t))
     updates.append(t.assign_add(1))
     updates.append(global_step.assign_add(1))
+    if other_update is not None:
+      print(other_update)
+      updates += other_update
 
     return tf.group(*updates)
 
