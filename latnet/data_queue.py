@@ -85,10 +85,13 @@ class DataQueue:
       seq_state_shape_converter = self.shape_converters['state' + gpu_str, 
                                                    'pred_state_' + str(self.seq_length-1) + gpu_str]
       seq_state_subdomain = seq_state_shape_converter.in_out_subdomain(copy(state_subdomain))
+      geometry_small_subdomain = copy(seq_state_subdomain)
+      geometry_small_subdomain.add_edges(2)
 
       # get geometry and lat data
       state, geometry, geometry_small, seq_state, mask = sim.read_train_data(state_subdomain,
                                                                  geometry_subdomain,
+                                                                 geometry_small_subdomain,
                                                                  seq_state_subdomain,
                                                                  self.seq_length)
 

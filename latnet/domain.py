@@ -312,14 +312,7 @@ class Domain(object):
       if self.start_boundary is not None:
         input_geometry = numpy_utils.mobius_extract(self.start_boundary, input_subdomain, has_batch=False)
       else:
-        h = np.mgrid[input_subdomain.pos[0]:input_subdomain.pos[0] + input_subdomain.size[0],
-                     input_subdomain.pos[1]:input_subdomain.pos[1] + input_subdomain.size[1]]
-        hx = np.mod(h[1], self.sim_shape[0])
-        hy = np.mod(h[0], self.sim_shape[1])
-        where_boundary = self.geometry_boundary_conditions(hx, hy, self.sim_shape)
-        where_velocity, velocity = self.velocity_boundary_conditions(hx, hy, self.sim_shape)
-        where_density, density = self.density_boundary_conditions(hx, hy, self.sim_shape)
-        input_geometry = self.make_geometry_input(where_boundary, velocity, where_velocity, density, where_density)
+        input_geometry = self.input_boundary(input_subdomain)
       input_geometry = np.expand_dims(input_geometry, axis=0)
       cboundary.append(encoder(input_geometry))
 
@@ -327,6 +320,17 @@ class Domain(object):
     cboundary = numpy_utils.stack_grid(cboundary, nr_subdomains, has_batch=True)
 
     return cboundary
+
+  def input_boundary(self, input_subdomain):
+    h = np.mgrid[input_subdomain.pos[0]:input_subdomain.pos[0] + input_subdomain.size[0],
+                 input_subdomain.pos[1]:input_subdomain.pos[1] + input_subdomain.size[1]]
+    hx = np.mod(h[1], self.sim_shape[0])
+    hy = np.mod(h[0], self.sim_shape[1])
+    where_boundary = self.geometry_boundary_conditions(hx, hy, self.sim_shape)
+    where_velocity, velocity = self.velocity_boundary_conditions(hx, hy, self.sim_shape)
+    where_density, density = self.density_boundary_conditions(hx, hy, self.sim_shape)
+    input_geometry = self.make_geometry_input(where_boundary, velocity, where_velocity, density, where_density)
+    return input_geometry
 
   def cstate_to_cstate(self, cmapping, cmapping_shape_converter, cstate, cboundary):
 
@@ -350,11 +354,27 @@ class Domain(object):
     vel = []
     rho = []
     for i, j in itertools.product(xrange(nr_subdomains[0]), xrange(nr_subdomains[1])):
+      # get pos
       pos = [i * self.input_shape[0], j * self.input_shape[1]]
       subdomain = SubDomain(pos, self.input_shape)
       input_subdomain = decoder_shape_converter.out_in_subdomain(copy(subdomain))
       output_subdomain = decoder_shape_converter.in_out_subdomain(copy(input_subdomain))
-      vel_store, rho_store = decoder(numpy_utils.mobius_extract(cstate, input_subdomain, has_batch=True))
+
+      # get boundary
+      boundary_subdomain = copy(output_subdomain)
+      boundary_subdomain.add_edges(2)
+      if self.start_boundary is not None:
+        input_geometry = numpy_utils.mobius_extract(self.start_boundary, boundary_subdomain, has_batch=False)
+      else:
+        input_geometry = self.input_boundary(boundary_subdomain)
+      input_geometry = np.expand_dims(input_geometry, axis=0)
+      print(input_geometry.shape)
+
+      # get cstate
+      input_cstate = numpy_utils.mobius_extract(cstate, input_subdomain, has_batch=True)
+
+      # decode
+      vel_store, rho_store = decoder(input_cstate, input_geometry)
       left_pad  = [x - y for x, y in zip(subdomain.pos, output_subdomain.pos)]
       vel_store = vel_store[:,left_pad[0]:,left_pad[1]:,:]
       vel_store = vel_store[:,:self.input_shape[0],:self.input_shape[1],:]

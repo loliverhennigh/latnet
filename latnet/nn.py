@@ -12,6 +12,7 @@ def int_shape(x):
   return list(map(int, x.get_shape()))
 
 def leaky_relu(x, leak=0.1):
+  print(x)
   f1 = 0.5 * (1 + leak)
   f2 = 0.5 * (1 - leak)
   return f1 * x + f2 * abs(x)
@@ -32,7 +33,6 @@ def concat_relu(x):
   axis = len(x.get_shape())-1
   print(x)
   return tf.nn.relu(tf.concat([x, -x], axis))
-
 
 def hard_sigmoid(x):
   return tf.minimum(1.0, tf.maximum(0.00, x + 0.5))   

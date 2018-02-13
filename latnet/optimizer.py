@@ -11,37 +11,67 @@ FLAGS = tf.app.flags.FLAGS
 
 class Optimizer:
 
-  def __init__(self, config, name):
+  def __init__(self, config, name, optimizer_name):
     self.lr = config.lr
     self.decay_steps = config.decay_steps
     self.decay_rate = config.decay_rate
-    self.beta1 = config.beta1
     self.moving_average = config.moving_average
     self.name = name
-    if config.optimizer == "adam":
+    if optimizer_name == "adam":
       self.train_op = self.adam_updates
+    elif optimizer_name == "gradient_descent":
+      self.train_op = self.gradient_updates
 
-  def adam_updates(self, params, gradients, global_step, mom2=0.999, other_update=None):
+  def get_lr(self, global_step):
+    learning_rate = tf.train.exponential_decay(self.lr, global_step, 
+                                               self.decay_steps, self.decay_rate)
+    tf.summary.scalar('learning_rate_' + self.name, learning_rate)
+    return learning_rate
+
+  def moving_average(self, params):
+    ema = tf.train.ExponentialMovingAverage(decay=.9995)
+    return tf.group(ema.apply(params))
+ 
+  def gradient_updates(self, params, gradients, global_step, other_update=None):
+    ''' gradient optimizer '''
+    updates = []
+
+    # make moving average
+    if self.moving_average:
+      updates.append(self.moving_average(params))
+
+    learning_rate = 1000.0 * self.get_lr(global_step)
+
+    for p, g in zip(params, gradients):
+      if g is None:
+        continue
+      p_t = p - learning_rate * g
+      updates.append(p.assign(p_t))
+    updates.append(global_step.assign_add(1))
+    if other_update is not None:
+      updates += other_update
+
+    return tf.group(*updates)
+
+  def adam_updates(self, params, gradients, global_step, mom1=0.5, mom2=0.999, other_update=None):
     ''' Adam optimizer '''
     updates = []
 
     # make moving average
     if self.moving_average:
-      ema = tf.train.ExponentialMovingAverage(decay=.9995)
-      updates.append(tf.group(ema.apply(params)))
-    learning_rate = tf.train.exponential_decay(self.lr, global_step, 
-                                               self.decay_steps, self.decay_rate)
-    tf.summary.scalar('learning_rate_' + self.name, learning_rate)
+      updates.append(self.moving_average(params))
+
+    learning_rate = self.get_lr(global_step)
  
     t = tf.Variable(1., self.name + '_adam_t')
     for p, g in zip(params, gradients):
       if g is None:
         continue
       mg = tf.Variable(tf.zeros(p.get_shape()), p.name + '_adam_mg')
-      if self.beta1>0:
+      if mom1>0:
         v = tf.Variable(tf.zeros(p.get_shape()), p.name + '_adam_v')
-        v_t = self.beta1*v + (1. - self.beta1)*g
-        v_hat = v_t / (1. - tf.pow(self.beta1,t))
+        v_t = mom1*v + (1. - mom1)*g
+        v_hat = v_t / (1. - tf.pow(mom1,t))
         updates.append(v.assign(v_t))
       else:
         v_hat = g
@@ -54,7 +84,6 @@ class Optimizer:
     updates.append(t.assign_add(1))
     updates.append(global_step.assign_add(1))
     if other_update is not None:
-      print(other_update)
       updates += other_update
 
     return tf.group(*updates)

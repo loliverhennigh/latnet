@@ -188,7 +188,7 @@ class TrainSailfishRunner(SailfishRunner):
     self.num_cpoints = config.max_sim_iters
     # more configs will probably be added later
 
-  def read_train_data(self, state_subdomain, boundary_subdomain, seq_state_subdomain, seq_length):
+  def read_train_data(self, state_subdomain, boundary_subdomain, boundary_small_subdomain, seq_state_subdomain, seq_length):
 
     # read state
     state_files = glob.glob(self.save_dir + "/*.0.cpoint.npz")
@@ -197,7 +197,7 @@ class TrainSailfishRunner(SailfishRunner):
 
     # read boundary
     boundary = self.read_boundary(boundary_subdomain)
-    boundary_small = self.read_boundary(seq_state_subdomain)
+    boundary_small = self.read_boundary(boundary_small_subdomain)
 
     # read seq states
     seq_state = []
