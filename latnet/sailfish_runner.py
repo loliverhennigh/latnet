@@ -157,8 +157,15 @@ class SailfishRunner:
       boundary = boundary.astype(np.float32)
       boundary = boundary[1:-1,1:-1]
       if subdomain is not None:
-        boundary = numpy_utils.mobius_extract(boundary, subdomain, 
-                                              padding_type=self.padding_type)
+        boundary = numpy_utils.mobius_extract(boundary, subdomain)
+                                              #padding_type=self.padding_type)
+    # get mask for loss
+    mask = np.ones(self.sim_shape + [1])
+    mask_in = numpy_utils.mobius_extract(mask, subdomain, 
+                                      padding_type=self.padding_type)
+    mask_out = (1.0 - mask_in)
+    boundary = np.concatenate([boundary, mask_in, mask_out], axis=-1)
+
     return boundary
 
   def read_state(self, iteration, subdomain=None):
@@ -171,8 +178,8 @@ class SailfishRunner:
     state = np.swapaxes(state, 1, 2)
     state = self.DxQy.subtract_lattice(state)
     if subdomain is not None:
-      state = numpy_utils.mobius_extract(state, subdomain, 
-                                         padding_type=self.padding_type)
+      state = numpy_utils.mobius_extract(state, subdomain)
+                                         #padding_type=self.padding_type)
     return state
 
   def read_vel_rho(self, iteration, subdomain=None):
@@ -204,16 +211,7 @@ class TrainSailfishRunner(SailfishRunner):
     for i in xrange(seq_length):
       seq_state.append(self.read_state(ind + i, seq_state_subdomain))
 
-    # get mask for loss
-    mask = np.ones(self.sim_shape + [1])
-    mask = numpy_utils.mobius_extract(mask, seq_state_subdomain, 
-                                      padding_type=self.padding_type)
-    if self.boundary_mask:
-      boundary_mask = np.expand_dims(np.sum(boundary_small, axis=-1), axis=-1) # TODO this wont work for halfway bounceback
-      boundary_mask = boundary_mask.astype(np.bool).astype(np.float32)
-      mask = (mask - boundary_mask)
-
-    return state, boundary, boundary_small, seq_state, mask
+    return state, boundary, boundary_small, seq_state
 
   def generate_train_data(self):
     self.new_sim(self.num_cpoints)

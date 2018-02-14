@@ -28,7 +28,7 @@ class Optimizer:
     tf.summary.scalar('learning_rate_' + self.name, learning_rate)
     return learning_rate
 
-  def moving_average(self, params):
+  def get_moving_average(self, params):
     ema = tf.train.ExponentialMovingAverage(decay=.9995)
     return tf.group(ema.apply(params))
  
@@ -38,7 +38,7 @@ class Optimizer:
 
     # make moving average
     if self.moving_average:
-      updates.append(self.moving_average(params))
+      updates.append(self.get_moving_average(params))
 
     learning_rate = 1000.0 * self.get_lr(global_step)
 
@@ -59,7 +59,7 @@ class Optimizer:
 
     # make moving average
     if self.moving_average:
-      updates.append(self.moving_average(params))
+      updates.append(self.get_moving_average(params))
 
     learning_rate = self.get_lr(global_step)
  

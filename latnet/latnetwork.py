@@ -51,6 +51,8 @@ class LatNet(object):
       import network_architectures.advanced_network as net
     elif self.network_name == "tempogan_network":
       import network_architectures.tempogan_network as net
+    elif self.network_name == "generalized_lb_network":
+      import network_architectures.generalized_lb_network as net
     else:
       print("network name not found")
       exit()
@@ -71,6 +73,8 @@ class LatNet(object):
       from network_architectures.advanced_network import add_options
     elif network_name == "tempogan_network":
       from network_architectures.tempogan_network import add_options
+    elif network_name == "generalized_lb_network":
+      from network_architectures.generalized_lb_network import add_options
     add_options(group)
 
   def train_unroll(self):
@@ -90,20 +94,19 @@ class LatNet(object):
         with tf.device('/gpu:%d' % self.gpus[i]):
           # make input state and boundary
           self.add_tensor('state' + gpu_str, (1 + self.DxQy.dims) * [None] + [self.DxQy.Q])
-          self.add_tensor('boundary' + gpu_str, (1 + self.DxQy.dims) * [None] + [4])
-          self.add_tensor('boundary_small' + gpu_str, (1 + self.DxQy.dims) * [None] + [4])
-          self.add_tensor('mask' + gpu_str, (1 + self.DxQy.dims) * [None] + [1])
+          self.add_tensor('boundary' + gpu_str, (1 + self.DxQy.dims) * [None] + [6])
+          self.add_tensor('boundary_small' + gpu_str, (1 + self.DxQy.dims) * [None] + [6])
           self.add_phase() 
           if i == 0:
             with tf.device('/cpu:0'):
               self.lattice_summary(in_name='state' + gpu_str, summary_name='state')
               tf.summary.image('boundary', self.in_tensors['boundary' + gpu_str][...,0:1])
-              tf.summary.image('mask', self.in_tensors['mask' + gpu_str])
+              tf.summary.image('boundary_mask_out', self.in_tensors['boundary' + gpu_str][...,-2:-1])
+              tf.summary.image('boundary_mask_in', self.in_tensors['boundary' + gpu_str][...,-1:])
           # make seq of output states
           for j in xrange(self.seq_length):
             self.add_tensor('true_state' + seq_str(j), (1 + self.DxQy.dims) * [None] + [self.DxQy.Q])
-            self.out_tensors["true_state" + seq_str(j)] = (self.out_tensors['mask' + gpu_str]
-                                                         * self.out_tensors["true_state" + seq_str(j)])
+            self.out_tensors["true_state" + seq_str(j)] = self.out_tensors["true_state" + seq_str(j)]
             if i == 0:
               with tf.device('/cpu:0'):
                 self.lattice_summary(in_name='true_state' + seq_str(j), summary_name='true_state')
@@ -135,8 +138,7 @@ class LatNet(object):
                                in_name="cstate" + seq_str(j), 
                                in_boundary_name="boundary_small" + gpu_str, 
                                out_name="pred_state" + seq_str(j))
-            self.out_tensors["pred_state" + seq_str(j)] = (self.out_tensors['mask' + gpu_str]
-                                                         * self.out_tensors["pred_state" + seq_str(j)])
+            self.out_tensors["pred_state" + seq_str(j)] = self.out_tensors["pred_state" + seq_str(j)]
   
             if i == 0:
               with tf.device('/cpu:0'):
@@ -407,7 +409,7 @@ class LatNet(object):
       ###### Inputs to Graph ######
       # make input state and boundary
       self.add_tensor('state',     (1 + self.DxQy.dims) * [None] + [self.DxQy.Q])
-      self.add_tensor('boundary',  (1 + self.DxQy.dims) * [None] + [4])
+      self.add_tensor('boundary',  (1 + self.DxQy.dims) * [None] + [6])
       self.add_tensor('cstate',    (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
       self.add_tensor('cboundary', (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
       self.add_phase() 
@@ -466,6 +468,17 @@ class LatNet(object):
     self.out_tensors[out_name] =  nn.fc_layer(self.out_tensors[in_name],
                                               hidden, name=weight_name, 
                                               nonlinearity=nonlinearity, flat=flat)
+
+  def simple_conv(self, in_name, out_name, kernel):
+
+    # add conv to tensor computation
+    self.out_tensors[out_name] =  nn.simple_conv_2d(self.out_tensors[in_name], k=kernel)
+
+    # add conv to the shape converter
+    for name in self.shape_converters.keys():
+      if name[1] == in_name:
+        self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
+        self.shape_converters[name[0], out_name].add_conv(3, 1)
 
   def conv(self, in_name, out_name,
            kernel_size, stride, filter_size, 
