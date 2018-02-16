@@ -27,7 +27,7 @@ def add_options(group):
   group.add_argument('--nr_downsamples', help='network config', type=int,
                          default=4)
   group.add_argument('--lat_q_to_net_q', help='network config', type=int,
-                         default=1)
+                         default=10)
 
 #def collide(pipe, configs, in_cstate_name, in_cboundary_f_name, in_cboundary_mask_name, out_name):
 def collide(pipe, configs, in_cstate_name, in_cboundary_f_name, out_name, weight_name):

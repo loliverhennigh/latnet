@@ -21,9 +21,9 @@ def add_options(group):
   group.add_argument('--nonlinearity', help='network config', type=str,
                          default='relu')
   group.add_argument('--nr_downsamples', help='network config', type=int,
-                         default=0)
+                         default=2)
   group.add_argument('--lat_q_to_net_q', help='network config', type=int,
-                         default=1)
+                         default=20)
 
 def collide(pipe, configs, in_cstate_name, in_cboundary_f_name, in_cboundary_mask_name, out_name):
 
@@ -115,13 +115,13 @@ def encoder_state(pipe, configs, in_name, out_name):
   pipe.res_block(in_name=in_name, out_name=out_name,
                  filter_size=32,
                  nonlinearity=nonlinearity, 
-                 stride=1, 
+                 stride=2, 
                  begin_nonlinearity=False,
                  weight_name="down_sample_res_" + str(0))
   pipe.res_block(in_name=out_name, out_name=out_name,
                  filter_size=128,
                  nonlinearity=nonlinearity, 
-                 stride=1, 
+                 stride=2, 
                  weight_name="down_sample_res_" + str(1))
   pipe.conv(in_name=out_name, out_name=out_name,
             filter_size=configs.lat_q_to_net_q*9,
@@ -184,8 +184,8 @@ def decoder_state(pipe, configs, in_boundary_name, in_name, out_name, lattice_si
   nonlinearity = set_nonlinearity(configs.nonlinearity)
 
   # image resize network
-  #pipe.upsample(in_name=in_name, out_name=out_name)
-  #pipe.upsample(in_name=out_name, out_name=out_name)
+  pipe.upsample(in_name=in_name, out_name=out_name)
+  pipe.upsample(in_name=out_name, out_name=out_name)
 
   pipe.res_block(in_name=in_name, out_name=out_name, 
                  filter_size=32,

@@ -136,7 +136,7 @@ class LatNet(object):
                                    out_name="cstate" + seq_str(j))
             self.decoder_state(self, self.config, 
                                in_name="cstate" + seq_str(j), 
-                               in_boundary_name="boundary_small" + gpu_str, 
+                               #in_boundary_name="boundary_small" + gpu_str, 
                                out_name="pred_state" + seq_str(j))
             self.out_tensors["pred_state" + seq_str(j)] = self.out_tensors["pred_state" + seq_str(j)]
   
@@ -186,7 +186,7 @@ class LatNet(object):
           ### L2 loss ###
           if not self.gan:
             self.out_tensors["loss_l2" + gpu_str] = 0.0
-            for j in range(1, self.seq_length):
+            for j in range(0, self.seq_length):
               self.l2_loss(true_name='true_state' + seq_str(j),
                            pred_name='pred_state' + seq_str(j),
                            loss_name='loss_l2' + seq_str(j),
@@ -410,10 +410,10 @@ class LatNet(object):
       # make input state and boundary
       self.add_tensor('state',     (1 + self.DxQy.dims) * [None] + [self.DxQy.Q])
       self.add_tensor('boundary',  (1 + self.DxQy.dims) * [None] + [4])
-      #self.add_tensor('cstate',    (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
-      #self.add_tensor('cboundary', (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
-      self.add_tensor('cstate',    (1 + self.DxQy.dims) * [None] + [self.config.lat_q_to_net_q*9])
-      self.add_tensor('cboundary', (1 + self.DxQy.dims) * [None] + [2*self.config.lat_q_to_net_q*9])
+      self.add_tensor('cstate',    (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
+      self.add_tensor('cboundary', (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
+      #self.add_tensor('cstate',    (1 + self.DxQy.dims) * [None] + [self.config.lat_q_to_net_q*9])
+      #self.add_tensor('cboundary', (1 + self.DxQy.dims) * [None] + [2*self.config.lat_q_to_net_q*9])
       self.add_phase() 
   
       ###### Unroll Graph ######

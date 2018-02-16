@@ -217,19 +217,21 @@ class TrainSailfishRunner(SailfishRunner):
     # rotate data possibly
     if augment:
       flip = np.random.randint(0,2)
-      """
       if flip == 1:
         state = self.DxQy.flip_lattice(state)
         seq_state = [self.DxQy.flip_lattice(lat) for lat in seq_state]
         boundary = np.flip(boundary, 0)
+        boundary = flip_boundary_vel(boundary)
         boundary_small = np.flip(boundary_small, 0)
-      """
+        boundary_small = flip_boundary_vel(boundary_small)
       rotate=np.random.randint(0,4)
       if rotate > 0:
         state = self.DxQy.rotate_lattice(state, rotate)
         seq_state = [self.DxQy.rotate_lattice(lat, rotate) for lat in seq_state]
         boundary = np.rot90(boundary, k=rotate, axes=(0,1))
+        boundary = rotate_boundary_vel(boundary, rotate)
         boundary_small = np.rot90(boundary_small, k=rotate, axes=(0,1))
+        boundary_small = rotate_boundary_vel(boundary_small, rotate)
 
     return state, boundary, boundary_small, seq_state
 
@@ -246,4 +248,18 @@ class TrainSailfishRunner(SailfishRunner):
     if not os.path.isfile(boundary_file):
       need = True 
     return need 
+
+def flip_boundary_vel(boundary):
+  boundary[...,1] = -boundary[...,1]
+  return boundary
+
+def rotate_boundary_vel(boundary, k):
+  for i in xrange(k):
+    store_boundary = boundary[...,0]
+    boundary[...,0] = -boundary[...,1]
+    boundary[...,1] = boundary[...,0]
+  return boundary
+
+
+
 
