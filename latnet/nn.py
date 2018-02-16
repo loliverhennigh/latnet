@@ -124,14 +124,14 @@ def conv_layer(x, kernel_size, stride, filter_size, name, nonlinearity=None, nor
       exit()
 
     weights = _variable('weights', shape=length_input*[kernel_size] + [input_channels,filter_size],initializer=tf.contrib.layers.xavier_initializer_conv2d())
-    #biases = _variable('biases',[filter_size],initializer=tf.constant_initializer(0.0))
+    biases = _variable('biases',[filter_size],initializer=tf.constant_initializer(0.0))
 
     if length_input == 2:
       conv = tf.nn.conv2d(x, weights, strides=[1, stride, stride, 1], padding='VALID')
     elif length_input == 3:
       conv = tf.nn.conv3d(x, weights, strides=[1, stride, stride, stride, 1], padding='VALID')
 
-    #conv = tf.nn.bias_add(conv, biases)
+    conv = tf.nn.bias_add(conv, biases)
 
     # normalize
     if normalize == "batch_norm":

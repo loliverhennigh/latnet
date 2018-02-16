@@ -94,12 +94,12 @@ class LatNet(object):
         with tf.device('/gpu:%d' % self.gpus[i]):
           # make input state and boundary
           self.add_tensor('state' + gpu_str, (1 + self.DxQy.dims) * [None] + [self.DxQy.Q])
-          self.add_tensor('boundary' + gpu_str, (1 + self.DxQy.dims) * [None] + [6])
-          self.add_tensor('boundary_small' + gpu_str, (1 + self.DxQy.dims) * [None] + [6])
+          self.add_tensor('boundary' + gpu_str, (1 + self.DxQy.dims) * [None] + [4])
+          self.add_tensor('boundary_small' + gpu_str, (1 + self.DxQy.dims) * [None] + [4])
           self.add_phase() 
           if i == 0:
             with tf.device('/cpu:0'):
-              self.lattice_summary(in_name='state' + gpu_str, summary_name='state')
+              self.lattice_summary(in_name='state' + gpu_str, summary_name='true')
               tf.summary.image('boundary', self.in_tensors['boundary' + gpu_str][...,0:1])
               tf.summary.image('boundary_mask_out', self.in_tensors['boundary' + gpu_str][...,-2:-1])
               tf.summary.image('boundary_mask_in', self.in_tensors['boundary' + gpu_str][...,-1:])
@@ -109,7 +109,7 @@ class LatNet(object):
             self.out_tensors["true_state" + seq_str(j)] = self.out_tensors["true_state" + seq_str(j)]
             if i == 0:
               with tf.device('/cpu:0'):
-                self.lattice_summary(in_name='true_state' + seq_str(j), summary_name='true_state')
+                self.lattice_summary(in_name='true_state' + seq_str(j), summary_name='true_' + str(j))
       
           ###### Unroll Graph ######
           ### encode ###
@@ -143,7 +143,7 @@ class LatNet(object):
             if i == 0:
               with tf.device('/cpu:0'):
                 # make image summary
-                self.lattice_summary(in_name='pred_state' + seq_str(j), summary_name='pred_vel_' + str(j))
+                self.lattice_summary(in_name='pred_state' + seq_str(j), summary_name='pred_' + str(j))
  
           ### unconditional discriminator of gan ###
           if self.gan:
@@ -186,11 +186,11 @@ class LatNet(object):
           ### L2 loss ###
           if not self.gan:
             self.out_tensors["loss_l2" + gpu_str] = 0.0
-            for j in range(0, self.seq_length):
+            for j in range(1, self.seq_length):
               self.l2_loss(true_name='true_state' + seq_str(j),
                            pred_name='pred_state' + seq_str(j),
                            loss_name='loss_l2' + seq_str(j),
-                           factor=1.0/len(self.gpus))
+                           factor=1.0/num_samples)
               # add up losses
               self.out_tensors['loss_l2' + gpu_str] += self.out_tensors['loss_l2' + seq_str(j)] 
           ### L1 loss ###
@@ -409,9 +409,11 @@ class LatNet(object):
       ###### Inputs to Graph ######
       # make input state and boundary
       self.add_tensor('state',     (1 + self.DxQy.dims) * [None] + [self.DxQy.Q])
-      self.add_tensor('boundary',  (1 + self.DxQy.dims) * [None] + [6])
-      self.add_tensor('cstate',    (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
-      self.add_tensor('cboundary', (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
+      self.add_tensor('boundary',  (1 + self.DxQy.dims) * [None] + [4])
+      #self.add_tensor('cstate',    (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
+      #self.add_tensor('cboundary', (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
+      self.add_tensor('cstate',    (1 + self.DxQy.dims) * [None] + [self.config.lat_q_to_net_q*9])
+      self.add_tensor('cboundary', (1 + self.DxQy.dims) * [None] + [2*self.config.lat_q_to_net_q*9])
       self.add_phase() 
   
       ###### Unroll Graph ######
@@ -553,17 +555,20 @@ class LatNet(object):
         self.shape_converters[name[0], out_name].add_res_block(kernel_size, stride)
 
   def split_tensor(self, in_name,
-                   a_out_name, b_out_name,
+                   out_names,
                    num_split, axis):
 
     # perform split on tensor
-    self.out_tensors[a_out_name], self.out_tensors[b_out_name]  = tf.split(self.out_tensors[in_name],
-                                                                           num_split, axis)
+    splited_tensors  = tf.split(self.out_tensors[in_name],
+                                num_split, axis)
+    for i in xrange(len(out_names)):
+      self.out_tensors[out_names[i]] = splited_tensors[i]
+
     # add to shape converters
     for name in self.shape_converters.keys():
       if name[1] == in_name:
-        self.shape_converters[name[0], a_out_name] = copy(self.shape_converters[name])
-        self.shape_converters[name[0], b_out_name] = copy(self.shape_converters[name])
+        for i in xrange(len(out_names)):
+          self.shape_converters[name[0], out_names[i]] = copy(self.shape_converters[name])
 
   def concat_tensors(self, in_names, out_name, axis=-1):
     in_tensors = [self.out_tensors[name] for name in in_names]
@@ -671,10 +676,14 @@ class LatNet(object):
     self.out_tensors[new_name] = self.out_tensors[old_name]
 
   def lattice_summary(self, in_name, summary_name, 
-                      display_norm=True):
+                      display_norm=True, display_vel=True):
     # TODO add more display options
     if display_norm:
-      tf.summary.image(summary_name, self.DxQy.lattice_to_norm(self.out_tensors[in_name]))
+      tf.summary.image(summary_name + '_norm', self.DxQy.lattice_to_norm(self.out_tensors[in_name]))
+    if display_vel:
+      vel = self.DxQy.lattice_to_vel(self.out_tensors[in_name])
+      tf.summary.image(summary_name + '_vel_x', vel[...,0:1])
+      tf.summary.image(summary_name + '_vel_y', vel[...,1:2])
 
   def run(self, out_names, feed_dict=None, return_dict=False):
     # convert out_names to tensors 

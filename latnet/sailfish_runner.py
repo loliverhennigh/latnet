@@ -22,7 +22,7 @@ class SailfishRunner:
     sim_shape = map(int, sim_shape)
     self.sim_shape = sim_shape
 
-    self.DxQy = lattice.TYPES[config.DxQy]
+    self.DxQy = lattice.TYPES[config.DxQy]()
 
     # set padding config
     self.padding_type = []
@@ -160,11 +160,14 @@ class SailfishRunner:
         boundary = numpy_utils.mobius_extract(boundary, subdomain)
                                               #padding_type=self.padding_type)
     # get mask for loss
-    mask = np.ones(self.sim_shape + [1])
-    mask_in = numpy_utils.mobius_extract(mask, subdomain, 
-                                      padding_type=self.padding_type)
+    """
+    mask_in = np.ones(self.sim_shape + [1])
+    if subdomain is not None:
+      mask_in = numpy_utils.mobius_extract(mask_in, subdomain, 
+                                        padding_type=self.padding_type)
     mask_out = (1.0 - mask_in)
     boundary = np.concatenate([boundary, mask_in, mask_out], axis=-1)
+    """
 
     return boundary
 
@@ -195,7 +198,7 @@ class TrainSailfishRunner(SailfishRunner):
     self.num_cpoints = config.max_sim_iters
     # more configs will probably be added later
 
-  def read_train_data(self, state_subdomain, boundary_subdomain, boundary_small_subdomain, seq_state_subdomain, seq_length):
+  def read_train_data(self, state_subdomain, boundary_subdomain, boundary_small_subdomain, seq_state_subdomain, seq_length, augment=True):
 
     # read state
     state_files = glob.glob(self.save_dir + "/*.0.cpoint.npz")
@@ -210,6 +213,23 @@ class TrainSailfishRunner(SailfishRunner):
     seq_state = []
     for i in xrange(seq_length):
       seq_state.append(self.read_state(ind + i, seq_state_subdomain))
+
+    # rotate data possibly
+    if augment:
+      flip = np.random.randint(0,2)
+      """
+      if flip == 1:
+        state = self.DxQy.flip_lattice(state)
+        seq_state = [self.DxQy.flip_lattice(lat) for lat in seq_state]
+        boundary = np.flip(boundary, 0)
+        boundary_small = np.flip(boundary_small, 0)
+      """
+      rotate=np.random.randint(0,4)
+      if rotate > 0:
+        state = self.DxQy.rotate_lattice(state, rotate)
+        seq_state = [self.DxQy.rotate_lattice(lat, rotate) for lat in seq_state]
+        boundary = np.rot90(boundary, k=rotate, axes=(0,1))
+        boundary_small = np.rot90(boundary_small, k=rotate, axes=(0,1))
 
     return state, boundary, boundary_small, seq_state
 

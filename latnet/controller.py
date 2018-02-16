@@ -61,7 +61,7 @@ class LatNetController(object):
       group.add_argument('--decay_rate', help='all mode', type=float,
                         default=0.5)
       group.add_argument('--beta1', help='all mode', type=float,
-                        default=0.5)
+                        default=0.9)
       group.add_argument('--l1_factor', help='all mode', type=float,
                         default=5.0)
       group.add_argument('--moving_average', help='all mode', type=str2bool,

@@ -113,8 +113,6 @@ class D2Q9(DxQy):
                 [0,-1], [-1, 0], [ 1,1],
                 [1,-1], [-1,-1], [-1,1]])
 
-
-
   divergence_kernel = np.zeros((3,3,2,1))
   divergence_kernel[2,1,0,0] =  1.0
   divergence_kernel[0,1,0,0] = -1.0
@@ -141,6 +139,39 @@ class D2Q9(DxQy):
                           1.5*vel_dot_vel)
     feq = feq - self.weights
     return feq 
+
+  def rotate_lattice(self, lattice, rotation):
+    for i in xrange(rotation):
+      lattice = self.rotate_lattice_left(lattice)
+    return lattice
+
+  def rotate_lattice_left(self, lattice):
+    lattice_split = np.split(lattice, 9, -1)
+    (lattice_split[1], lattice_split[2], 
+     lattice_split[3], lattice_split[4], 
+     lattice_split[5], lattice_split[6], 
+     lattice_split[7], lattice_split[8]) = (
+     lattice_split[2], lattice_split[3], 
+     lattice_split[4], lattice_split[1], 
+     lattice_split[6], lattice_split[7], 
+     lattice_split[8], lattice_split[5])
+    lattice = np.concatenate(lattice_split, axis = -1)
+    lattice = np.rot90(lattice, k=1, axes=(0,1))
+    return lattice
+
+  def flip_lattice(self, lattice):
+    lattice_split = np.split(lattice, 9, -1)
+    (lattice_split[1], lattice_split[2], 
+     lattice_split[3], lattice_split[4], 
+     lattice_split[5], lattice_split[6], 
+     lattice_split[7], lattice_split[8]) = (
+     lattice_split[1], lattice_split[4], 
+     lattice_split[3], lattice_split[2], 
+     lattice_split[8], lattice_split[7], 
+     lattice_split[6], lattice_split[5])
+    lattice = np.concatenate(lattice_split, axis = -1)
+    lattice = np.flip(lattice, 0)
+    return lattice
 
 class D3Q15(DxQy):
   dims = 3

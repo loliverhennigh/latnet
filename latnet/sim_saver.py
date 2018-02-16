@@ -38,7 +38,7 @@ class SimSaver:
   def save_numpy(self, iteration, vel, rho, cstate):
     file_name = self.iter_to_filename(iteration)
     plt.imshow(self.DxQy.vel_to_norm(vel)[0,:,:,0])
-    plt.savefig('figs/out_state_' + str(iteration) + '.png')
+    plt.savefig('figs/out_state_' + str(iteration).zfill(4) + '.png')
     if self.save_cstate:
       np.savez(file_name, vel=vel[0], rho=rho[0], cstate=cstate[0])
     else:
