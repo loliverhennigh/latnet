@@ -136,7 +136,7 @@ class LatNet(object):
                                    out_name="cstate" + seq_str(j))
             self.decoder_state(self, self.config, 
                                in_name="cstate" + seq_str(j), 
-                               #in_boundary_name="boundary_small" + gpu_str, 
+                               in_boundary_name="boundary_small" + gpu_str, 
                                out_name="pred_state" + seq_str(j))
             self.out_tensors["pred_state" + seq_str(j)] = self.out_tensors["pred_state" + seq_str(j)]
   
@@ -186,7 +186,7 @@ class LatNet(object):
           ### L2 loss ###
           if not self.gan:
             self.out_tensors["loss_l2" + gpu_str] = 0.0
-            for j in range(0, self.seq_length):
+            for j in range(1, self.seq_length):
               self.l2_loss(true_name='true_state' + seq_str(j),
                            pred_name='pred_state' + seq_str(j),
                            loss_name='loss_l2' + seq_str(j),

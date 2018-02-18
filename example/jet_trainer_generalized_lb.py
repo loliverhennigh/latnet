@@ -54,7 +54,7 @@ class TrainDomain(Domain):
         'latnet_network_dir': './network_checkpoint_jet',
         'train_sim_dir': './train_data_jet',
         'sim_dir': './eval_data_jet',
-        'visc': 0.02,
+        'visc': 0.04,
         'lb_to_ln': 250,
         'seq_length': 2,
         'input_cshape': '64x64',

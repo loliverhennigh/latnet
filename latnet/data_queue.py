@@ -72,6 +72,7 @@ class DataQueue:
       cratio = pow(2, self.nr_downsamples)
       rand_pos = [np.random.randint(-self.input_cshape[0], self.sim_shape[0]/cratio),
                   np.random.randint(-self.input_cshape[1], self.sim_shape[1]/cratio)]
+      #rand_pos = [-self.input_cshape[0],-self.input_cshape[1]]
       cstate_subdomain = SubDomain(rand_pos, self.input_cshape)
 
       # get state subdomain and geometry_subdomain
