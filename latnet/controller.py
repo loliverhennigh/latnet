@@ -125,6 +125,8 @@ class LatNetController(object):
                         default=False)
       group.add_argument('--every', help='all mode', type=int,
                         default=100)
+      group.add_argument('--subgrid', help='all mode', type=str,
+                        default='les-smagorinsk')
 
       self.network_name = _sim.network_name
       group = self._config_parser.add_group('Network Configs')

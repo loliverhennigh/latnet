@@ -109,6 +109,7 @@ class SailfishRunner:
 
     cmd = ('./' + self.script_name 
          + ' --run_mode=generate_data'
+         + ' --subgrid=les-smagorinsky'
          + ' --max_sim_iters=' + str(self.lb_to_ln*num_iters + 1)
          + ' --checkpoint_from=0')
     if self.debug_sailfish:

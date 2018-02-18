@@ -54,7 +54,7 @@ class TrainDomain(Domain):
         'latnet_network_dir': './network_checkpoint_jet',
         'train_sim_dir': './train_data_jet',
         'sim_dir': './eval_data_jet',
-        'visc': 0.04,
+        'visc': 0.005,
         'lb_to_ln': 250,
         'seq_length': 2,
         'input_cshape': '64x64',
@@ -63,7 +63,7 @@ class TrainDomain(Domain):
         'max_sim_iters': 200,
         'num_simulations': 10,
         'batch_size': 2,
-        'sim_shape': '512x512'})
+        'sim_shape': '256x256'})
 
   def compare_script(self, iteration, true_vel, true_rho, generated_vel, generated_rho):
     #plt.imshow(np.concatenate([true_vel[:,:,0], generated_vel[:,:,0]], axis=0))
