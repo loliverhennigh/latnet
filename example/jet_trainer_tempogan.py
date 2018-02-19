@@ -18,7 +18,7 @@ import glob
 def rand_vel():
   vel_x = np.random.uniform(0.2, 0.1)
   vel_y = np.random.uniform(0.05, -0.05)
-  return (vel_y, 0.2)
+  return (vel_y, 0.1)
 
 class TrainDomain(Domain):
   script_name = __file__
@@ -32,7 +32,7 @@ class TrainDomain(Domain):
 
   def velocity_boundary_conditions(self, hx, hy, shape):
     where_velocity = (hy == shape[1] - 1) & (hx > 0) & (hx < shape[0]/2+10)
-    where_velocity = (hy < 32) & (hy >= 0) & (hx >= 0) & (hx < 32) 
+    where_velocity = (hy < 4) & (hy >= 0) & (hx >= 0) & (hx < 4) 
     velocity = self.vel
     return where_velocity, velocity
  
@@ -54,8 +54,8 @@ class TrainDomain(Domain):
         'latnet_network_dir': './network_checkpoint_jet',
         'train_sim_dir': './train_data_jet',
         'sim_dir': './eval_data_jet',
-        'visc': 0.005,
-        'lb_to_ln': 250,
+        'visc': 0.002,
+        'lb_to_ln': 50,
         'seq_length': 2,
         'input_cshape': '64x64',
         'periodic_x': True,

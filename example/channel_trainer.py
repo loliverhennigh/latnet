@@ -42,7 +42,7 @@ def make_boundary(hx, hy):
   circles = []
   nr_circles = 5
   for i in xrange(nr_circles):
-    radius = 50 # make this random after testing
+    radius = 20 # make this random after testing
     vertex = rand_vertex(np.max(hx), np.max(hy), radius)
     circles.append((vertex, radius))
 
@@ -55,8 +55,8 @@ def make_boundary(hx, hy):
 
 class TrainDomain(Domain):
   script_name = __file__
-  network_name = 'advanced_network'
-  vel = (0.10, 0.00)
+  network_name = 'tempogan_network'
+  vel = (0.04, 0.00)
 
   def geometry_boundary_conditions(self, hx, hy, shape):
     walls = (hx == -2)
@@ -88,22 +88,16 @@ class TrainDomain(Domain):
         'latnet_network_dir': './network_checkpoint_channel',
         'train_sim_dir': './train_data_channel',
         'sim_dir': './eval_channel',
-        'visc': 0.1,
-        'lb_to_ln': 100,
+        'visc': 0.01,
+        'lb_to_ln': 50,
         'seq_length': 5,
-        'input_cshape': '16x16',
-        'periodic_x': True,
-        'periodic_y': False,
-        'nr_downsamples': 3,
-        'nr_residual_encoder': 2,
-        'nr_residual_compression': 3,
+        'input_cshape': '64x64',
+        'periodic_x': False,
+        'periodic_y': True,
         'nonlinearity': 'relu',
-        'filter_size': 32,
-        'filter_size_compression': 64,
-        'gated': True,
-        'max_sim_iters': 200,
+        'max_sim_iters': 400,
         'num_simulations': 10,
-        'sim_shape': '512x512'})
+        'sim_shape': '512x256'})
 
   def compare_script(self, iteration, true_vel, true_rho, generated_vel, generated_rho):
     plt.imshow(np.concatenate([self.DxQy.vel_to_norm(true_vel)[:,:,0], self.DxQy.vel_to_norm(generated_vel)[:,:,0]], axis=0))

@@ -16,7 +16,7 @@ import lattice
 # import sailfish
 sys.path.append('../sailfish')
 from sailfish.subdomain import Subdomain2D
-from sailfish.node_type import NTHalfBBWall, NTEquilibriumVelocity, NTEquilibriumDensity, DynamicValue, NTFullBBWall
+from sailfish.node_type import NTEquilibriumVelocity, NTFullBBWall, NTDoNothing
 from sailfish.controller import LBSimulationController
 from sailfish.lb_base import ForceObject
 from sailfish.lb_single import LBFluidSim
@@ -115,6 +115,9 @@ class Domain(object):
     max_iters = self.max_sim_iters
     lb_to_ln = self.lb_to_ln
     visc = self.visc
+    periodic_x = self.config.periodic_x
+    periodic_y = self.config.periodic_y
+    visc = self.visc
     restore_geometry = self.restore_geometry
 
     # inportant func
@@ -133,7 +136,6 @@ class Domain(object):
           where_velocity = np.logical_or(restore_boundary_conditions[...,1].astype(np.bool), restore_boundary_conditions[...,1].astype(np.bool))
           velocity = (restore_boundary_conditions[np.where(where_velocity)[0][0], np.where(where_velocity)[1][0], 1],
                       restore_boundary_conditions[np.where(where_velocity)[0][0], np.where(where_velocity)[1][0], 2])
-          print(velocity)
           where_density  = restore_boundary_conditions[...,3].astype(np.bool)
           density = 1.0
         else:
@@ -148,7 +150,7 @@ class Domain(object):
         self.set_node(where_velocity, NTEquilibriumVelocity(velocity))
 
         # set densitys
-        self.set_node(where_density, NTEquilibriumDensity(density))
+        self.set_node(where_density, NTDoNothing)
 
         # save geometry
         save_geometry = make_geometry_input(where_boundary, velocity, where_velocity, density, where_density)
@@ -189,9 +191,10 @@ class Domain(object):
       def update_defaults(cls, defaults):
         defaults.update({
           'max_iters': max_iters,
+          'periodic_x': periodic_x,
+          'periodic_y': periodic_y,
           'output_format': 'npy',
-          'periodic_y': True,
-          'periodic_x': True,
+          'precision': 'half',
           'checkpoint_file': train_sim_dir,
           'checkpoint_every': lb_to_ln,
           'lat_nx': shape[0],
@@ -199,7 +202,7 @@ class Domain(object):
           })
         if len(shape) == 3:
           defaults.update({
-            'periodic_z': True,
+            'periodic_z': periodic_z,
             'lat_nz': shape[0],
             'grid': 'D3Q15'
           })

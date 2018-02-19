@@ -132,6 +132,7 @@ class SailfishRunner:
 
     cmd = ('./' + self.script_name 
          + ' --run_mode=generate_data'
+         + ' --subgrid=les-smagorinsky'
          + ' --max_sim_iters=' + str(self.latnet_iter_to_sailfish_iter(num_iters
                                                                     + last_iter) + 1)
          + ' --checkpoint_from=0'
