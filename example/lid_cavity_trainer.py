@@ -17,12 +17,11 @@ import glob
 
 def rand_vel():
   vel_x = np.random.uniform(0.2, 0.1)
-  vel_y = np.random.uniform(-0.005, -0.005)
-  return (vel_x, vel_y)
+  return (vel_x, 0.0)
 
 class TrainDomain(Domain):
   script_name = __file__
-  network_name = 'advanced_network'
+  network_name = 'tempogan_network'
 
   vel = rand_vel()
 
@@ -53,20 +52,15 @@ class TrainDomain(Domain):
         'latnet_network_dir': './network_checkpoint_lid_driven_cavity',
         'train_sim_dir': './train_data_lid_driven_cavity',
         'sim_dir': './eval_lid_driven_cavity',
-        'visc': 0.01,
-        'lb_to_ln': 500,
+        'visc': 0.005,
+        'lb_to_ln': 50,
         'seq_length': 5,
-        'input_shape': '768x768',
-        'nr_downsamples': 3,
-        'nr_residual_encoder': 2,
-        'nr_residual_compression': 3,
-        'nonlinearity': 'relu',
-        'filter_size': 32,
-        'filter_size_compression': 64,
-        'gated': True,
-        'max_sim_iters': 200,
+        'input_cshape': '64x64',
+        'periodic_x': False,
+        'periodic_y': False,
+        'max_sim_iters': 400,
         'num_simulations': 10,
-        'sim_shape': '512x512'})
+        'sim_shape': '512x256'})
 
   def compare_script(self, iteration, true_vel, true_rho, generated_vel, generated_rho):
     #plt.imshow(np.concatenate([true_vel[:,:,0], generated_vel[:,:,0]], axis=0))
