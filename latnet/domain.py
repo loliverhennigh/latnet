@@ -197,8 +197,8 @@ class Domain(object):
           'precision': 'half',
           'checkpoint_file': train_sim_dir,
           'checkpoint_every': lb_to_ln,
-          'lat_nx': shape[0],
-          'lat_ny': shape[1]
+          'lat_nx': shape[1],
+          'lat_ny': shape[0]
           })
         if len(shape) == 3:
           defaults.update({
@@ -237,6 +237,8 @@ class Domain(object):
       self.sailfish_runner.new_sim(self.sim_restore_iter)
       self.start_state = self.sailfish_runner.read_state(self.sim_restore_iter)
       self.start_boundary = self.sailfish_runner.read_boundary()
+      print(self.start_state.shape)
+      print(self.start_boundary.shape)
     else:
       self.sailfish_runner = None
       self.start_state = None
@@ -371,7 +373,6 @@ class Domain(object):
       else:
         input_geometry = self.input_boundary(boundary_subdomain)
       input_geometry = np.expand_dims(input_geometry, axis=0)
-      print(input_geometry.shape)
 
       # get cstate
       input_cstate = numpy_utils.mobius_extract(cstate, input_subdomain, has_batch=True)
@@ -393,6 +394,7 @@ class Domain(object):
     # trim edges TODO add smarter padding making this unnessasary
     vel = vel[:,:self.sim_shape[0],:self.sim_shape[1]]
     rho = rho[:,:self.sim_shape[0],:self.sim_shape[1]]
+    print(vel.shape)
 
     return vel, rho
 

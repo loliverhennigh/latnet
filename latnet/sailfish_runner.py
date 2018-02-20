@@ -110,6 +110,7 @@ class SailfishRunner:
     cmd = ('./' + self.script_name 
          + ' --run_mode=generate_data'
          + ' --subgrid=les-smagorinsky'
+         + ' --sim_shape=' + 'x'.join(list(map(str, self.sim_shape)))
          + ' --max_sim_iters=' + str(self.lb_to_ln*num_iters + 1)
          + ' --checkpoint_from=0')
     if self.debug_sailfish:
@@ -133,6 +134,7 @@ class SailfishRunner:
     cmd = ('./' + self.script_name 
          + ' --run_mode=generate_data'
          + ' --subgrid=les-smagorinsky'
+         + ' --sim_shape=' + 'x'.join(list(map(str, self.sim_shape)))
          + ' --max_sim_iters=' + str(self.latnet_iter_to_sailfish_iter(num_iters
                                                                     + last_iter) + 1)
          + ' --checkpoint_from=0'
@@ -177,7 +179,7 @@ class SailfishRunner:
     # load flow file
     state_file = self.iter_to_cpoint(iteration)
     state = np.load(state_file)
-    state = state.f.dist0a[:,1:-1,1:self.sim_shape[0]+1]
+    state = state.f.dist0a[:,1:-1,1:self.sim_shape[1]+1]
     state = state.astype(np.float32)
     state = np.swapaxes(state, 0, 1)
     state = np.swapaxes(state, 1, 2)
@@ -200,7 +202,7 @@ class TrainSailfishRunner(SailfishRunner):
     self.num_cpoints = config.max_sim_iters
     # more configs will probably be added later
 
-  def read_train_data(self, state_subdomain, boundary_subdomain, boundary_small_subdomain, seq_state_subdomain, seq_length, augment=False):
+  def read_train_data(self, state_subdomain, boundary_subdomain, boundary_small_subdomain, seq_state_subdomain, seq_length, augment=True):
 
     # read state
     state_files = glob.glob(self.save_dir + "/*.0.cpoint.npz")

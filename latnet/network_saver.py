@@ -74,6 +74,8 @@ class NetworkSaver:
           tf.gfile.DeleteRecursively(self.checkpoint_path)
           tf.gfile.MakeDirs(self.checkpoint_path)
         print("there was a problem using variables in checkpoint, random init will be used instead")
+    else:
+      print("using rand init")
 
   def save_checkpoint(self, sess, global_step):
     save_path = os.path.join(self.checkpoint_path, 'model.ckpt')

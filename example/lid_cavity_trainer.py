@@ -60,12 +60,12 @@ class TrainDomain(Domain):
         'periodic_y': False,
         'max_sim_iters': 400,
         'num_simulations': 10,
-        'sim_shape': '512x256'})
+        'sim_shape': '256x512'})
 
   def compare_script(self, iteration, true_vel, true_rho, generated_vel, generated_rho):
+    plt.imshow(np.concatenate([self.DxQy.vel_to_norm(true_vel)[:,:,0], self.DxQy.vel_to_norm(generated_vel)[:,:,0]], axis=0))
     #plt.imshow(np.concatenate([true_vel[:,:,0], generated_vel[:,:,0]], axis=0))
-    plt.imshow(self.DxQy.vel_to_norm(true_vel)[:,:,0])
-    plt.savefig('./figs/compare_' + str(iteration) + '.png')
+    plt.savefig('./figs/compare_' + str(iteration).zfill(4) + '.png')
 
 
   def __init__(self, *args, **kwargs):
