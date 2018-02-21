@@ -261,7 +261,7 @@ class TempoGAN(LatNet):
               kernel_size=4, stride=2,
   	    filter_size=128,
   	    nonlinearity=nonlinearity,
-              normalize=configs.normalize,
+              normalize=config.normalize,
   	    weight_name="conv_2")
   
     self.conv(in_name=out_class, out_name=out_class,

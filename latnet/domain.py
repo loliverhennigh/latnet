@@ -57,9 +57,12 @@ class Domain(object):
 
   def make_sailfish_subdomain(self):
 
-    where_boundary = geometry_boundary_conditions(hx, hy, [self.gx, self.gy])
-          where_velocity, velocity = velocity_boundary_conditions(hx, hy, [self.gx, self.gy])
-          where_density, density = density_boundary_conditions(hx, hy, [self.gx, self.gy])
+    velocity_initial_conditions = self.velocity_initial_conditions
+    density_initial_conditions = self.density_initial_conditions
+
+    geometry_boundary_conditions = self.geometry_boundary_conditions
+    velocity_boundary_conditions = self.velocity_boundary_conditions
+    density_boundary_conditions = self.density_boundary_conditions
     
 
     class SailfishSubdomain(Subdomain2D):
