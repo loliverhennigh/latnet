@@ -25,7 +25,6 @@ from copy import copy
 class Domain(object):
 
   def __init__(self, config):
-
     self.config = config
 
   @classmethod
@@ -58,6 +57,11 @@ class Domain(object):
 
   def make_sailfish_subdomain(self):
 
+    where_boundary = geometry_boundary_conditions(hx, hy, [self.gx, self.gy])
+          where_velocity, velocity = velocity_boundary_conditions(hx, hy, [self.gx, self.gy])
+          where_density, density = density_boundary_conditions(hx, hy, [self.gx, self.gy])
+    
+
     class SailfishSubdomain(Subdomain2D):
       
       bc = NTFullBBWall
@@ -65,7 +69,7 @@ class Domain(object):
       def boundary_conditions(self, hx, hy):
 
         # restore from old dir or make new geometry
-        if restore_geometry:
+        if self.config.restore_geometry:
           restore_boundary_conditions = np.load(train_sim_dir[:-10] + "flow_geometry.npy")
           where_boundary = restore_boundary_conditions[...,0].astype(np.bool)
           where_velocity = np.logical_or(restore_boundary_conditions[...,1].astype(np.bool), restore_boundary_conditions[...,1].astype(np.bool))

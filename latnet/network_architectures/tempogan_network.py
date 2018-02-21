@@ -6,9 +6,14 @@ import sys
 sys.path.append('../')
 
 from latnetwork import LatNet
+from nn import *
 
 class TempoGAN(LatNet):
+  # network name for saving
+  network_name = "tempo_gan"
+
   # network configs
+  @classmethod
   def add_options(cls, group):
     group.add_argument('--nonlinearity', help='network config', type=str,
                            default='relu')

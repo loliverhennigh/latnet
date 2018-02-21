@@ -31,7 +31,6 @@ class LatNet(object):
     self.config = config # TODO remove this when config is corrected
     self.DxQy = lattice.TYPES[config.DxQy]()
     self.network_dir  = config.latnet_network_dir
-    self.network_name = network_name
     self.seq_length = config.seq_length
     self.gan = config.gan
     self.train_iters = config.train_iters
@@ -43,6 +42,9 @@ class LatNet(object):
     self.tic = time.time()
     self.toc = time.time()
     self.stats_history_length = 300
+
+    # 
+    self.make_network_templates()
 
   @classmethod
   def add_options(cls, group):
@@ -587,7 +589,7 @@ class LatNet(object):
     self.out_tensors[new_name] = self.out_tensors[old_name]
 
   def lattice_summary(self, in_name, summary_name, 
-                      display_norm=True, display_vel=True, display_pressure):
+                      display_norm=True, display_vel=True, display_pressure=True):
     if display_norm:
       tf.summary.image(summary_name + '_norm', self.DxQy.lattice_to_norm(self.out_tensors[in_name]))
     if display_pressure:
@@ -598,12 +600,12 @@ class LatNet(object):
       tf.summary.image(summary_name + '_vel_y', vel[...,1:2])
 
   def boundary_summary(self, in_name, summary_name):
-    tf.summary.image('physical_boundary', self.out_tensors['boundary' + gpu_str][...,0:1])
-    tf.summary.image('vel_x_boundary', self.out_tensors['boundary' + gpu_str][...,1:2])
-    tf.summary.image('vel_y_boundary', self.out_tensors['boundary' + gpu_str][...,2:3])
-    if len(self.in_tensors['boundary' + gpu_str].get_shape()) == 5:
-      tf.summary.image('vel_z_boundary', self.out_tensors['boundary' + gpu_str][...,3:4])
-    tf.summary.image('density_boundary', self.out_tensors['boundary' + gpu_str][...,-1:])
+    tf.summary.image('physical_boundary', self.out_tensors[in_name][...,0:1])
+    tf.summary.image('vel_x_boundary', self.out_tensors[in_name][...,1:2])
+    tf.summary.image('vel_y_boundary', self.out_tensors[in_name][...,2:3])
+    if len(self.out_tensors[in_name].get_shape()) == 5:
+      tf.summary.image('vel_z_boundary', self.out_tensors[in_name][...,3:4])
+    tf.summary.image('density_boundary', self.out_tensors[in_name][...,-1:])
 
   def run(self, out_names, feed_dict=None, return_dict=False):
     # convert out_names to tensors 

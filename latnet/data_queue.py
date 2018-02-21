@@ -12,7 +12,8 @@ import time
 import psutil as ps
 import shutil
 from copy import copy
-from sailfish_runner import TrainSailfishRunner
+from sailfish_simulation import TrainSailfishSimulation
+from utils.python_utils import *
 
 from Queue import Queue
 from shape_converter import SubDomain
@@ -20,7 +21,7 @@ import lattice
 import threading
 
 class DataQueue:
-  def __init__(self, config, train_domains, shape_converters):
+  def __init__(self, config, domains, shape_converters):
 
     # base dir where all the xml files are
     self.base_dir = config.train_sim_dir
@@ -46,10 +47,10 @@ class DataQueue:
 
     # generate base dataset and start queues
     self.sim_runners = []
-    print("generating dataset")
-    for i in tqdm(xrange(train_domains):
-      for j in tqdm(xrange(train_domains[i].num_simulations)):
-        sim = TrainSailfishSimulation(config, self.base_dir + '/sim_' + str(i), train_domains[i]) 
+    for name in domains.keys():
+      print("generating " + name + " dataset")
+      for i in tqdm(xrange(domains[name].num_simulations)):
+        sim = TrainSailfishSimulation(config, domains[name], self.base_dir + '/sim_' + name + '_' + str(i).zfill(4))
         if sim.need_to_generate():
           sim.generate_train_data()
         thr = threading.Thread(target= (lambda: self.data_worker(sim)))

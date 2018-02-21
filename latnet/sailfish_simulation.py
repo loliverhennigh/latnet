@@ -2,57 +2,50 @@
 import os
 import psutil as ps
 import glob
+import sys
 
 import lattice
 import utils.numpy_utils as numpy_utils
 from utils.python_utils import *
 
+# import sailfish
+sys.path.append('../sailfish')
+from sailfish.controller import LBSimulationController
+from sailfish.lb_single import LBFluidSim
+
 import numpy as np
 
 class SailfishSimulation:
 
-  def __init__(self, config, save_dir, domain):
+  def __init__(self, config, domain, save_dir=None):
 
     self.save_dir = save_dir
     self.lb_to_ln = config.lb_to_ln
     self.max_sim_iters = config.max_sim_iters
-    self.script_name = script_name
     self.debug_sailfish = config.debug_sailfish
     self.boundary_mask = config.boundary_mask
+    self.train_sim_dir = config.train_sim_dir
+    self.config=config
  
-    self.sim_shape = str_to_shape(config.sim_shape)
+    self.sim_shape = str2shape(config.sim_shape)
     self.DxQy = lattice.TYPES[config.DxQy]()
 
-    self.domain = domain
+    self.domain = domain(config)
 
   def create_sailfish_simulation(self):
-
-    # boundary conditions
-    geometry_boundary_conditions = self.geometry_boundary_conditions
-    velocity_boundary_conditions = self.velocity_boundary_conditions
-    density_boundary_conditions = self.density_boundary_conditions
-
-    # init conditions
-    velocity_initial_conditions = self.velocity_initial_conditions
-    density_initial_conditions = self.density_initial_conditions
 
     # update defaults
     shape = self.sim_shape
     train_sim_dir = self.train_sim_dir
     max_iters = self.max_sim_iters
     lb_to_ln = self.lb_to_ln
-    visc = self.visc
+    visc = self.config.visc
     periodic_x = self.config.periodic_x
     periodic_y = self.config.periodic_y
-    visc = self.visc
-    restore_geometry = self.restore_geometry
-
-    # inportant func
-    make_geometry_input = self.make_geometry_input
+    restore_geometry = self.config.restore_geometry
 
     class SailfishSimulation(LBFluidSim): 
-      subdomain = SailfishSubdomain
-
+      subdomain = self.domain.make_sailfish_subdomain()
       
       @classmethod
       def add_options(cls, group, dim):
@@ -174,7 +167,7 @@ class SailfishSimulation:
     self.clean_dir()
     self.clean_store_dir()
 
-    cmd = ('./' + self.script_name 
+    cmd = ('./' + self.domain.script_name 
          + ' --run_mode=generate_data'
          + ' --subgrid=les-smagorinsky'
          + ' --sim_shape=' + 'x'.join(list(map(str, self.sim_shape)))
@@ -198,7 +191,7 @@ class SailfishSimulation:
 
     last_cpoint, last_iter = self.last_cpoint()
 
-    cmd = ('./' + self.script_name 
+    cmd = ('./' + self.domain.script_name 
          + ' --run_mode=generate_data'
          + ' --subgrid=les-smagorinsky'
          + ' --sim_shape=' + 'x'.join(list(map(str, self.sim_shape)))
@@ -253,12 +246,11 @@ class SailfishSimulation:
     rho = self.DxQy.lattice_to_rho(state)
     return vel, rho
 
-class TrainSailfishSimulation(SailfishRunner):
+class TrainSailfishSimulation(SailfishSimulation):
 
-  def __init__(self, config, save_dir, domain):
-    SailfishRunner.__init__(self, config, save_dir, script_name)
+  def __init__(self, config, domain, save_dir):
+    SailfishSimulation.__init__(self, config, domain, save_dir)
     self.num_cpoints = config.max_sim_iters
-    self.domain = domain
     # more configs will probably be added later
 
   def read_train_data(self, state_subdomain, boundary_subdomain, boundary_small_subdomain, seq_state_subdomain, seq_length, augment=True):

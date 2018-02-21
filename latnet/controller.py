@@ -8,6 +8,7 @@ from data_queue import DataQueue
 from config import LatNetConfigParser
 from domain import Domain
 from sim_saver import SimSaver
+from sailfish_simulation import SailfishSimulation
 from utils.python_utils import *
 
 import matplotlib.pyplot as plt
@@ -129,18 +130,20 @@ class LatNetController(object):
                         default=100)
       group.add_argument('--subgrid', help='all mode', type=str,
                         default='les-smagorinsk')
+      group.add_argument('--domain_name', help='all mode', type=str,
+                        default='channel')
 
       group = self._config_parser.add_group('Network Configs')
       if self._trainer is not None:
         # add network specific configs
         for base in self._trainer.network.mro():
             if 'add_options' in base.__dict__:
-                base.add_options(group, self.network_name)
+                base.add_options(group)
       elif self._simulation is not None:
         # add network specific configs
         for base in self._trainer.network.mro():
             if 'add_options' in base.__dict__:
-                base.add_options(group, self.network_name)
+                base.add_options(group)
 
       # update default configs based on simulation-specific class and network.
       defaults = {}
@@ -167,12 +170,13 @@ class LatNetController(object):
 
       # train
       self.trainer = self._trainer(self.config)
+      self.trainer.init_network()
       self.trainer.make_dataset()
       self.trainer.train()
 
     def generate_data(self, config):
 
-      sailfish_ctrl = self._sim(config).create_sailfish_simulation()
+      sailfish_ctrl = SailfishSimulation(config, self._trainer.domains[config.domain_name]).create_sailfish_simulation()
       sailfish_ctrl.run()
 
     def eval(self, config):
@@ -187,7 +191,7 @@ class LatNetController(object):
          decoder_shape_converter) = self.network.eval_unroll()
 
         # run simulation
-        self.simulation = Simulation(lf._domain(config)
+        self.simulation = Simulation(lf._domain(config))
 
         self.domain.run(state_encoder, 
                         boundary_encoder, 
