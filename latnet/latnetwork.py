@@ -315,63 +315,6 @@ class LatNet(object):
         shape_converters[name] = self.shape_converters[name]
     return shape_converters
 
-  def train(self, dataset):
-  
-    # steps per print (hard set for now untill done debugging)
-    steps_per_print = 50
-
-    while True: 
-      # get batch of data
-      feed_dict = dataset.minibatch()
-      feed_dict['phase'] = 1
-
-      # perform optimization step for gen
-      gen_names = ['gen_train_op', 'loss_gen']
-      if not self.gan:
-        gen_names += ['loss_l2']
-      if self.gan:
-        gen_names += ['loss_l1', 'loss_gen_un_class', 'loss_layer_l2', 'loss_gen_con_class']
-      gen_output = self.run(gen_names, feed_dict=feed_dict, return_dict=True)
-      if self.gan:
-        disc_names = ['disc_train_op', 'loss_disc', 'loss_disc_un_class', 'loss_disc_con_class']
-        disc_output = self.run(disc_names, feed_dict=feed_dict, return_dict=True)
-        gen_output.update(disc_output)
-         
-      # update loss summary
-      self.update_loss_stats(gen_output)
-
-      # possibly train D more
-      """
-      if self.loss_stats['loss_disc_var'] < 0.001:
-        while self.loss_stats['loss_disc_var'] < 0.05:
-          feed_dict = dataset.minibatch()
-          disc_names = ['disc_train_op', 'loss_disc', 'loss_disc_un_class', 'loss_disc_con_class']
-          disc_output = self.run(disc_names, feed_dict=feed_dict, return_dict=True)
-          self.update_loss_stats(disc_output)
-          self.print_stats(self.loss_stats, self.time_stats, dataset.queue_stats(), 0)
-      """
-    
-      # update time summary
-      self.update_time_stats()
-
-      # print required data and save
-      step = self.run('gen_global_step')
-      if step % steps_per_print == 0:
-        self.print_stats(self.loss_stats, self.time_stats, dataset.queue_stats(), step)
-        # TODO integrat this into self.saver
-        tf_feed_dict = {}
-        for name in feed_dict.keys():
-          tf_feed_dict[self.in_tensors[name]] = feed_dict[name]
-        ###
-        self.saver.save_summary(self.sess, tf_feed_dict, int(self.run('gen_global_step')))
-
-      if step % self.config.save_network_freq == 0:
-        self.saver.save_checkpoint(self.sess, int(self.run('gen_global_step')))
-
-      # end simulation
-      if step > self.train_iters:
-        break
-
   def eval_unroll(self):
 
     # graph
@@ -692,54 +635,6 @@ class LatNet(object):
       output = tf_output
     return output
 
-  def update_loss_stats(self, output):
-    names = output.keys()
-    names.sort()
-    for name in names:
-      if 'loss' in name:
-        # update loss history
-        if name + '_history' not in self.loss_stats.keys():
-          self.loss_stats[name + '_history'] = []
-        self.loss_stats[name + '_history'].append(output[name])
-        if len(self.loss_stats[name + '_history']) > self.stats_history_length:
-          self.loss_stats[name + '_history'].pop(0)
-        # update loss
-        self.loss_stats[name] = float(output[name])
-        # update ave loss
-        self.loss_stats[name + '_ave'] = float(np.sum(np.array(self.loss_stats[name + '_history']))
-                                         / len(self.loss_stats[name + '_history']))
-        # update var loss
-        self.loss_stats[name + '_var'] = np.var(np.array(self.loss_stats[name + '_history']))
-
-  def update_time_stats(self):
-    # stop timer
-    self.toc = time.time()
-    # update total run time
-    self.time_stats['run_time'] = int(time.time() - self.start_time)
-    # update total step time
-    self.time_stats['step_time'] = ((self.toc - self.tic) / 
-                                    (self.config.batch_size * len(self.config.gpus)))
-    # update time history
-    if 'step_time_history' not in self.time_stats.keys():
-      self.time_stats['step_time_history'] = []
-    self.time_stats['step_time_history'].append(self.time_stats['step_time'])
-    if len(self.time_stats['step_time_history']) > self.stats_history_length:
-      self.time_stats['step_time_history'].pop(0)
-    # update time ave
-    self.time_stats['step_time_ave'] = float(np.sum(np.array(self.time_stats['step_time_history']))
-                   / len(self.time_stats['step_time_history']))
-    # start timer
-    self.tic = time.time()
-
-  def print_stats(self, loss_stats, time_stats, queue_stats, step):
-    loss_string = print_dict('LOSS STATS', loss_stats, 'blue')
-    time_string = print_dict('TIME STATS', time_stats, 'magenta')
-    queue_string = print_dict('QUEUE STATS', queue_stats, 'yellow')
-    print_string = loss_string + time_string + queue_string
-    os.system('clear')
-    print("TRAIN INFO - step " + str(step))
-    print(print_string)
-
   def start_session(self):
     #gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.9)
     #sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
@@ -747,23 +642,3 @@ class LatNet(object):
     init = tf.global_variables_initializer()
     sess.run(init)
     return sess
-
-def print_dict(name, dictionary, color):
-  print_string = name + '\n'
-  names = dictionary.keys()
-  names.sort()
-  for name in names:
-    if type(dictionary[name]) is not list:
-      print_element = '   ' + name + ':'
-      print_element = print_element.ljust(28)
-      if type(dictionary[name]) is float:
-        print_element += str(round(dictionary[name], 3))
-      else:
-        print_element += str(dictionary[name])
-      print_element += '\n'
-      print_string += print_element
-  print_string = colored(print_string, color)
-  return print_string
-  
-
-

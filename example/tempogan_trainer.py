@@ -82,7 +82,7 @@ class LDCDomain(Domain):
   def __init__(self, *args, **kwargs):
     super(LDCDomain, self).__init__(*args, **kwargs)
 
-class NetworkTrainer():
+class TempoGanTrainer():
   network = TempoGan 
   domains = [ChannelDomain, LDCDomain]
   num_simulations = [10, 10]
@@ -91,35 +91,14 @@ class NetworkTrainer():
   def update_defaults(cls, defaults):
     defaults.update({
         'train_sim_dir': './train_data',
+        'latnet_network_dir': './network_save',
         'visc': 0.005,
         'lb_to_ln': 50,
         'input_cshape': '64x64',
-        'periodic_x': False,
-        'periodic_y': False,
-        'max_sim_iters': 400,
-        'num_simulations': 10,
-        'sim_shape': '256x512'})
-
-class Simulation():
-  network = TempoGan 
-  domains = [ChannelDomain, LDCDomain]
-  num_simulations = [10, 10]
-
-  @classmethod
-  def update_defaults(cls, defaults):
-    defaults.update({
-        'train_sim_dir': './train_data',
-        'visc': 0.005,
-        'lb_to_ln': 50,
-        'input_cshape': '64x64',
-        'periodic_x': False,
-        'periodic_y': False,
-        'max_sim_iters': 400,
-        'num_simulations': 10,
-        'sim_shape': '256x512'})
+        'max_sim_iters': 400})
 
 
 if __name__ == '__main__':
-  sim = LatNetController(network=TempoGan, sim=TrainDomain)
+  sim = LatNetController(trainer=TempoGanTrainer)
   sim.run()
 
