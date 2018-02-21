@@ -8,16 +8,17 @@ from data_queue import DataQueue
 from config import LatNetConfigParser
 from domain import Domain
 from sim_saver import SimSaver
+from utils.python_utils import *
 
 import matplotlib.pyplot as plt
 
 class LatNetController(object):
     """Controls the execution of a LN simulation."""
 
-    def __init__(self, _sim=None):
+    def __init__(self, network=None, sim):
 
       self._config_parser = LatNetConfigParser()
-      self._sim = _sim
+      self._sim = sim
      
       group = self._config_parser.add_group('Controller Details')
       group.add_argument('--mode', help='runtime mode', type=str,
@@ -26,6 +27,8 @@ class LatNetController(object):
             choices=['generate_data', 'train', 'eval'], default='train')
 
       group = self._config_parser.add_group('Network Details')
+      group.add_argument('--network_name', help='all mode', type=str,
+                         default='tempogan')
       group.add_argument('--latnet_network_dir', help='all mode', type=str,
                         default='./network_checkpoint')
 
@@ -74,8 +77,6 @@ class LatNetController(object):
                         default='./data_train/sailfish_sim')
       group.add_argument('--gpu_fraction', help='all mode', type=float,
                         default=0.9)
-      group.add_argument('--num_simulations', help='all mode', type=int,
-                        default=10)
       group.add_argument('--max_queue', help='all mode', type=int,
                         default=50)
 
@@ -128,18 +129,21 @@ class LatNetController(object):
       group.add_argument('--subgrid', help='all mode', type=str,
                         default='les-smagorinsk')
 
-      self.network_name = _sim.network_name
       group = self._config_parser.add_group('Network Configs')
+      self._network = network
       # add network specific configs
-      for base in LatNet.mro():
-          if 'add_options' in base.__dict__:
-              base.add_options(group, self.network_name)
+      if self._network is not None:
+        for base in _network.mro():
+            if 'add_options' in base.__dict__:
+                base.add_options(group, self.network_name)
 
-      # update default configs based on simulation-specific class.
+      # update default configs based on simulation-specific class and network.
+      defaults = {}
       if self._sim is not None:
-        defaults = {}
         self._sim.update_defaults(defaults)
-        self._config_parser.set_defaults(defaults)
+      if self._network is not None:
+        self._network.update_defaults(defaults)
+      self._config_parser.set_defaults(defaults)
 
     def run(self):
 
@@ -157,7 +161,7 @@ class LatNetController(object):
     def train(self, config):
 
       # make network
-      self.network = LatNet(self.config, self.network_name, self._sim.script_name)
+      self.network = self._network(self.config)
 
       # unroll train_unroll
       self.network.train_unroll()
@@ -175,7 +179,7 @@ class LatNetController(object):
 
     def eval(self, config):
 
-      self.network = LatNet(self.config, self.network_name, self._sim.script_name)
+      self.network = self._network(self.config)
 
       with tf.Graph().as_default():
 
@@ -185,7 +189,7 @@ class LatNetController(object):
          decoder_shape_converter) = self.network.eval_unroll()
 
         # run simulation
-        self.domain = self._sim(config)
+        self.simulation = Simulation(lf._domain(config)
 
         self.domain.run(state_encoder, 
                         boundary_encoder, 
@@ -193,11 +197,4 @@ class LatNetController(object):
                         encoder_shape_converter, 
                         cmapping_shape_converter, 
                         decoder_shape_converter)
-def str2bool(v):
-    if v.lower() in ('yes', 'true', 't', 'y', '1'):
-        return True
-    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
-        return False
-    else:
-        raise argparse.ArgumentTypeError('Boolean value expected.')
 

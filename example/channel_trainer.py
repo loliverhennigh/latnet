@@ -55,7 +55,6 @@ def make_boundary(hx, hy):
 
 class TrainDomain(Domain):
   script_name = __file__
-  network_name = 'tempogan_network'
   vel = (0.04, 0.00)
 
   def geometry_boundary_conditions(self, hx, hy, shape):
@@ -85,9 +84,7 @@ class TrainDomain(Domain):
   @classmethod
   def update_defaults(cls, defaults):
     defaults.update({
-        'latnet_network_dir': './network_checkpoint_channel',
         'train_sim_dir': './train_data_channel',
-        'sim_dir': './eval_channel',
         'visc': 0.01,
         'lb_to_ln': 50,
         'seq_length': 5,
@@ -108,17 +105,6 @@ class TrainDomain(Domain):
     super(TrainDomain, self).__init__(*args, **kwargs)
 
 if __name__ == '__main__':
-  sim = LatNetController(_sim=TrainDomain)
+  sim = LatNetController(network=TempoGan, sim=TrainDomain)
   sim.run()
-
-  """
-  # generate video of plots
-  time.sleep(5.0)
-  os.system("rm ./figs/channel_video.mp4")
-  os.system("cat ./figs/compare* | ffmpeg -f image2pipe -r 10 -vcodec png -i - -vcodec libx264 ./figs/channel_video.mp4")
-  os.system("rm ./figs/compare*")
-  """
-
-
-    
 

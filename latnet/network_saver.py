@@ -5,12 +5,11 @@ import os
 
 class NetworkSaver:
 
-  def __init__(self, config, network_name, script_name, graph_def):
+  def __init__(self, config, network_name, graph_def):
 
     self.network_dir = config.latnet_network_dir
     self.config = config
     self.network_name = network_name
-    self.script_name = script_name
 
     # a bit messy this way but oh well
     self.none_save_args = ['mode', 'run_mode', 'latnet_network_dir', 'input_shape',

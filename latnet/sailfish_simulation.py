@@ -5,12 +5,14 @@ import glob
 
 import lattice
 import utils.numpy_utils as numpy_utils
+from utils.python_utils import *
 
 import numpy as np
 
-class SailfishRunner:
+class SailfishSimulation:
 
-  def __init__(self, config, save_dir, script_name):
+  def __init__(self, config, save_dir, domain):
+
     self.save_dir = save_dir
     self.lb_to_ln = config.lb_to_ln
     self.max_sim_iters = config.max_sim_iters
@@ -18,22 +20,87 @@ class SailfishRunner:
     self.debug_sailfish = config.debug_sailfish
     self.boundary_mask = config.boundary_mask
  
-    sim_shape = config.sim_shape.split('x')
-    sim_shape = map(int, sim_shape)
-    self.sim_shape = sim_shape
-
+    self.sim_shape = str_to_shape(config.sim_shape)
     self.DxQy = lattice.TYPES[config.DxQy]()
 
-    # set padding config
-    self.padding_type = []
-    if config.periodic_x:
-      self.padding_type.append('periodic')
-    else:
-      self.padding_type.append('zero')
-    if config.periodic_y:
-      self.padding_type.append('periodic')
-    else:
-      self.padding_type.append('zero')
+    self.domain = domain
+
+  def create_sailfish_simulation(self):
+
+    # boundary conditions
+    geometry_boundary_conditions = self.geometry_boundary_conditions
+    velocity_boundary_conditions = self.velocity_boundary_conditions
+    density_boundary_conditions = self.density_boundary_conditions
+
+    # init conditions
+    velocity_initial_conditions = self.velocity_initial_conditions
+    density_initial_conditions = self.density_initial_conditions
+
+    # update defaults
+    shape = self.sim_shape
+    train_sim_dir = self.train_sim_dir
+    max_iters = self.max_sim_iters
+    lb_to_ln = self.lb_to_ln
+    visc = self.visc
+    periodic_x = self.config.periodic_x
+    periodic_y = self.config.periodic_y
+    visc = self.visc
+    restore_geometry = self.restore_geometry
+
+    # inportant func
+    make_geometry_input = self.make_geometry_input
+
+    class SailfishSimulation(LBFluidSim): 
+      subdomain = SailfishSubdomain
+
+      
+      @classmethod
+      def add_options(cls, group, dim):
+        group.add_argument('--train_sim_dir', help='all modes', type=str,
+                              default='')
+        group.add_argument('--sim_dir', help='all modes', type=str,
+                              default='')
+        group.add_argument('--run_mode', help='all modes', type=str,
+                              default='')
+        group.add_argument('--max_sim_iters', help='all modes', type=int,
+                              default=1000)
+        group.add_argument('--restore_geometry', help='all modes', type=bool,
+                              default=False)
+        group.add_argument('--sim_shape', help='all modes', type=str,
+                              default='512x512')
+        group.add_argument('--lb_to_ln', help='all modes', type=int,
+                              default=60)
+
+      @classmethod
+      def update_defaults(cls, defaults):
+        defaults.update({
+          'max_iters': max_iters,
+          'periodic_x': periodic_x,
+          'periodic_y': periodic_y,
+          'output_format': 'npy',
+          'precision': 'half',
+          'checkpoint_file': train_sim_dir,
+          'checkpoint_every': lb_to_ln,
+          'lat_nx': shape[1],
+          'lat_ny': shape[0]
+          })
+        if len(shape) == 3:
+          defaults.update({
+            'periodic_z': periodic_z,
+            'lat_nz': shape[0],
+            'grid': 'D3Q15'
+          })
+
+      @classmethod
+      def modify_config(cls, config):
+        config.visc   = visc
+
+      def __init__(self, *args, **kwargs):
+        super(SailfishSimulation, self).__init__(*args, **kwargs)
+
+    ctrl = LBSimulationController(SailfishSimulation)
+
+    return ctrl
 
   def list_cpoints(self):
     cpoints = glob.glob(self.save_dir + "/*.0.cpoint.npz")
@@ -163,15 +230,6 @@ class SailfishRunner:
       if subdomain is not None:
         boundary = numpy_utils.mobius_extract(boundary, subdomain)
                                               #padding_type=self.padding_type)
-    # get mask for loss
-    """
-    mask_in = np.ones(self.sim_shape + [1])
-    if subdomain is not None:
-      mask_in = numpy_utils.mobius_extract(mask_in, subdomain, 
-                                        padding_type=self.padding_type)
-    mask_out = (1.0 - mask_in)
-    boundary = np.concatenate([boundary, mask_in, mask_out], axis=-1)
-    """
 
     return boundary
 
@@ -195,7 +253,7 @@ class SailfishRunner:
     rho = self.DxQy.lattice_to_rho(state)
     return vel, rho
 
-class TrainSailfishRunner(SailfishRunner):
+class TrainSailfishSimulation(SailfishRunner):
 
   def __init__(self, config, save_dir, script_name):
     SailfishRunner.__init__(self, config, save_dir, script_name)

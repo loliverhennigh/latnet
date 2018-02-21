@@ -19,7 +19,7 @@ class LatNet(object):
   # default network name
   #network_name = 'advanced_network'
 
-  def __init__(self, config, network_name, script_name):
+  def __init__(self, config):
     # in and out tensors
     self.in_tensors = {}
     self.out_tensors = {}
@@ -32,7 +32,6 @@ class LatNet(object):
     self.DxQy = lattice.TYPES[config.DxQy]()
     self.network_dir  = config.latnet_network_dir
     self.network_name = network_name
-    self.script_name = script_name
     self.seq_length = config.seq_length
     self.gan = config.gan
     self.train_iters = config.train_iters
@@ -45,37 +44,19 @@ class LatNet(object):
     self.toc = time.time()
     self.stats_history_length = 300
 
-    if self.network_name == "test_network":
-      import network_architectures.test_network as net
-    elif self.network_name == "advanced_network":
-      import network_architectures.advanced_network as net
-    elif self.network_name == "tempogan_network":
-      import network_architectures.tempogan_network as net
-    elif self.network_name == "generalized_lb_network":
-      import network_architectures.generalized_lb_network as net
-    else:
-      print("network name not found")
-      exit()
-
-    # piecese of network
-    self.encoder_state                = tf.make_template('encoder_state', net.encoder_state)
-    self.encoder_boundary             = tf.make_template('encoder_boundary', net.encoder_boundary)
-    self.compression_mapping          = tf.make_template('compression_mapping', net.compression_mapping)
-    self.decoder_state                = tf.make_template('decoder_state', net.decoder_state)
-    self.discriminator_conditional    = tf.make_template('discriminator_conditional', net.discriminator_conditional)
-    self.discriminator_unconditional  = tf.make_template('discriminator_unconditional', net.discriminator_unconditional)
-
   @classmethod
-  def add_options(cls, group, network_name):
-    if network_name == "test_network":
-      from network_architectures.test_network import add_options
-    elif network_name == "advanced_network":
-      from network_architectures.advanced_network import add_options
-    elif network_name == "tempogan_network":
-      from network_architectures.tempogan_network import add_options
-    elif network_name == "generalized_lb_network":
-      from network_architectures.generalized_lb_network import add_options
-    add_options(group)
+  def add_options(cls, group):
+    pass
+
+  def make_network_templates(self):
+    # piecese of network
+    self._encoder_state                = tf.make_template('encoder_state', self.encoder_state)
+    self._encoder_boundary             = tf.make_template('encoder_boundary', self.encoder_boundary)
+    self._compression_mapping          = tf.make_template('compression_mapping', self.compression_mapping)
+    self._decoder_state                = tf.make_template('decoder_state', self.decoder_state)
+    if self.gan:
+      self._discriminator_conditional    = tf.make_template('discriminator_conditional', self.discriminator_conditional)
+      self._discriminator_unconditional  = tf.make_template('discriminator_unconditional', self.discriminator_unconditional)
 
   def train_unroll(self):
 
@@ -100,9 +81,7 @@ class LatNet(object):
           if i == 0:
             with tf.device('/cpu:0'):
               self.lattice_summary(in_name='state' + gpu_str, summary_name='true')
-              tf.summary.image('boundary', self.in_tensors['boundary' + gpu_str][...,0:1])
-              tf.summary.image('boundary_mask_out', self.in_tensors['boundary' + gpu_str][...,-2:-1])
-              tf.summary.image('boundary_mask_in', self.in_tensors['boundary' + gpu_str][...,-1:])
+              self.boundary_summary(in_name='boundary' + gpu_str, summary_name='boundary')
           # make seq of output states
           for j in xrange(self.seq_length):
             self.add_tensor('true_state' + seq_str(j), (1 + self.DxQy.dims) * [None] + [self.DxQy.Q])
@@ -113,18 +92,16 @@ class LatNet(object):
       
           ###### Unroll Graph ######
           ### encode ###
-          self.encoder_state(self, self.config, 
-                             in_name="state" + gpu_str, 
-                             out_name="cstate" + seq_str(0))
-          self.encoder_boundary(self, self.config, 
-                                in_name="boundary" + gpu_str, 
+          self._encoder_state(in_name="state" + gpu_str, 
+                              out_name="cstate" + seq_str(0))
+          self._encoder_boundary(in_name="boundary" + gpu_str, 
                                 out_name="cboundary" + gpu_str)
       
           ### unroll on the compressed state ###
           for j in xrange(self.seq_length):
             # compression mapping
             self.add_shape_converter("cstate" + seq_str(j))
-            self.compression_mapping(self, self.config,
+            self._compression_mapping(
                                      in_cstate_name="cstate" + seq_str(j),
                                      in_cboundary_name="cboundary" + gpu_str,
                                      out_name="cstate" + seq_str(j+1))
@@ -134,11 +111,9 @@ class LatNet(object):
             self.match_trim_tensor(in_name="cstate" + seq_str(j), 
                                    match_name="cstate" + seq_str(self.seq_length-1), 
                                    out_name="cstate" + seq_str(j))
-            self.decoder_state(self, self.config, 
-                               in_name="cstate" + seq_str(j), 
-                               in_boundary_name="boundary_small" + gpu_str, 
-                               out_name="pred_state" + seq_str(j))
-            self.out_tensors["pred_state" + seq_str(j)] = self.out_tensors["pred_state" + seq_str(j)]
+            self._decoder_state(in_name="cstate" + seq_str(j), 
+                                in_boundary_name="boundary_small" + gpu_str, 
+                                out_name="pred_state" + seq_str(j))
   
             if i == 0:
               with tf.device('/cpu:0'):
@@ -152,14 +127,12 @@ class LatNet(object):
             for j in range(1, self.seq_length):
               seq_pred_state_names.append("pred_state" + seq_str(j))
               seq_true_state_names.append("true_state" + seq_str(j))
-            self.discriminator_unconditional(self, self.config, 
-                                             in_seq_state_names=seq_pred_state_names,
-                                             out_layer='D_un_layer_pred' + gpu_str,
-                                             out_class='D_un_class_pred' + gpu_str)
-            self.discriminator_unconditional(self, self.config, 
-                                             in_seq_state_names=seq_true_state_names,
-                                             out_layer='D_un_layer_true' + gpu_str,
-                                             out_class='D_un_class_true' + gpu_str)
+            self._discriminator_unconditional(in_seq_state_names=seq_pred_state_names,
+                                              out_layer='D_un_layer_pred' + gpu_str,
+                                              out_class='D_un_class_pred' + gpu_str)
+            self._discriminator_unconditional(in_seq_state_names=seq_true_state_names,
+                                              out_layer='D_un_layer_true' + gpu_str,
+                                              out_class='D_un_class_true' + gpu_str)
       
           ### conditional discriminator of gan ###
           if self.gan:
@@ -168,16 +141,14 @@ class LatNet(object):
             for j in range(1, self.seq_length):
               seq_pred_state_names.append("pred_state" + seq_str(j))
               seq_true_state_names.append("true_state" + seq_str(j))
-            self.discriminator_conditional(self, self.config, 
-                                           in_boundary_name='boundary_small' + gpu_str,
-                                           in_state_name='true_state' + seq_str(0),
-                                           in_seq_state_names=seq_pred_state_names,
-                                           out_name='D_con_class_pred' + gpu_str)
-            self.discriminator_conditional(self, self.config, 
-                                           in_boundary_name='boundary_small' + gpu_str,
-                                           in_state_name='true_state' + seq_str(0),
-                                           in_seq_state_names=seq_true_state_names,
-                                           out_name='D_con_class_true' + gpu_str)
+            self._discriminator_conditional(in_boundary_name='boundary_small' + gpu_str,
+                                            in_state_name='true_state' + seq_str(0),
+                                            in_seq_state_names=seq_pred_state_names,
+                                            out_name='D_con_class_pred' + gpu_str)
+            self._discriminator_conditional(in_boundary_name='boundary_small' + gpu_str,
+                                            in_state_name='true_state' + seq_str(0),
+                                            in_seq_state_names=seq_true_state_names,
+                                            out_name='D_con_class_true' + gpu_str)
       
 
           ###### Loss Operation ######
@@ -330,7 +301,7 @@ class LatNet(object):
   
       ###### Saver Operation ######
       graph_def = self.sess.graph.as_graph_def(add_shapes=True)
-      self.saver = NetworkSaver(self.config, self.network_name, self.script_name, graph_def)
+      self.saver = NetworkSaver(self.config, self.network_name, graph_def)
       self.saver.load_checkpoint(self.sess)
 
   def train_shape_converter(self):
@@ -412,23 +383,20 @@ class LatNet(object):
       self.add_tensor('boundary',  (1 + self.DxQy.dims) * [None] + [4])
       self.add_tensor('cstate',    (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
       self.add_tensor('cboundary', (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
-      #self.add_tensor('cstate',    (1 + self.DxQy.dims) * [None] + [self.config.lat_q_to_net_q*9])
-      #self.add_tensor('cboundary', (1 + self.DxQy.dims) * [None] + [2*self.config.lat_q_to_net_q*9])
       self.add_phase() 
   
       ###### Unroll Graph ######
       # encoders
-      self.encoder_state(self, self.config, in_name="state", out_name="cstate_from_state")
-      self.encoder_boundary(self, self.config, in_name="boundary", out_name="cboundary_from_boundary")
+      self._encoder_state(in_name="state", out_name="cstate_from_state")
+      self._encoder_boundary(in_name="boundary", out_name="cboundary_from_boundary")
   
       # compression mapping
-      self.compression_mapping(self, self.config, 
-                               in_cstate_name="cstate", 
-                               in_cboundary_name="cboundary",
-                               out_name="cstate_from_cstate")
+      self._compression_mapping(in_cstate_name="cstate", 
+                                in_cboundary_name="cboundary",
+                                out_name="cstate_from_cstate")
   
       # decoder
-      self.decoder_state(self, self.config, in_boundary_name='boundary', in_name="cstate", out_name="state_from_cstate")
+      self._decoder_state(in_boundary_name='boundary', in_name="cstate", out_name="state_from_cstate")
       self.out_tensors['vel_from_cstate'] = self.DxQy.lattice_to_vel(self.out_tensors['state_from_cstate'])
       self.out_tensors['rho_from_cstate'] = self.DxQy.lattice_to_rho(self.out_tensors['state_from_cstate'])
 
@@ -437,7 +405,7 @@ class LatNet(object):
   
       ###### Saver Operation ######
       graph_def = self.sess.graph.as_graph_def(add_shapes=True)
-      self.saver = NetworkSaver(self.config, self.network_name, self.script_name, graph_def)
+      self.saver = NetworkSaver(self.config, self.network_name, graph_def)
       self.saver.load_checkpoint(self.sess)
   
     ###### Function Wrappers ######
@@ -676,14 +644,23 @@ class LatNet(object):
     self.out_tensors[new_name] = self.out_tensors[old_name]
 
   def lattice_summary(self, in_name, summary_name, 
-                      display_norm=True, display_vel=True):
-    # TODO add more display options
+                      display_norm=True, display_vel=True, display_pressure):
     if display_norm:
       tf.summary.image(summary_name + '_norm', self.DxQy.lattice_to_norm(self.out_tensors[in_name]))
+    if display_pressure:
+      tf.summary.image(summary_name + '_rho', self.DxQy.lattice_to_rho(self.out_tensors[in_name]))
     if display_vel:
       vel = self.DxQy.lattice_to_vel(self.out_tensors[in_name])
       tf.summary.image(summary_name + '_vel_x', vel[...,0:1])
       tf.summary.image(summary_name + '_vel_y', vel[...,1:2])
+
+  def boundary_summary(self, in_name, summary_name):
+    tf.summary.image('physical_boundary', self.out_tensors['boundary' + gpu_str][...,0:1])
+    tf.summary.image('vel_x_boundary', self.out_tensors['boundary' + gpu_str][...,1:2])
+    tf.summary.image('vel_y_boundary', self.out_tensors['boundary' + gpu_str][...,2:3])
+    if len(self.in_tensors['boundary' + gpu_str].get_shape()) == 5:
+      tf.summary.image('vel_z_boundary', self.out_tensors['boundary' + gpu_str][...,3:4])
+    tf.summary.image('density_boundary', self.out_tensors['boundary' + gpu_str][...,-1:])
 
   def run(self, out_names, feed_dict=None, return_dict=False):
     # convert out_names to tensors 

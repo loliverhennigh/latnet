@@ -118,6 +118,9 @@ class SubDomain:
     self.pos = pos
     self.size = size
 
+  def zero_pos(self):
+    self.pos = len(self.pos) * [0]
+
   def add_edges(self, edge_length):
     self.pos =  [x-edge_length for x in self.pos ]
     self.size = [x+2*edge_length for x in self.size]
