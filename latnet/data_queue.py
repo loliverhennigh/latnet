@@ -47,10 +47,10 @@ class DataQueue:
 
     # generate base dataset and start queues
     self.sim_runners = []
-    for name in domains.keys():
-      print("generating " + name + " dataset")
-      for i in tqdm(xrange(domains[name].num_simulations)):
-        sim = TrainSailfishSimulation(config, domains[name], self.base_dir + '/sim_' + name + '_' + str(i).zfill(4))
+    for domain in domains:
+      print("generating " + domain.name + " dataset")
+      for i in tqdm(xrange(domain.num_simulations)):
+        sim = TrainSailfishSimulation(config, domain, self.base_dir + '/sim_' + domain.name + '_' + str(i).zfill(4))
         if sim.need_to_generate():
           sim.generate_train_data()
         thr = threading.Thread(target= (lambda: self.data_worker(sim)))

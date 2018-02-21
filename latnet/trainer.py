@@ -14,6 +14,7 @@ from shape_converter import ShapeConverter
 from optimizer import Optimizer
 from shape_converter import SubDomain
 from network_saver import NetworkSaver
+from data_queue import DataQueue
 from utils.python_utils import *
 
 class Trainer(object):
@@ -45,8 +46,8 @@ class Trainer(object):
     self._network = self.network(self.config)
     self._network.train_unroll()
 
-  def make_dataset(self):
-    self.dataset = DataQueue(self.config, self.domains, self._network.train_shape_converter(self))
+  def make_data_queue(self):
+    self.data_queue = DataQueue(self.config, self.domains, self._network.train_shape_converter())
 
   def train(self):
  
@@ -55,7 +56,7 @@ class Trainer(object):
 
     while True: 
       # get batch of data
-      feed_dict = dataset.minibatch()
+      feed_dict = self.data_queue.minibatch()
       feed_dict['phase'] = 1
 
       # perform optimization step for gen
@@ -64,10 +65,10 @@ class Trainer(object):
         gen_names += ['loss_l2']
       if self.gan:
         gen_names += ['loss_l1', 'loss_gen_un_class', 'loss_layer_l2', 'loss_gen_con_class']
-      gen_output = self.network.run(gen_names, feed_dict=feed_dict, return_dict=True)
+      gen_output = self._network.run(gen_names, feed_dict=feed_dict, return_dict=True)
       if self.gan:
         disc_names = ['disc_train_op', 'loss_disc', 'loss_disc_un_class', 'loss_disc_con_class']
-        disc_output = self.run(disc_names, feed_dict=feed_dict, return_dict=True)
+        disc_output = self._network.run(disc_names, feed_dict=feed_dict, return_dict=True)
         gen_output.update(disc_output)
          
       # update loss summary
@@ -77,18 +78,18 @@ class Trainer(object):
       self.update_time_stats()
 
       # print required data and save
-      step = self.run('gen_global_step')
+      step = self._network.run('gen_global_step')
       if step % steps_per_print == 0:
-        self.print_stats(self.loss_stats, self.time_stats, dataset.queue_stats(), step)
+        self.print_stats(self.loss_stats, self.time_stats, self.data_queue.queue_stats(), step)
         # TODO integrat this into self.saver
         tf_feed_dict = {}
         for name in feed_dict.keys():
-          tf_feed_dict[self.in_tensors[name]] = feed_dict[name]
+          tf_feed_dict[self._network.in_tensors[name]] = feed_dict[name]
         ###
-        self.saver.save_summary(self.sess, tf_feed_dict, int(self.run('gen_global_step')))
+        self._network.saver.save_summary(self._network.sess, tf_feed_dict, int(self._network.run('gen_global_step')))
 
       if step % self.config.save_network_freq == 0:
-        self.saver.save_checkpoint(self.sess, int(self.run('gen_global_step')))
+        self._network.saver.save_checkpoint(self._network.sess, int(self._network.run('gen_global_step')))
 
       # end simulation
       if step > self.train_iters:

@@ -62,6 +62,7 @@ def make_boundary(hx, hy):
 
 class ChannelDomain(Domain):
   script_name = __file__
+  name = "channel"
   num_simulations = 10
   vel = (0.04, 0.00)
   sim_shape = [256, 512]
@@ -97,6 +98,7 @@ class ChannelDomain(Domain):
 
 class LDCDomain(Domain):
   script_name = __file__
+  name = "lid_driven_cavity"
   vel = rand_vel()
   num_simulations = 10
   sim_shape = [256, 512]
@@ -129,8 +131,7 @@ class LDCDomain(Domain):
 
 class TempoGanTrainer(Trainer):
   network = TempoGAN
-  domains = {"channel": ChannelDomain, 
-             "lid_driven_cavity": LDCDomain}
+  domains = [ChannelDomain, LDCDomain]
 
   @classmethod
   def update_defaults(cls, defaults):

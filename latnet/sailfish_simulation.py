@@ -49,6 +49,8 @@ class SailfishSimulation:
       
       @classmethod
       def add_options(cls, group, dim):
+        group.add_argument('--domain_name', help='all modes', type=str,
+                              default='')
         group.add_argument('--train_sim_dir', help='all modes', type=str,
                               default='')
         group.add_argument('--sim_dir', help='all modes', type=str,
@@ -169,6 +171,7 @@ class SailfishSimulation:
 
     cmd = ('./' + self.domain.script_name 
          + ' --run_mode=generate_data'
+         + ' --domain_name=' + self.domain.name
          + ' --subgrid=les-smagorinsky'
          + ' --sim_shape=' + 'x'.join(list(map(str, self.sim_shape)))
          + ' --max_sim_iters=' + str(self.lb_to_ln*num_iters + 1)

@@ -63,7 +63,9 @@ class Domain(object):
     geometry_boundary_conditions = self.geometry_boundary_conditions
     velocity_boundary_conditions = self.velocity_boundary_conditions
     density_boundary_conditions = self.density_boundary_conditions
-    
+
+    make_geometry_input = self.make_geometry_input    
+    train_sim_dir = self.config.train_sim_dir
 
     class SailfishSubdomain(Subdomain2D):
       

@@ -1,4 +1,6 @@
 
+from termcolor import colored, cprint
+
 def str2shape(string):
   shape = string.split('x')
   return map(int, shape)

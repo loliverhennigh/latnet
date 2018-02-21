@@ -171,13 +171,16 @@ class LatNetController(object):
       # train
       self.trainer = self._trainer(self.config)
       self.trainer.init_network()
-      self.trainer.make_dataset()
+      self.trainer.make_data_queue()
       self.trainer.train()
 
     def generate_data(self, config):
 
-      sailfish_ctrl = SailfishSimulation(config, self._trainer.domains[config.domain_name]).create_sailfish_simulation()
-      sailfish_ctrl.run()
+      for domain in self._trainer.domains:
+        if config.domain_name == domain.name:
+          sailfish_ctrl = SailfishSimulation(config, domain).create_sailfish_simulation()
+          sailfish_ctrl.run()
+          break
 
     def eval(self, config):
 
