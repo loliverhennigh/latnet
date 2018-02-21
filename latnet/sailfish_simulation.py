@@ -255,9 +255,10 @@ class SailfishSimulation:
 
 class TrainSailfishSimulation(SailfishRunner):
 
-  def __init__(self, config, save_dir, script_name):
+  def __init__(self, config, save_dir, domain):
     SailfishRunner.__init__(self, config, save_dir, script_name)
     self.num_cpoints = config.max_sim_iters
+    self.domain = domain
     # more configs will probably be added later
 
   def read_train_data(self, state_subdomain, boundary_subdomain, boundary_small_subdomain, seq_state_subdomain, seq_length, augment=True):

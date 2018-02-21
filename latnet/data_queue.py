@@ -20,32 +20,23 @@ import lattice
 import threading
 
 class DataQueue:
-  def __init__(self, config, train_sim, shape_converters):
+  def __init__(self, config, train_domains, shape_converters):
 
     # base dir where all the xml files are
     self.base_dir = config.train_sim_dir
-    self.script_name = train_sim.script_name
     self.waiting_time = 0.0
     self.needed_to_wait = False
 
     # configs
     self.batch_size      = config.batch_size
-    self.num_simulations = config.num_simulations
     self.seq_length      = config.seq_length
     self.nr_downsamples  = config.nr_downsamples
     self.free_gpu        = True
     gpus = config.gpus.split(',')
     self.gpus = map(int, gpus)
     self.DxQy = lattice.TYPES[config.DxQy]()
+    self.input_cshape = str2shape(config.input_cshape)
 
-    # shape
-    sim_shape = config.sim_shape.split('x')
-    sim_shape = map(int, sim_shape)
-    self.sim_shape = sim_shape
-
-    input_cshape = config.input_cshape.split('x')
-    input_cshape = map(int, input_cshape)
-    self.input_cshape = input_cshape
     self.shape_converters = shape_converters
 
     # make queue
@@ -56,13 +47,14 @@ class DataQueue:
     # generate base dataset and start queues
     self.sim_runners = []
     print("generating dataset")
-    for i in tqdm(xrange(self.num_simulations)):
-      sim = TrainSailfishRunner(config, self.base_dir + '/sim_' + str(i), self.script_name) 
-      if sim.need_to_generate():
-        sim.generate_train_data()
-      thr = threading.Thread(target= (lambda: self.data_worker(sim)))
-      thr.daemon = True
-      thr.start()
+    for i in tqdm(xrange(train_domains):
+      for j in tqdm(xrange(train_domains[i].num_simulations)):
+        sim = TrainSailfishSimulation(config, self.base_dir + '/sim_' + str(i), train_domains[i]) 
+        if sim.need_to_generate():
+          sim.generate_train_data()
+        thr = threading.Thread(target= (lambda: self.data_worker(sim)))
+        thr.daemon = True
+        thr.start()
 
   def data_worker(self, sim):
     while True:
@@ -70,8 +62,8 @@ class DataQueue:
 
       # select random piece to grab from data
       cratio = pow(2, self.nr_downsamples)
-      rand_pos = [np.random.randint(-self.input_cshape[0], self.sim_shape[0]/cratio),
-                  np.random.randint(-self.input_cshape[1], self.sim_shape[1]/cratio)]
+      rand_pos = [np.random.randint(-self.input_cshape[0], sim.sim_shape[0]/cratio),
+                  np.random.randint(-self.input_cshape[1], sim.sim_shape[1]/cratio)]
       #rand_pos = [-self.input_cshape[0],-self.input_cshape[1]]
       cstate_subdomain = SubDomain(rand_pos, self.input_cshape)
 

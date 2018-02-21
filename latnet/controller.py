@@ -15,10 +15,11 @@ import matplotlib.pyplot as plt
 class LatNetController(object):
     """Controls the execution of a LN simulation."""
 
-    def __init__(self, network=None, sim):
+    def __init__(self, trainer=None, simulation=None):
 
       self._config_parser = LatNetConfigParser()
-      self._sim = sim
+      self._trainer = trainer
+      self._simulation = simulation
      
       group = self._config_parser.add_group('Controller Details')
       group.add_argument('--mode', help='runtime mode', type=str,
@@ -130,19 +131,23 @@ class LatNetController(object):
                         default='les-smagorinsk')
 
       group = self._config_parser.add_group('Network Configs')
-      self._network = network
-      # add network specific configs
-      if self._network is not None:
-        for base in _network.mro():
+      if self._trainer is not None:
+        # add network specific configs
+        for base in self._trainer.network.mro():
+            if 'add_options' in base.__dict__:
+                base.add_options(group, self.network_name)
+      elif self._simulation is not None:
+        # add network specific configs
+        for base in self._trainer.network.mro():
             if 'add_options' in base.__dict__:
                 base.add_options(group, self.network_name)
 
       # update default configs based on simulation-specific class and network.
       defaults = {}
-      if self._sim is not None:
-        self._sim.update_defaults(defaults)
-      if self._network is not None:
-        self._network.update_defaults(defaults)
+      if self._trainer is not None:
+        self._trainer.update_defaults(defaults)
+      if self._simulation is not None:
+        self._simulation.update_defaults(defaults)
       self._config_parser.set_defaults(defaults)
 
     def run(self):
@@ -160,17 +165,10 @@ class LatNetController(object):
 
     def train(self, config):
 
-      # make network
-      self.network = self._network(self.config)
-
-      # unroll train_unroll
-      self.network.train_unroll()
- 
-      # construct dataset
-      self.dataset = DataQueue(self.config, self._sim, self.network.train_shape_converter())
-
-      # train network
-      self.network.train(self.dataset)
+      # train
+      self.trainer = self._trainer(self.config)
+      self.trainer.make_dataset()
+      self.trainer.train()
 
     def generate_data(self, config):
 
