@@ -27,7 +27,7 @@ class SailfishSimulation:
     self.train_sim_dir = config.train_sim_dir
     self.config=config
  
-    self.sim_shape = str2shape(config.sim_shape)
+    self.sim_shape = domain.sim_shape
     self.DxQy = lattice.TYPES[config.DxQy]()
 
     self.domain = domain(config)
@@ -40,9 +40,11 @@ class SailfishSimulation:
     max_iters = self.max_sim_iters
     lb_to_ln = self.lb_to_ln
     visc = self.config.visc
-    periodic_x = self.config.periodic_x
-    periodic_y = self.config.periodic_y
+    periodic_x = self.domain.periodic_x
+    periodic_y = self.domain.periodic_y
     restore_geometry = self.config.restore_geometry
+    mode = self.config.mode
+    subgrid = self.config.subgrid
 
     class SailfishSimulation(LBFluidSim): 
       subdomain = self.domain.make_sailfish_subdomain()
@@ -61,29 +63,33 @@ class SailfishSimulation:
                               default=1000)
         group.add_argument('--restore_geometry', help='all modes', type=bool,
                               default=False)
-        group.add_argument('--sim_shape', help='all modes', type=str,
-                              default='512x512')
         group.add_argument('--lb_to_ln', help='all modes', type=int,
                               default=60)
 
       @classmethod
       def update_defaults(cls, defaults):
         defaults.update({
-          'max_iters': max_iters,
+          'mode': mode,
+          'precision': 'half',
+          'subgrid': self.config.subgrid,
           'periodic_x': periodic_x,
           'periodic_y': periodic_y,
-          'output_format': 'npy',
-          'precision': 'half',
-          'checkpoint_file': train_sim_dir,
-          'checkpoint_every': lb_to_ln,
           'lat_nx': shape[1],
-          'lat_ny': shape[0]
+          'lat_ny': shape[0],
+          'checkpoint_from': 0
           })
         if len(shape) == 3:
           defaults.update({
             'periodic_z': periodic_z,
-            'lat_nz': shape[0],
+            'lat_nz': shape[2],
             'grid': 'D3Q15'
+          })
+        if mode is not 'visualization':
+          defaults.update({
+            'output_format': 'npy',
+            'max_iters': max_iters,
+            'checkpoint_file': train_sim_dir,
+            'checkpoint_every': lb_to_ln
           })
 
       @classmethod
@@ -169,18 +175,18 @@ class SailfishSimulation:
     self.clean_dir()
     self.clean_store_dir()
 
-    cmd = ('./' + self.domain.script_name 
-         + ' --run_mode=generate_data'
-         + ' --domain_name=' + self.domain.name
-         + ' --subgrid=les-smagorinsky'
-         + ' --sim_shape=' + 'x'.join(list(map(str, self.sim_shape)))
-         + ' --max_sim_iters=' + str(self.lb_to_ln*num_iters + 1)
-         + ' --checkpoint_from=0')
-    if self.debug_sailfish:
-      cmd += ' --mode=visualization'
-      cmd += ' --scr_scale=.5'
+    if not self.debug_sailfish:
+      cmd = ('./' + self.domain.script_name 
+           + ' --run_mode=generate_data'
+           + ' --domain_name=' + self.domain.name
+           + ' --max_sim_iters=' + str(self.lb_to_ln*num_iters + 1)
+           + ' --train_sim_dir=' + self.save_dir + '/store/flow')
     else:
-      cmd += ' --train_sim_dir=' + self.save_dir + '/store/flow'
+      cmd = ('./' + self.domain.script_name 
+           + ' --domain_name=' + self.domain.name
+           + ' --mode=visualization'
+           + ' --run_mode=generate_data')
+    print(cmd)
     p = ps.subprocess.Popen(cmd.split(' '), 
                             env=dict(os.environ, CUDA_VISIBLE_DEVICES='1'))
     p.communicate()
@@ -196,11 +202,9 @@ class SailfishSimulation:
 
     cmd = ('./' + self.domain.script_name 
          + ' --run_mode=generate_data'
-         + ' --subgrid=les-smagorinsky'
-         + ' --sim_shape=' + 'x'.join(list(map(str, self.sim_shape)))
+         + ' --domain_name=' + self.domain.name
          + ' --max_sim_iters=' + str(self.latnet_iter_to_sailfish_iter(num_iters
                                                                     + last_iter) + 1)
-         + ' --checkpoint_from=0'
          + ' --restore_geometry=True'
          + ' --restore_from=' + last_cpoint[:-13])
     if self.debug_sailfish:
@@ -208,6 +212,7 @@ class SailfishSimulation:
       cmd += ' --scr_scale=.5'
     else:
       cmd += ' --train_sim_dir=' + self.save_dir + '/store/flow'
+    print(cmd)
     p = ps.subprocess.Popen(cmd.split(' '), 
                             env=dict(os.environ, CUDA_VISIBLE_DEVICES='1'))
     p.communicate()
@@ -216,7 +221,7 @@ class SailfishSimulation:
       self.clean_dir()
     self.mv_store_dir()
 
-  def read_boundary(self, subdomain=None):
+  def read_boundary(self, subdomain=None, add_batch=False):
     boundary_file = self.boundary_file()
     boundary = None
     if os.path.isfile(boundary_file):
@@ -226,10 +231,11 @@ class SailfishSimulation:
       if subdomain is not None:
         boundary = numpy_utils.mobius_extract(boundary, subdomain)
                                               #padding_type=self.padding_type)
-
+    if add_batch:
+      boundary = np.expand_dims(boundary, axis=0)
     return boundary
 
-  def read_state(self, iteration, subdomain=None):
+  def read_state(self, iteration, subdomain=None, add_batch=False):
     # load flow file
     state_file = self.iter_to_cpoint(iteration)
     state = np.load(state_file)
@@ -241,10 +247,12 @@ class SailfishSimulation:
     if subdomain is not None:
       state = numpy_utils.mobius_extract(state, subdomain)
                                          #padding_type=self.padding_type)
+    if add_batch:
+      state = np.expand_dims(state, axis=0)
     return state
 
-  def read_vel_rho(self, iteration, subdomain=None):
-    state = self.read_state(iteration, subdomain)
+  def read_vel_rho(self, iteration, subdomain=None, add_batch=False):
+    state = self.read_state(iteration, subdomain, add_batch=add_batch)
     vel = self.DxQy.lattice_to_vel(state)
     rho = self.DxQy.lattice_to_rho(state)
     return vel, rho
@@ -256,7 +264,7 @@ class TrainSailfishSimulation(SailfishSimulation):
     self.num_cpoints = config.max_sim_iters
     # more configs will probably be added later
 
-  def read_train_data(self, state_subdomain, boundary_subdomain, boundary_small_subdomain, seq_state_subdomain, seq_length, augment=True):
+  def read_train_data(self, state_subdomain, boundary_subdomain, boundary_small_subdomain, seq_state_subdomain, seq_length, augment=False):
 
     # read state
     state_files = glob.glob(self.save_dir + "/*.0.cpoint.npz")
@@ -278,9 +286,9 @@ class TrainSailfishSimulation(SailfishSimulation):
       if flip == 1:
         state = self.DxQy.flip_lattice(state)
         seq_state = [self.DxQy.flip_lattice(lat) for lat in seq_state]
-        boundary = np.flip(boundary, 0)
+        boundary = np.flipud(boundary)
         boundary = flip_boundary_vel(boundary)
-        boundary_small = np.flip(boundary_small, 0)
+        boundary_small = np.flipud(boundary_small)
         boundary_small = flip_boundary_vel(boundary_small)
       rotate=np.random.randint(0,4)
       if rotate > 0:

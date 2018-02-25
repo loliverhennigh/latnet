@@ -323,30 +323,56 @@ def res_block(x, a=None,
   x = orig_x + x
   return x
 
+def fast_conv_layer(x, kernel_size, stride, filter_size, filter_size_conv, name):
+  conv_x = x[...,0:filter_size_conv]
+  conv_x = conv_layer(conv_x, kernel_size, stride, filter_size_conv, name + '_kernel')
+  edge_cut = ((kernel_size-1)/2)
+  x = x[:,edge_cut:-edge_cut,edge_cut:-edge_cut,filter_size_conv:]
+  x = tf.concat([conv_x, x], axis=-1)
+  x = conv_layer(x, 1, 1, filter_size, name + '_nin')
+  return x
 
-
-"""
-def res_block_lstm(x, hidden_state_1=None, hidden_state_2=None, keep_p=1.0, name="resnet_lstm"):
+def fast_res_block(x, a=None, 
+              filter_size=16,
+              filter_size_conv=4,
+              kernel_size=7, 
+              nonlinearity=concat_elu, 
+              name="resnet", 
+              begin_nonlinearity=True, 
+              normalize=None):
+            
+  # determine if 2d or 3d trans conv is needed
+  length_input = len(x.get_shape())
 
   orig_x = x
-  filter_size = orig_x.get_shape().as_list()[-1]
+  if begin_nonlinearity: 
+    x = nonlinearity(x) 
+  x = fast_conv_layer(x, kernel_size, 1, filter_size, filter_size_conv, name + '_conv_1')
+  edge_cut = ((kernel_size-1)/2)
+  orig_x = orig_x[:,edge_cut:-edge_cut,edge_cut:-edge_cut]
+  x = nonlinearity(x)
 
-  with tf.variable_scope(name + "_conv_LSTM_1", initializer = tf.random_uniform_initializer(-0.01, 0.01)) as scope:
-    lstm_cell_1 = BasicConvLSTMCell.BasicConvLSTMCell([int(x.get_shape()[1]),int(x.get_shape()[2])], [3,3], filter_size)
-    if hidden_state_1 == None:
-      batch_size = x.get_shape()[0]
-      hidden_state_1 = lstm_cell_1.zero_state(batch_size, tf.float32) 
-    x_1, hidden_state_1 = lstm_cell_1(x, hidden_state_1, scope=scope)
-    
-  if keep_p < 1.0:
-    x_1 = tf.nn.dropout(x_1, keep_prob=keep_p)
+  x = fast_conv_layer(x, kernel_size, 1, filter_size, filter_size_conv, name + '_conv_2')
+  edge_cut = ((kernel_size-1)/2)
+  orig_x = orig_x[:,edge_cut:-edge_cut,edge_cut:-edge_cut]
 
-  with tf.variable_scope(name + "_conv_LSTM_2", initializer = tf.random_uniform_initializer(-0.01, 0.01)) as scope:
-    lstm_cell_2 = BasicConvLSTMCell.BasicConvLSTMCell([int(x_1.get_shape()[1]),int(x_1.get_shape()[2])], [3,3], filter_size)
-    if hidden_state_2 == None:
-      batch_size = x_1.get_shape()[0]
-      hidden_state_2 = lstm_cell_2.zero_state(batch_size, tf.float32) 
-    x_2, hidden_state_2 = lstm_cell_2(x_1, hidden_state_2, scope=scope)
+  # pad it
+  out_filter = int(x.get_shape()[-1])
+  in_filter = int(orig_x.get_shape()[-1])
+  if out_filter > in_filter:
+    if length_input == 4:
+      orig_x = tf.pad(
+          orig_x, [[0, 0], [0, 0], [0, 0],
+          [(out_filter-in_filter), 0]])
+    elif length_input == 5:
+      orig_x = tf.pad(
+          orig_x, [[0, 0], [0, 0], [0, 0], [0, 0],
+          [(out_filter-in_filter), 0]])
+  elif out_filter < in_filter:
+    orig_x = nin(orig_x, out_filter, name + '_nin_pad')
 
-  return orig_x + x_2, hidden_state_1, hidden_state_2
-"""
+  x = orig_x + x
+  return x
+
+
+

@@ -170,7 +170,7 @@ class D2Q9(DxQy):
      lattice_split[8], lattice_split[7], 
      lattice_split[6], lattice_split[5])
     lattice = np.concatenate(lattice_split, axis = -1)
-    lattice = np.flip(lattice, 0)
+    lattice = np.flipud(lattice)
     return lattice
 
 class D3Q15(DxQy):

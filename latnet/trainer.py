@@ -47,6 +47,9 @@ class Trainer(object):
     self._network.train_unroll()
 
   def make_data_queue(self):
+    # add script name to domains
+    for domain in self.domains:
+      domain.script_name = self.script_name
     self.data_queue = DataQueue(self.config, self.domains, self._network.train_shape_converter())
 
   def train(self):

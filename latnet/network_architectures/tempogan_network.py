@@ -9,6 +9,9 @@ from latnetwork import LatNet
 from nn import *
 
 class TempoGAN(LatNet):
+  # This network was inspired by the paper "tempoGAN: A Temporally Coherent, 
+  # Volumetric GAN for Super-resolution Fluid Flow"
+
   # network name for saving
   network_name = "tempo_gan"
 
@@ -19,8 +22,6 @@ class TempoGAN(LatNet):
                            default='relu')
     group.add_argument('--gated', help='network config', type=bool,
                            default=False)
-    group.add_argument('--normalize', help='network config', type=str,
-                           default='False')
     group.add_argument('--nr_downsamples', help='network config', type=int,
                            default=2)
     group.add_argument('--filter_size_compression', help='network config', type=int,
@@ -45,7 +46,6 @@ class TempoGAN(LatNet):
                    nonlinearity=nonlinearity, 
                    stride=2, 
                    gated=self.config.gated, 
-                   #normalize=self.config.normalize,
                    weight_name="down_sample_res_" + str(1))
     self.conv(in_name=out_name, out_name=out_name,
               filter_size=self.config.filter_size_compression,
@@ -69,13 +69,11 @@ class TempoGAN(LatNet):
                        out_name=out_name, axis=-1)
   
     # residual block
-    self.res_block(in_name=out_name, out_name=out_name, 
-                   filter_size=32, 
+    self.fast_res_block(in_name=out_name, out_name=out_name, 
+                   filter_size=self.config.filter_size_compression, 
+                   filter_size_conv=self.config.filter_size_compression/4, 
                    nonlinearity=nonlinearity, 
                    kernel_size=7,
-                   stride=1, 
-                   gated=self.config.gated, 
-                   #normalize=self.config.normalize,
                    weight_name="res_" + str(0))
   
     # trim cboundary
@@ -88,13 +86,11 @@ class TempoGAN(LatNet):
                        out_name=out_name, axis=-1)
   
     # residual block
-    self.res_block(in_name=out_name, out_name=out_name, 
-                   filter_size=64, 
+    self.fast_res_block(in_name=out_name, out_name=out_name, 
+                   filter_size=self.config.filter_size_compression, 
+                   filter_size_conv=self.config.filter_size_compression/4, 
                    nonlinearity=nonlinearity, 
                    kernel_size=7,
-                   stride=1, 
-                   gated=self.config.gated, 
-                   #normalize=self.config.normalize,
                    weight_name="res_" + str(1))
   
     # trim cboundary
@@ -107,13 +103,11 @@ class TempoGAN(LatNet):
                        out_name=out_name, axis=-1)
   
     # residual block
-    self.res_block(in_name=out_name, out_name=out_name, 
+    self.fast_res_block(in_name=out_name, out_name=out_name, 
                    filter_size=self.config.filter_size_compression, 
+                   filter_size_conv=self.config.filter_size_compression/2, 
                    nonlinearity=nonlinearity, 
                    kernel_size=5,
-                   stride=1, 
-                   gated=self.config.gated, 
-                   #normalize=self.config.normalize,
                    weight_name="res_" + str(2))
   
     # trim cboundary
@@ -122,7 +116,7 @@ class TempoGAN(LatNet):
                     trim=4)
   
   # decoder state
-  def decoder_state(self, in_boundary_name, in_name, out_name, lattice_size=9):
+  def decoder_state(self, in_name, out_name, lattice_size=9):
   
     # set nonlinearity
     nonlinearity = set_nonlinearity(self.config.nonlinearity)
@@ -132,7 +126,6 @@ class TempoGAN(LatNet):
     self.conv(in_name=out_name, out_name=out_name,
             kernel_size=3, stride=1,
             filter_size=8,
-            #nonlinearity=nonlinearity,
             weight_name="conv_" + str(0))
     self.upsample(in_name=out_name, out_name=out_name)
   
@@ -143,7 +136,6 @@ class TempoGAN(LatNet):
                    stride=1,
                    begin_nonlinearity=False, 
                    gated=self.config.gated,
-                   #normalize=self.config.normalize,
                    weight_name="res_" + str(0))
   
     self.res_block(in_name=out_name, out_name=out_name, 
@@ -152,7 +144,6 @@ class TempoGAN(LatNet):
                    nonlinearity=nonlinearity,
                    stride=1,
                    gated=self.config.gated,
-                   #normalize=self.config.normalize,
                    weight_name="res_" + str(1))
   
     self.res_block(in_name=out_name, out_name=out_name, 
@@ -161,7 +152,6 @@ class TempoGAN(LatNet):
                    nonlinearity=nonlinearity,
                    stride=1,
                    gated=self.config.gated,
-                   #normalize=self.config.normalize,
                    weight_name="res_" + str(2))
   
     self.res_block(in_name=out_name, out_name=out_name, 
@@ -172,17 +162,17 @@ class TempoGAN(LatNet):
                    gated=self.config.gated,
                    weight_name="res_" + str(3))
   
-    self.concat_tensors(in_names=[in_boundary_name, out_name],
-                        out_name=out_name, axis=-1) # concat on feature
+    #self.concat_tensors(in_names=[in_boundary_name, out_name],
+    #                    out_name=out_name, axis=-1) # concat on feature
+  
+    #self.conv(in_name=out_name, out_name=out_name,
+    #          kernel_size=3, stride=1,
+    #          nonlinearity=nonlinearity,
+    #          filter_size=64,
+    #          weight_name="boundary_last_conv")
   
     self.conv(in_name=out_name, out_name=out_name,
-              kernel_size=3, stride=1,
-              nonlinearity=nonlinearity,
-              filter_size=64,
-              weight_name="boundary_last_conv")
-  
-    self.conv(in_name=out_name, out_name=out_name,
-              kernel_size=3, stride=1,
+              kernel_size=1, stride=1,
               filter_size=lattice_size,
               weight_name="last_conv")
   
@@ -208,21 +198,18 @@ class TempoGAN(LatNet):
               kernel_size=4, stride=2,
               filter_size=64,
               nonlinearity=nonlinearity,
-              normalize=self.config.normalize,
               weight_name="conv_1")
   
     self.conv(in_name=out_name, out_name=out_name,
               kernel_size=4, stride=2,
   	    filter_size=128,
   	    nonlinearity=nonlinearity,
-              normalize=self.config.normalize,
   	    weight_name="conv_2")
   
     self.conv(in_name=out_name, out_name=out_name,
               kernel_size=4, stride=1,
               filter_size=256,
               nonlinearity=nonlinearity,
-              normalize=self.config.normalize,
               weight_name="conv_3")
   
     #self.out_tensors[out_name] = tf.reduce_mean(self.out_tensors[out_name], axis=[1,2], keep_dims=True)
@@ -254,14 +241,12 @@ class TempoGAN(LatNet):
               kernel_size=4, stride=2,
               filter_size=64,
               nonlinearity=nonlinearity,
-              normalize=self.config.normalize,
               weight_name="conv_1")
   
     self.conv(in_name=out_class, out_name=out_class,
               kernel_size=4, stride=2,
   	    filter_size=128,
   	    nonlinearity=nonlinearity,
-              normalize=self.config.normalize,
   	    weight_name="conv_2")
   
     self.conv(in_name=out_class, out_name=out_class,

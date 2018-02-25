@@ -75,6 +75,7 @@ class Domain(object):
 
         # restore from old dir or make new geometry
         if self.config.restore_geometry:
+          print("AAAAAAAAAAAAA")
           restore_boundary_conditions = np.load(train_sim_dir[:-10] + "flow_geometry.npy")
           where_boundary = restore_boundary_conditions[...,0].astype(np.bool)
           where_velocity = np.logical_or(restore_boundary_conditions[...,1].astype(np.bool), restore_boundary_conditions[...,1].astype(np.bool))

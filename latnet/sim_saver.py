@@ -42,9 +42,12 @@ class SimSaver:
       np.savez(file_name, vel=vel[0], rho=rho[0])
     self.latnet_files.append(file_name)
 
-  def read_vel_rho(self, iteration, subdomain=None):
+  def read_vel_rho(self, iteration, subdomain=None, add_batch=False):
     if self.save_format == 'npy':
       vel, rho, _ = self.load_numpy(iteration)
+    if add_batch:
+      vel = np.expand_dims(vel, axis=0)
+      rho = np.expand_dims(rho, axis=0)
     return vel, rho
 
   def load_numpy(self, iteration):

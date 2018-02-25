@@ -72,23 +72,19 @@ class LatNetController(object):
       group.add_argument('--moving_average', help='all mode', type=str2bool,
                         default=False)
       group.add_argument('--train_iters', help='all mode', type=int,
-                        default=50000)
+                        default=500000)
 
       group = self._config_parser.add_group('Data Queue Details')
       group.add_argument('--train_sim_dir', help='train mode', type=str,
-                        default='./data_train/sailfish_sim')
+                        default='./train_data/sailfish_sim')
       group.add_argument('--gpu_fraction', help='all mode', type=float,
                         default=0.9)
       group.add_argument('--max_queue', help='all mode', type=int,
-                        default=50)
+                        default=25)
 
       group = self._config_parser.add_group('Simulation Details')
       group.add_argument('--sim_shape', help='all mode', type=str,
                         default='512x512')
-      group.add_argument('--periodic_x', help='all mode', type=str2bool,
-                        default=True)
-      group.add_argument('--periodic_y', help='all mode', type=str2bool,
-                        default=True)
       group.add_argument('--DxQy', help='all mode', type=str,
             choices=['D2Q9'], default='D2Q9')
       group.add_argument('--num_iters', help='eval mode', type=int,
@@ -136,14 +132,16 @@ class LatNetController(object):
       group = self._config_parser.add_group('Network Configs')
       if self._trainer is not None:
         # add network specific configs
-        for base in self._trainer.network.mro():
+        if self._trainer.network:
+          for base in self._trainer.network.mro():
             if 'add_options' in base.__dict__:
-                base.add_options(group)
+              base.add_options(group)
       elif self._simulation is not None:
         # add network specific configs
-        for base in self._trainer.network.mro():
+        if self._simulation.network is not None:
+          for base in self._simulation.network.mro():
             if 'add_options' in base.__dict__:
-                base.add_options(group)
+              base.add_options(group)
 
       # update default configs based on simulation-specific class and network.
       defaults = {}
@@ -176,30 +174,22 @@ class LatNetController(object):
 
     def generate_data(self, config):
 
-      for domain in self._trainer.domains:
-        if config.domain_name == domain.name:
-          sailfish_ctrl = SailfishSimulation(config, domain).create_sailfish_simulation()
+      if self._trainer is not None:
+        for domain in self._trainer.domains:
+          if config.domain_name == domain.name:
+            sailfish_ctrl = SailfishSimulation(config, domain).create_sailfish_simulation()
+            sailfish_ctrl.run()
+            break
+      elif self._simulation is not None:
+        if config.domain_name == self._simulation.domain.name:
+          sailfish_ctrl = SailfishSimulation(config, self._simulation.domain).create_sailfish_simulation()
           sailfish_ctrl.run()
-          break
 
     def eval(self, config):
 
-      self.network = self._network(self.config)
+      self.simulation = self._simulation(self.config)
+      self.simulation.run()
 
-      with tf.Graph().as_default():
 
-        # unroll network
-        (state_encoder, boundary_encoder, cmapping, decoder,
-         encoder_shape_converter, cmapping_shape_converter, 
-         decoder_shape_converter) = self.network.eval_unroll()
 
-        # run simulation
-        self.simulation = Simulation(lf._domain(config))
-
-        self.domain.run(state_encoder, 
-                        boundary_encoder, 
-                        cmapping, decoder,
-                        encoder_shape_converter, 
-                        cmapping_shape_converter, 
-                        decoder_shape_converter)
 

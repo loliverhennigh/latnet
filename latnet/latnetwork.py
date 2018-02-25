@@ -114,7 +114,7 @@ class LatNet(object):
                                    match_name="cstate" + seq_str(self.seq_length-1), 
                                    out_name="cstate" + seq_str(j))
             self._decoder_state(in_name="cstate" + seq_str(j), 
-                                in_boundary_name="boundary_small" + gpu_str, 
+                                #in_boundary_name="boundary_small" + gpu_str, 
                                 out_name="pred_state" + seq_str(j))
   
             if i == 0:
@@ -160,10 +160,12 @@ class LatNet(object):
           if not self.gan:
             self.out_tensors["loss_l2" + gpu_str] = 0.0
             for j in range(1, self.seq_length):
+              # normalize loss to make comparable for diffrent input sizes
+              l2_factor = (256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
               self.l2_loss(true_name='true_state' + seq_str(j),
                            pred_name='pred_state' + seq_str(j),
                            loss_name='loss_l2' + seq_str(j),
-                           factor=1.0/num_samples)
+                           factor=l2_factor/num_samples)
               # add up losses
               self.out_tensors['loss_l2' + gpu_str] += self.out_tensors['loss_l2' + seq_str(j)] 
           ### L1 loss ###
@@ -341,7 +343,7 @@ class LatNet(object):
                                 out_name="cstate_from_cstate")
   
       # decoder
-      self._decoder_state(in_boundary_name='boundary', in_name="cstate", out_name="state_from_cstate")
+      self._decoder_state(in_name="cstate", out_name="state_from_cstate")
       self.out_tensors['vel_from_cstate'] = self.DxQy.lattice_to_vel(self.out_tensors['state_from_cstate'])
       self.out_tensors['rho_from_cstate'] = self.DxQy.lattice_to_rho(self.out_tensors['state_from_cstate'])
 
@@ -362,10 +364,9 @@ class LatNet(object):
     cmapping         = lambda x, y: self.run('cstate_from_cstate', 
                                  feed_dict={'cstate':x,
                                             'cboundary':y})
-    decoder           = lambda x, y: self.run(['vel_from_cstate', 
+    decoder           = lambda x: self.run(['vel_from_cstate', 
                                             'rho_from_cstate'], 
-                                 feed_dict={'cstate':x,
-                                            'boundary':y})
+                                 feed_dict={'cstate':x})
     # shape converters
     encoder_shape_converter = self.shape_converters['state', 'cstate_from_state']
     cmapping_shape_converter = self.shape_converters['cstate', 'cstate_from_cstate']
@@ -467,6 +468,30 @@ class LatNet(object):
         self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
         self.shape_converters[name[0], out_name].add_res_block(kernel_size, stride)
 
+  def fast_res_block(self, in_name, out_name,
+                     filter_size=16, 
+                     filter_size_conv=4, 
+                     kernel_size=7, 
+                     nonlinearity=nn.concat_elu, 
+                     weight_name="resnet", 
+                     begin_nonlinearity=True):
+
+    # add res block to tensor computation
+    self.out_tensors[out_name] = nn.fast_res_block(self.out_tensors[in_name],
+                                                   filter_size=filter_size, 
+                                                   filter_size_conv=filter_size_conv, 
+                                                   kernel_size=kernel_size, 
+                                                   nonlinearity=nonlinearity, 
+                                                   name=weight_name, 
+                                                   begin_nonlinearity=begin_nonlinearity)
+
+    # add res block to the shape converter
+    for name in self.shape_converters.keys():
+      if name[1] == in_name:
+        self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
+        self.shape_converters[name[0], out_name].add_res_block(kernel_size, 1)
+
+
   def split_tensor(self, in_name,
                    out_names,
                    num_split, axis):
@@ -519,6 +544,17 @@ class LatNet(object):
         self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
       if name[1] == mask_name:
         self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
+
+  def lattice_shape(self, in_name):
+    shape = tf.shape(self.out_tensors[in_name])[1:-1]
+    return shape
+
+  def num_lattice_cells(self, in_name, return_float=False):
+    lattice_shape = self.lattice_shape(in_name)
+    lattice_cells = tf.reduce_prod(lattice_shape)
+    if return_float:
+      lattice_cells = tf.cast(lattice_cells, tf.float32)
+    return lattice_cells
 
   def add_shape_converter(self, name):
     self.shape_converters[name, name] = ShapeConverter()
