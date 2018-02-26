@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 
 # import domains
 from channel import ChannelDomain
-#from ldc_2d import LDCDomain
 
 # import latnet
 sys.path.append('../latnet')

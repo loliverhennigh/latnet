@@ -4,13 +4,12 @@ import sys
 import os
 import time
 
-import matplotlib
-matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 # import latnet
 sys.path.append('../latnet')
 from domain import Domain
+from trainer import Trainer
 from controller import LatNetController
 import utils.binvox_rw as binvox_rw
 import numpy as np
@@ -36,11 +35,11 @@ def rand_vertex(range_x, range_y, radius):
   vertex = np.array([pos_x, pos_y])
   return vertex
 
-def make_boundary(hx, hy):
+def make_boundary(hx, hy, shape):
  
   # make circles 
   circles = []
-  nr_circles = 5
+  nr_circles = int(3*(shape[0]*shape[1])/(256*256))
   for i in xrange(nr_circles):
     radius = 20 # make this random after testing
     vertex = rand_vertex(np.max(hx), np.max(hy), radius)
@@ -87,4 +86,21 @@ class ChannelDomain(Domain):
 
   def __init__(self, *args, **kwargs):
     super(ChannelDomain, self).__init__(*args, **kwargs)
+
+class EmptyTrainer(Trainer):
+  domains = [ChannelDomain]
+  network = None
+
+  @classmethod
+  def update_defaults(cls, defaults):
+    defaults.update({
+        'visc': 0.1,
+        'domain_name': "channel",
+        'run_mode': 'generate_data',
+        'mode': 'visualization',
+        'max_sim_iters': 40000})
+
+if __name__ == '__main__':
+  sim = LatNetController(trainer=EmptyTrainer)
+  sim.run()
 
