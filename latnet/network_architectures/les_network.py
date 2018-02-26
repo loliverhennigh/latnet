@@ -124,6 +124,12 @@ class LESNet(LatNet):
       self.downsample(in_name=in_name, out_name=out_name, sampling="max")
       in_name = out_name
 
+    self.conv(in_name=out_name, out_name=out_name,
+              kernel_size=1, stride=1,
+              filter_size=9,
+              weight_name="conv_0")
+  
+
   # compression mapping
   def compression_mapping(self, in_cstate_name, in_cboundary_name, out_name):
    
