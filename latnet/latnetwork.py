@@ -159,7 +159,7 @@ class LatNet(object):
           ### L2 loss ###
           if not self.gan:
             self.out_tensors["loss_l2" + gpu_str] = 0.0
-            for j in range(1, self.seq_length):
+            for j in range(0, self.seq_length):
               # normalize loss to make comparable for diffrent input sizes
               l2_factor = (256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
               self.l2_loss(true_name='true_state' + seq_str(j),
@@ -439,6 +439,18 @@ class LatNet(object):
       if name[1] == in_name:
         self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
         self.shape_converters[name[0], out_name].add_trans_conv(0, 2)
+
+  def downsample(self, in_name, out_name, sampling='ave'):
+
+    # add conv to tensor computation
+    self.out_tensors[out_name] =  nn.downsample(self.out_tensors[in_name], sampling=sampling)
+
+    # add conv to the shape converter
+    for name in self.shape_converters.keys():
+      if name[1] == in_name:
+        self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
+        self.shape_converters[name[0], out_name].add_conv(1, 2)
+
 
   def res_block(self, in_name, out_name,
                 a_name = None,

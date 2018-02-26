@@ -96,6 +96,12 @@ class Simulation(object):
 
     # run simulation
     for i in xrange(self.num_iters):
+      if i % 5 == 0:
+        # print time states
+        self.update_time_stats()
+        self.print_stats(self.time_stats, i)
+
+
       if i % self.sim_save_every == 0:
         # decode state
         vel, rho = self.cstate_to_state(decoder, 

@@ -23,7 +23,6 @@ class SailfishSimulation:
     self.lb_to_ln = config.lb_to_ln
     self.max_sim_iters = config.max_sim_iters
     self.debug_sailfish = config.debug_sailfish
-    self.boundary_mask = config.boundary_mask
     self.train_sim_dir = config.train_sim_dir
     self.config=config
  

@@ -22,14 +22,11 @@ class Visualizations:
   def update_vel_rho(self, iteration, vel, rho):
     frame = self.vel_rho_to_frame(vel, rho)
     frame = self.feild_to_colormap(frame)
-    print(frame.shape)
     self.simulation_video.write(frame)
 
   def update_compare_vel_rho(self, iteration, true_vel, true_rho, generated_vel, generated_rho):
     true_frame = self.vel_rho_to_frame(true_vel, true_rho)
     generated_frame = self.vel_rho_to_frame(generated_vel, generated_rho)
-    print(true_frame.shape)
-    print(generated_frame.shape)
     frame = np.concatenate([generated_frame, true_frame], axis=0)
     frame = self.feild_to_colormap(frame)
     self.compare_video.write(frame)

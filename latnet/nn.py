@@ -12,7 +12,6 @@ def int_shape(x):
   return list(map(int, x.get_shape()))
 
 def leaky_relu(x, leak=0.1):
-  print(x)
   f1 = 0.5 * (1 + leak)
   f2 = 0.5 * (1 - leak)
   return f1 * x + f2 * abs(x)
@@ -26,12 +25,10 @@ def selu(x):
 def concat_elu(x):
   """ like concatenated ReLU (http://arxiv.org/abs/1603.05201), but then with ELU """
   axis = len(x.get_shape())-1
-  print(x)
   return tf.nn.elu(tf.concat([x, -x], axis))
 
 def concat_relu(x):
   axis = len(x.get_shape())-1
-  print(x)
   return tf.nn.relu(tf.concat([x, -x], axis))
 
 def hard_sigmoid(x):
@@ -45,7 +42,6 @@ def triangle_wave(x):
   return y
 
 def tanh(x):
-  print(x)
   return tf.nn.tanh(x)
 
 def set_nonlinearity(name):
@@ -219,17 +215,17 @@ def nin(x, num_units, idx):
     """ a network in network layer (1x1 CONV) """
     x = conv_layer(x, 1, 1, num_units, idx)
     return x
-    #s = int_shape(x)
-    #x = tf.reshape(x, [np.prod(s[:-1]),s[-1]])
-    #x = fc_layer(x, num_units, idx)
-    #return tf.reshape(x, s[:-1]+[num_units])
+
+def downsample(x, sampling="avg"):
+  if sampling == "avg":
+    x = avg_pool(x)
+  elif sampling == "max":
+    x = max_pool(x)
+  return x
 
 def upsampleing_resize(x):
   x_shape = tf.shape(x)
   x = tf.image.resize_nearest_neighbor(x, [2*x_shape[1], 2*x_shape[2]])
-  #x = tf.image.resize_images(x, [2*x_shape[1], 2*x_shape[2]])
-  #x = x[:,1:-1,1:-1,1:-1]
-  #x = conv_layer(x, 3, 1, filter_size, name)
   return x
 
 def avg_pool(x):
@@ -239,6 +235,15 @@ def avg_pool(x):
   if length_input == 3:
     x = tf.nn.avg_pool3d(x, [1,2,2,2,1], [1,2,2,2,1], padding='VALID')
   return x
+
+def max_pool(x):
+  length_input = len(x.get_shape()) - 2
+  if length_input == 2:
+    x = tf.nn.max_pool(x, [1,2,2,1], [1,2,2,1], padding='VALID')
+  if length_input == 3:
+    x = tf.nn.max_pool3d(x, [1,2,2,2,1], [1,2,2,2,1], padding='VALID')
+  return x
+
 
 def res_block(x, a=None, 
               filter_size=16, 

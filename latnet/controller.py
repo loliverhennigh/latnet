@@ -29,8 +29,6 @@ class LatNetController(object):
             choices=['generate_data', 'train', 'eval'], default='train')
 
       group = self._config_parser.add_group('Network Details')
-      group.add_argument('--network_name', help='all mode', type=str,
-                         default='tempogan')
       group.add_argument('--latnet_network_dir', help='all mode', type=str,
                         default='./network_checkpoint')
 
@@ -41,8 +39,6 @@ class LatNetController(object):
                          default='32x32')
       group.add_argument('--lb_to_ln', help='all mode', type=int,
                         default=60)
-      group.add_argument('--boundary_mask', help='all mode', type=str2bool,
-                        default=False)
 
       group = self._config_parser.add_group('Network Saver Details')
       group.add_argument('--save_network_freq', help='all mode', type=int, 
@@ -90,7 +86,7 @@ class LatNetController(object):
       group.add_argument('--num_iters', help='eval mode', type=int,
                         default=15)
       group.add_argument('--sim_restore_iter', help='if 0 then it will not restore', type=int,
-                        default=10)
+                        default=1)
 
       group = self._config_parser.add_group('Simulation Saver Details')
       group.add_argument('--sim_dir', help='eval mode', type=str,
