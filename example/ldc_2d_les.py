@@ -18,16 +18,15 @@ import cv2
 import glob
 
 def rand_vel():
-  vel_x = np.random.uniform(0.1, 0.04)
-  return (vel_x, 0.0)
+  return (0.1, 0.0)
 
 class LESDomain(Domain):
   script_name = __file__
   name = "lid_driven_cavity"
   vel = rand_vel()
-  num_simulations = 2
-  sim_shape = [512,512]
-  boundary_size = 2
+  num_simulations = 1
+  sim_shape = [256,256]
+  boundary_size = 4
   periodic_x = False
   periodic_y = False
 
@@ -64,11 +63,10 @@ class EmptyTrainer(Trainer):
   @classmethod
   def update_defaults(cls, defaults):
     defaults.update({
-        'visc': 0.002,
+        'visc': 0.001,
         'domain_name': "lid_driven_cavity",
         'run_mode': 'generate_data',
         'mode': 'visualization',
-        'subgrid': 'none',
         'max_sim_iters': 40000})
 
 if __name__ == '__main__':

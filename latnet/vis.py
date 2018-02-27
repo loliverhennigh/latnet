@@ -28,6 +28,7 @@ class Visualizations:
     true_frame = self.vel_rho_to_frame(true_vel, true_rho)
     generated_frame = self.vel_rho_to_frame(generated_vel, generated_rho)
     frame = np.concatenate([generated_frame, true_frame], axis=0)
+    #frame = np.concatenate([true_frame, true_frame], axis=0)
     frame = self.feild_to_colormap(frame)
     self.compare_video.write(frame)
 

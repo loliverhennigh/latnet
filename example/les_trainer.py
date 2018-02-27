@@ -4,8 +4,6 @@ import sys
 import os
 import time
 
-import matplotlib
-matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 # import domains
@@ -31,10 +29,10 @@ class TempoGanTrainer(Trainer):
     defaults.update({
         'train_sim_dir': './train_data',
         'latnet_network_dir': './network_save',
-        'visc': 0.002,
+        'visc': 0.001,
         'lb_to_ln': 8,
         'input_cshape': '64x64',
-        'max_sim_iters': 800})
+        'max_sim_iters': 1600})
 
 if __name__ == '__main__':
   sim = LatNetController(trainer=TempoGanTrainer)

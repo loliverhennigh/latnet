@@ -121,7 +121,7 @@ class LatNetController(object):
       group.add_argument('--every', help='all mode', type=int,
                         default=100)
       group.add_argument('--subgrid', help='all mode', type=str,
-                        default='les-smagorinsk')
+                        default='les-smagorinsky')
       group.add_argument('--domain_name', help='all mode', type=str,
                         default='channel')
 

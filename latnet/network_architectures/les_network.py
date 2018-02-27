@@ -9,7 +9,6 @@ from latnetwork import LatNet
 from nn import *
 
 class LESNet(LatNet):
-
   # network name for saving
   network_name = "les"
   
@@ -21,7 +20,7 @@ class LESNet(LatNet):
     group.add_argument('--nr_downsamples', help='network config', type=int,
                            default=2)
     group.add_argument('--nr_residual_compression', help='network config', type=int,
-                           default=2)
+                           default=1)
     group.add_argument('--filter_size_compression', help='network config', type=int,
                            default=9)
   
@@ -43,7 +42,7 @@ class LESNet(LatNet):
               weight_name="conv_2" + weight_name)
   
     # calc new f
-    self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
+    #self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
                                   # - tf.reduce_mean(self.out_tensors[out_name], axis=-1, keep_dims=True), dim=-1)
   
     """
@@ -138,6 +137,7 @@ class LESNet(LatNet):
 
     # lattice steps
     for i in xrange(1):
+      self.collide(in_cstate_name=in_cstate_name, in_cboundary_name, out_name=out_name, weight_name="collide")
       # residual block
       self.res_block(in_name=in_cstate_name, out_name=out_name, 
                      filter_size=32,

@@ -64,6 +64,7 @@ class NetworkSaver:
 
   def load_checkpoint(self, sess, maybe_remove_prev=False):
     ckpt = tf.train.get_checkpoint_state(self.checkpoint_path)
+    print("looking for checkpoint in " + self.checkpoint_path) 
     if ckpt is not None:
       print("init from " + ckpt.model_checkpoint_path)
       try:

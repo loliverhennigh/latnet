@@ -57,6 +57,7 @@ class Simulation(object):
     self.domain.script_name = self.script_name
 
     # run time holders
+    self.print_stats_every = 5
     self.time_stats = {}
     self.start_time = time.time()
     self.tic = time.time()
@@ -67,6 +68,7 @@ class Simulation(object):
 
     # make saver
     self.saver = SimSaver(self.config)
+
 
   def run(self):
 
@@ -96,7 +98,7 @@ class Simulation(object):
 
     # run simulation
     for i in xrange(self.num_iters):
-      if i % 5 == 0:
+      if i % self.print_stats_every == 0:
         # print time states
         self.update_time_stats()
         self.print_stats(self.time_stats, i)
@@ -248,7 +250,7 @@ class Simulation(object):
     # update total run time
     self.time_stats['run_time'] = int(time.time() - self.start_time)
     # update total step time
-    self.time_stats['MLOPS'] = (self.config.lb_to_ln*self.sim_save_every*float(np.prod(np.array(self.sim_shape))) / 
+    self.time_stats['MLOPS'] = (self.config.lb_to_ln*self.print_stats_every*float(np.prod(np.array(self.sim_shape))) / 
                                (1000000*(self.toc - self.tic)))
     # start timer
     self.tic = time.time()

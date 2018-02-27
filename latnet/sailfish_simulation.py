@@ -41,6 +41,8 @@ class SailfishSimulation:
     visc = self.config.visc
     periodic_x = self.domain.periodic_x
     periodic_y = self.domain.periodic_y
+    if len(shape) == 3:
+      periodic_z = self.domain.periodic_z
     restore_geometry = self.config.restore_geometry
     mode = self.config.mode
     subgrid = self.config.subgrid
@@ -79,9 +81,9 @@ class SailfishSimulation:
           })
         if len(shape) == 3:
           defaults.update({
+            'grid': 'D3Q15',
             'periodic_z': periodic_z,
-            'lat_nz': shape[2],
-            'grid': 'D3Q15'
+            'lat_nz': shape[2]
           })
         if mode is not 'visualization':
           defaults.update({

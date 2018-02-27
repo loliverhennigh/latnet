@@ -26,8 +26,9 @@ def draw_circle(boundary, hx, hy, vertex, radius):
                      where_circle_vertex[1][spot]+radius):
         if (((i - where_circle_vertex[0][spot])**2 + 
              (j - where_circle_vertex[1][spot])**2)
-            < radius**2):
-          boundary[i, j] = True
+            < (radius**2)):
+          if (i < boundary.shape[0]) and (j < boundary.shape[1]):
+            boundary[i, j] = True
 
 def rand_vertex(range_x, range_y, radius):
   pos_x = np.random.randint(2*radius, range_x-(2*radius))
@@ -41,7 +42,7 @@ def make_boundary(hx, hy, shape):
   circles = []
   nr_circles = int(3*(shape[0]*shape[1])/(256*256))
   for i in xrange(nr_circles):
-    radius = 20 # make this random after testing
+    radius = 25 # make this random after testing
     vertex = rand_vertex(np.max(hx), np.max(hy), radius)
     circles.append((vertex, radius))
 
@@ -54,7 +55,7 @@ def make_boundary(hx, hy, shape):
 
 class ChannelDomain(Domain):
   name = "channel"
-  vel = (0.10, 0.00)
+  vel = (0.03, 0.00)
   sim_shape = [256, 256]
   num_simulations = 10
   periodic_x = False
@@ -62,7 +63,7 @@ class ChannelDomain(Domain):
 
   def geometry_boundary_conditions(self, hx, hy, shape):
     walls = (hx == -2)
-    obj_boundary = make_boundary(hx, hy)
+    obj_boundary = make_boundary(hx, hy, shape)
     where_boundary = walls | obj_boundary
     return where_boundary
 
@@ -94,10 +95,11 @@ class EmptyTrainer(Trainer):
   @classmethod
   def update_defaults(cls, defaults):
     defaults.update({
-        'visc': 0.1,
+        'visc': 0.001,
         'domain_name': "channel",
         'run_mode': 'generate_data',
         'mode': 'visualization',
+        'lb_to_ln': 128,
         'max_sim_iters': 40000})
 
 if __name__ == '__main__':

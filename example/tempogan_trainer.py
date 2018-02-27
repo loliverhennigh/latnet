@@ -25,7 +25,6 @@ import glob
 class TempoGanTrainer(Trainer):
   script_name = __file__
   network = TempoGAN
-  #domains = [ChannelDomain, LDCDomain]
   domains = [ChannelDomain]
 
   @classmethod
@@ -33,8 +32,8 @@ class TempoGanTrainer(Trainer):
     defaults.update({
         'train_sim_dir': './train_data',
         'latnet_network_dir': './network_save',
-        'visc': 0.1,
-        'lb_to_ln': 50,
+        'visc': 0.004,
+        'lb_to_ln': 128,
         'input_cshape': '64x64',
         'max_sim_iters': 400})
 
