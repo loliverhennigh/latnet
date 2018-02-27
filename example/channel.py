@@ -40,9 +40,9 @@ def make_boundary(hx, hy, shape):
  
   # make circles 
   circles = []
-  nr_circles = int(3*(shape[0]*shape[1])/(256*256))
+  nr_circles = int(10*(shape[0]*shape[1])/(256*256))
   for i in xrange(nr_circles):
-    radius = 25 # make this random after testing
+    radius = 10 # make this random after testing
     vertex = rand_vertex(np.max(hx), np.max(hy), radius)
     circles.append((vertex, radius))
 
@@ -55,25 +55,23 @@ def make_boundary(hx, hy, shape):
 
 class ChannelDomain(Domain):
   name = "channel"
-  vel = (0.03, 0.00)
+  vel = (0.0, 0.0)
   sim_shape = [256, 256]
-  num_simulations = 10
-  periodic_x = False
+  num_simulations = 5
+  periodic_x = True
   periodic_y = True
 
   def geometry_boundary_conditions(self, hx, hy, shape):
-    walls = (hx == -2)
     obj_boundary = make_boundary(hx, hy, shape)
-    where_boundary = walls | obj_boundary
-    return where_boundary
+    return obj_boundary
 
   def velocity_boundary_conditions(self, hx, hy, shape):
-    where_velocity = (hx == 0)
+    where_velocity = (hx == -2)
     velocity = self.vel
     return where_velocity, velocity
  
   def density_boundary_conditions(self, hx, hy, shape):
-    where_density = (hx == shape[0] - 1)
+    where_density = (hx == -2)
     density = 1.0
     return where_density, density
 
@@ -95,7 +93,7 @@ class EmptyTrainer(Trainer):
   @classmethod
   def update_defaults(cls, defaults):
     defaults.update({
-        'visc': 0.001,
+        'visc': 0.01,
         'domain_name': "channel",
         'run_mode': 'generate_data',
         'mode': 'visualization',

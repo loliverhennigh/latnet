@@ -12,6 +12,7 @@ from utils.python_utils import *
 sys.path.append('../sailfish')
 from sailfish.controller import LBSimulationController
 from sailfish.lb_single import LBFluidSim
+from sailfish.lb_base import LBForcedSim
 
 import numpy as np
 
@@ -47,7 +48,7 @@ class SailfishSimulation:
     mode = self.config.mode
     subgrid = self.config.subgrid
 
-    class SailfishSimulation(LBFluidSim): 
+    class SailfishSimulation(LBFluidSim, LBForcedSim): 
       subdomain = self.domain.make_sailfish_subdomain()
       
       @classmethod
@@ -99,6 +100,7 @@ class SailfishSimulation:
 
       def __init__(self, *args, **kwargs):
         super(SailfishSimulation, self).__init__(*args, **kwargs)
+        self.add_body_force((2e-6, 0.0))
 
     ctrl = LBSimulationController(SailfishSimulation)
 

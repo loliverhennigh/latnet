@@ -159,7 +159,7 @@ class LatNet(object):
           ### L2 loss ###
           if not self.gan:
             self.out_tensors["loss_l2" + gpu_str] = 0.0
-            for j in range(0, self.seq_length):
+            for j in range(1, self.seq_length):
               # normalize loss to make comparable for diffrent input sizes
               l2_factor = (256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
               self.l2_loss(true_name='true_state' + seq_str(j),

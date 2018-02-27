@@ -81,8 +81,12 @@ class Domain(object):
             restore_boundary_conditions = np.load(train_sim_dir[:-10] + "flow_geometry.npy")
             where_boundary = restore_boundary_conditions[...,0].astype(np.bool)
             where_velocity = np.logical_or(restore_boundary_conditions[...,1].astype(np.bool), restore_boundary_conditions[...,2].astype(np.bool))
-            velocity = (restore_boundary_conditions[np.where(where_velocity)[0][0], np.where(where_velocity)[1][0], 1],
-                        restore_boundary_conditions[np.where(where_velocity)[0][0], np.where(where_velocity)[1][0], 2])
+            print(np.where(where_velocity)[0])
+            if len(np.where(where_velocity)[0]) == 0:
+              velocity = (0.0,0.0)
+            else:
+              velocity = (restore_boundary_conditions[np.where(where_velocity)[0][0], np.where(where_velocity)[1][0], 1],
+                          restore_boundary_conditions[np.where(where_velocity)[0][0], np.where(where_velocity)[1][0], 2])
             where_density  = restore_boundary_conditions[...,3].astype(np.bool)
             density = 1.0
           else:

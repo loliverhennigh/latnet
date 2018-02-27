@@ -66,7 +66,7 @@ class LatNetController(object):
       group.add_argument('--l1_factor', help='all mode', type=float,
                         default=5.0)
       group.add_argument('--moving_average', help='all mode', type=str2bool,
-                        default=False)
+                        default=True)
       group.add_argument('--train_iters', help='all mode', type=int,
                         default=500000)
 

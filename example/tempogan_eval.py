@@ -25,16 +25,16 @@ class TempoGanSimulation(Simulation):
   script_name = __file__
   network = TempoGAN
   domain = ChannelDomain
-  domain.sim_shape = [16384, 16384]
+  domain.sim_shape = [256,256]
 
   @classmethod
   def update_defaults(cls, defaults):
     defaults.update({
         'run_mode': 'eval',
         'latnet_network_dir': './network_save',
-        'visc': 0.004,
+        'visc': 0.01,
         'lb_to_ln': 128,
-        'input_cshape': '2048x2048',
+        'input_cshape': '64x64',
         'max_sim_iters': 400})
 
 if __name__ == '__main__':
