@@ -116,13 +116,17 @@ class TempoGAN(LatNet):
                     trim=4)
   
   # decoder state
-  def decoder_state(self, in_name, out_name, lattice_size=9):
+  def decoder_state(self, in_cstate_name, in_cboundary_name, out_name, lattice_size=9):
   
     # set nonlinearity
     nonlinearity = set_nonlinearity(self.config.nonlinearity)
-  
+   
+    # just concat tensors
+    self.concat_tensors(in_names=[in_cstate_name, in_cboundary_name], 
+                       out_name=out_name, axis=-1)
+
     # image resize network
-    self.upsample(in_name=in_name, out_name=out_name)
+    self.upsample(in_name=out_name, out_name=out_name)
     self.conv(in_name=out_name, out_name=out_name,
             kernel_size=3, stride=1,
             filter_size=8,

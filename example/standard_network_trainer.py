@@ -33,10 +33,10 @@ class TempoGanTrainer(Trainer):
     defaults.update({
         'train_sim_dir': './train_data',
         'latnet_network_dir': './network_save',
-        'visc': 0.004,
+        'visc': 0.01,
         'lb_to_ln': 128,
-        'input_cshape': '32x32',
-        'max_sim_iters': 400})
+        'input_cshape': '20x20',
+        'max_sim_iters': 600})
 
 if __name__ == '__main__':
   sim = LatNetController(trainer=TempoGanTrainer)

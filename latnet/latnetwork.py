@@ -103,18 +103,18 @@ class LatNet(object):
           for j in xrange(self.seq_length):
             # compression mapping
             self.add_shape_converter("cstate" + seq_str(j))
-            self._compression_mapping(
-                                     in_cstate_name="cstate" + seq_str(j),
-                                     in_cboundary_name="cboundary" + gpu_str,
-                                     out_name="cstate" + seq_str(j+1))
+            if j < self.seq_length - 1:
+              self._compression_mapping(in_cstate_name="cstate" + seq_str(j),
+                                        in_cboundary_name="cboundary" + gpu_str,
+                                        out_name="cstate" + seq_str(j+1))
 
           ### decode all compressed states ###
           for j in xrange(self.seq_length):
             self.match_trim_tensor(in_name="cstate" + seq_str(j), 
                                    match_name="cstate" + seq_str(self.seq_length-1), 
                                    out_name="cstate" + seq_str(j))
-            self._decoder_state(in_name="cstate" + seq_str(j), 
-                                #in_boundary_name="boundary_small" + gpu_str, 
+            self._decoder_state(in_cstate_name="cstate" + seq_str(j), 
+                                in_cboundary_name="cboundary" + gpu_str, 
                                 out_name="pred_state" + seq_str(j))
   
             if i == 0:
@@ -159,21 +159,22 @@ class LatNet(object):
           ### L2 loss ###
           if not self.gan:
             self.out_tensors["loss_l2" + gpu_str] = 0.0
-            for j in range(1, self.seq_length):
+            for j in range(0, self.seq_length):
               # normalize loss to make comparable for diffrent input sizes
-              l2_factor = (256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
+              # TODO remove 100.0 (only in to make comparable to previous code)
+              l2_factor = 100.0*(256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
               self.l2_loss(true_name='true_state' + seq_str(j),
                            pred_name='pred_state' + seq_str(j),
                            loss_name='loss_l2' + seq_str(j),
-                           factor=l2_factor/num_samples)
+                           factor=l2_factor/1.0)
+                           #factor=l2_factor/num_samples)
               # add up losses
               self.out_tensors['loss_l2' + gpu_str] += self.out_tensors['loss_l2' + seq_str(j)] 
           ### L1 loss ###
           if self.gan:
             self.out_tensors["loss_l1" + gpu_str] = 0.0
             for j in range(1, self.seq_length):
-              l1_factor = self.config.l1_factor # from paper TODO make config param
-              #l1_factor = 0.0 # from paper TODO make config param
+              l1_factor = self.config.l1_factor
               self.l1_loss(true_name='true_state' + seq_str(j),
                            pred_name='pred_state' + seq_str(j),
                            loss_name='loss_l1' + seq_str(j),
@@ -273,6 +274,7 @@ class LatNet(object):
 
       ### add loss summary ###
       tf.summary.scalar('loss_gen', self.out_tensors['loss_gen'])
+      tf.summary.scalar('total_loss', self.out_tensors['loss_gen'])
       if not self.gan:
         tf.summary.scalar('loss_l2', self.out_tensors['loss_l2'])
       if self.gan:
@@ -364,9 +366,10 @@ class LatNet(object):
     cmapping         = lambda x, y: self.run('cstate_from_cstate', 
                                  feed_dict={'cstate':x,
                                             'cboundary':y})
-    decoder           = lambda x: self.run(['vel_from_cstate', 
+    decoder           = lambda x, y: self.run(['vel_from_cstate', 
                                             'rho_from_cstate'], 
-                                 feed_dict={'cstate':x})
+                                 feed_dict={'cstate':x,
+                                            'cboundary':y})
     # shape converters
     encoder_shape_converter = self.shape_converters['state', 'cstate_from_state']
     cmapping_shape_converter = self.shape_converters['cstate', 'cstate_from_cstate']
@@ -581,9 +584,56 @@ class LatNet(object):
     if factor is not None:
       self.out_tensors[loss_name] = factor * self.out_tensors[loss_name]
 
-  def l2_loss(self, true_name, pred_name, loss_name, factor=None):
-    self.out_tensors[loss_name] = tf.nn.l2_loss(tf.stop_gradient(self.out_tensors[ true_name]) 
-                                              - self.out_tensors[pred_name])
+  def l2_loss(self, true_name, pred_name, loss_name, factor=None, normalize=None):
+
+    with tf.device('/cpu:0'):
+      self.out_tensors[true_name + '_' + pred_name] = tf.abs(self.out_tensors[true_name]
+                                                - self.out_tensors[pred_name])
+      self.lattice_summary(in_name=true_name + '_' + pred_name, summary_name='loss_image')
+
+    if normalize == 'std':
+      mean, var = tf.nn.moments(self.out_tensors[true_name], axes=[1,2,3], keep_dims=True)
+      std = tf.sqrt(var)
+      self.out_tensors[true_name] = self.out_tensors[true_name] / (100.0 * std + 1e-2) # TODO take out 10.0, only in to compare with previous code
+      self.out_tensors[pred_name] = self.out_tensors[pred_name] / (100.0 * std + 1e-2)
+      self.out_tensors[loss_name] = tf.nn.l2_loss(tf.stop_gradient(self.out_tensors[ true_name]) 
+                                                - self.out_tensors[pred_name])
+    elif normalize == 'vel':
+      vel_true = self.DxQy.lattice_to_vel(self.out_tensors[true_name])
+      vel_pred = self.DxQy.lattice_to_vel(self.out_tensors[pred_name])
+      rho_true = self.DxQy.lattice_to_rho(self.out_tensors[true_name])[...,0]
+      rho_pred = self.DxQy.lattice_to_rho(self.out_tensors[pred_name])[...,0]
+
+      vel_true_x = vel_true[...,0]
+      vel_true_y = vel_true[...,1]
+      vel_pred_x = vel_true[...,0]
+      vel_pred_y = vel_true[...,1]
+       
+      vel_true_x_min = tf.reduce_min(vel_true_x, axis=[1,2], keep_dims=True)
+      vel_true_x_max = tf.reduce_max(vel_true_x, axis=[1,2], keep_dims=True)
+      vel_true_x = (vel_true_x - vel_true_x_min)/(vel_true_x_max - vel_true_x_min + 1e-4)
+      vel_pred_x = (vel_pred_x - vel_true_x_min)/(vel_true_x_max - vel_true_x_min + 1e-4)
+
+      vel_true_y_min = tf.reduce_min(vel_true_y, axis=[1,2], keep_dims=True)
+      vel_true_y_max = tf.reduce_max(vel_true_y, axis=[1,2], keep_dims=True)
+      vel_true_y = (vel_true_y - vel_true_y_min)/(vel_true_y_max - vel_true_y_min + 1e-4)
+      vel_pred_y = (vel_pred_y - vel_true_y_min)/(vel_true_y_max - vel_true_y_min + 1e-4)
+
+      rho_true_min = tf.reduce_min(rho_true, axis=[1,2], keep_dims=True)
+      rho_true_max = tf.reduce_max(rho_true, axis=[1,2], keep_dims=True)
+      rho_true = (rho_true - rho_true_min)/(rho_true_max - rho_true_min + 1e-4)
+      rho_pred = (rho_pred - rho_true_min)/(rho_true_max - rho_true_min + 1e-4)
+
+      self.out_tensors[loss_name] = 0.0
+      #self.out_tensors[loss_name] += tf.nn.l2_loss(vel_true_x - vel_pred_x)
+      #self.out_tensors[loss_name] += tf.nn.l2_loss(vel_true_y - vel_pred_y)
+      #self.out_tensors[loss_name] += tf.nn.l2_loss(rho_true - rho_pred)
+      self.out_tensors[loss_name] += tf.reduce_mean(tf.abs(vel_true_x - vel_pred_x))
+      self.out_tensors[loss_name] += tf.reduce_mean(tf.abs(vel_true_y - vel_pred_y))
+      self.out_tensors[loss_name] += tf.reduce_mean(tf.abs(rho_true - rho_pred))
+    elif normalize is None:
+      self.out_tensors[loss_name] = tf.nn.l2_loss(tf.stop_gradient(self.out_tensors[ true_name]) 
+                                                - self.out_tensors[pred_name])
     if factor is not None:
       self.out_tensors[loss_name] = factor * self.out_tensors[loss_name]
 

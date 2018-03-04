@@ -233,13 +233,14 @@ class Simulation(object):
                           self.input_cshape)
     return cstate
 
-  def cstate_to_state(self, decoder, decoder_shape_converter, cstate):
+  def cstate_to_state(self, decoder, decoder_shape_converter, cstate, cboundary):
 
-    def input_generator(cstate_subdomain):
-      sub_cstate = numpy_utils.mobius_extract(cstate, cstate_subdomain, has_batch=True)
-      return sub_cstate
+    def input_generator(cstate_subdomain, cboundary_subdomain):
+      sub_cstate    = numpy_utils.mobius_extract(cstate,    cstate_subdomain,    has_batch=True)
+      sub_cboundary = numpy_utils.mobius_extract(cboundary, cboundary_subdomain, has_batch=True)
+      return sub_cstate, sub_cboundary
 
-    [vel, rho] = self.mapping(decoder, decoder_shape_converter, 
+    [vel, rho] = self.mapping(decoder, [decoder_shape_converter, decoder_shape_converter], 
                               input_generator, self.sim_shape, 
                               self.input_shape)
     return vel, rho

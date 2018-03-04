@@ -56,13 +56,13 @@ class LatNetController(object):
       group.add_argument('--gan', help='all mode', type=str2bool,
                         default=True)
       group.add_argument('--lr', help='all mode', type=float,
-                        default=0.0002)
+                        default=0.0004)
       group.add_argument('--decay_steps', help='all mode', type=int,
                         default=10000)
       group.add_argument('--decay_rate', help='all mode', type=float,
-                        default=0.5)
+                        default=1.0)
       group.add_argument('--beta1', help='all mode', type=float,
-                        default=0.9)
+                        default=0.95)
       group.add_argument('--l1_factor', help='all mode', type=float,
                         default=5.0)
       group.add_argument('--moving_average', help='all mode', type=str2bool,

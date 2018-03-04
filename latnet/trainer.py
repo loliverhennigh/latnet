@@ -55,7 +55,7 @@ class Trainer(object):
   def train(self):
  
     # steps per print (hard set for now untill done debugging)
-    steps_per_print = 50
+    steps_per_print = 20
 
     while True: 
       # get batch of data
@@ -115,7 +115,7 @@ class Trainer(object):
         self.loss_stats[name + '_ave'] = float(np.sum(np.array(self.loss_stats[name + '_history']))
                                          / len(self.loss_stats[name + '_history']))
         # update var loss
-        self.loss_stats[name + '_var'] = np.var(np.array(self.loss_stats[name + '_history']))
+        self.loss_stats[name + '_std'] = np.sqrt(np.var(np.array(self.loss_stats[name + '_history'])))
 
   def update_time_stats(self):
     # stop timer

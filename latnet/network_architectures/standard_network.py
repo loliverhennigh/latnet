@@ -19,7 +19,7 @@ class StandardNetwork(LatNet):
   @classmethod
   def add_options(cls, group):
     group.add_argument('--nr_residual_compression', help='network config', type=int,
-                           default=4)
+                           default=2)
     group.add_argument('--nr_residual_encoder', help='network config', type=int,
                            default=1)
     group.add_argument('--nr_downsamples', help='network config', type=int,
@@ -100,14 +100,18 @@ class StandardNetwork(LatNet):
                     trim=self.config.nr_residual_compression*2)
   
   # decoder state
-  def decoder_state(self, in_name, out_name, lattice_size=9):
+  def decoder_state(self, in_cstate_name, in_cboundary_name, out_name, lattice_size=9):
   
     # set nonlinearity
     nonlinearity = set_nonlinearity(self.config.nonlinearity)
-  
+   
+    # just concat tensors
+    self.concat_tensors(in_names=[in_cstate_name, in_cboundary_name], 
+                       out_name=out_name, axis=-1)
+
     for i in xrange(self.config.nr_downsamples-1):
       filter_size = int(self.config.filter_size*pow(2,self.config.nr_downsamples-i-2))
-      self.trans_conv(in_name=in_name, out_name=out_name,
+      self.trans_conv(in_name=out_name, out_name=out_name,
                       kernel_size=4, stride=2, 
                       filter_size=filter_size,
                       weight_name="up_conv_" + str(i))

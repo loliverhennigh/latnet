@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#/usr/bin/env python
 
 import sys
 import os
@@ -34,6 +34,7 @@ class TempoGanTrainer(Trainer):
         'latnet_network_dir': './network_save',
         'visc': 0.01,
         'lb_to_ln': 128,
+        'seq_length': 2,
         'input_cshape': '64x64',
         'max_sim_iters': 800})
 
