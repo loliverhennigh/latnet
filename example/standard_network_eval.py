@@ -24,7 +24,7 @@ import glob
 class LDCSimulation(Simulation):
   script_name = __file__
   network = StandardNetwork
-  domain = LDCDomain
+  domain = ChannelDomain
 
   @classmethod
   def update_defaults(cls, defaults):
@@ -32,10 +32,11 @@ class LDCSimulation(Simulation):
         'latnet_network_dir': './network_save',
         'run_mode': 'eval',
         'visc': 0.01,
-        'lb_to_ln': 50,
-        'input_cshape': '64x64',
-        'sim_shape': '512x512',
-        'max_sim_iters': 400})
+        'lb_to_ln': 128,
+        'input_cshape': '8x8',
+        'input_shape': '256x256',
+        'sim_shape': '256x256',
+        'max_sim_iters': 600})
 
 if __name__ == '__main__':
   sim = LatNetController(simulation=LDCSimulation)

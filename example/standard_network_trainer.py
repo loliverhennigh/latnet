@@ -23,7 +23,7 @@ import numpy as np
 import cv2
 import glob
 
-class TempoGanTrainer(Trainer):
+class StandardTrainer(Trainer):
   script_name = __file__
   network = StandardNetwork
   domains = [ChannelDomain]
@@ -35,10 +35,10 @@ class TempoGanTrainer(Trainer):
         'latnet_network_dir': './network_save',
         'visc': 0.01,
         'lb_to_ln': 128,
-        'input_cshape': '20x20',
+        'input_cshape': '8x8',
         'max_sim_iters': 600})
 
 if __name__ == '__main__':
-  sim = LatNetController(trainer=TempoGanTrainer)
+  sim = LatNetController(trainer=StandardTrainer)
   sim.run()
 

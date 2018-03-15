@@ -159,9 +159,14 @@ class LatNet(object):
           ### L2 loss ###
           if not self.gan:
             self.out_tensors["loss_l2" + gpu_str] = 0.0
+
+            # factor to account for how much the sim is changing
+            seq_factor = tf.nn.l2_loss(self.out_tensors['true_state' + seq_str(0)]
+                                     - self.out_tensors['true_state' + seq_str(self.seq_length-1)])
             for j in range(0, self.seq_length):
               # normalize loss to make comparable for diffrent input sizes
               # TODO remove 100.0 (only in to make comparable to previous code)
+              #l2_factor = 1.0*(256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
               l2_factor = 100.0*(256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
               self.l2_loss(true_name='true_state' + seq_str(j),
                            pred_name='pred_state' + seq_str(j),
@@ -332,6 +337,7 @@ class LatNet(object):
       self.add_tensor('boundary',  (1 + self.DxQy.dims) * [None] + [4])
       self.add_tensor('cstate',    (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
       self.add_tensor('cboundary', (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
+      self.add_tensor('cboundary_decoder', (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
       self.add_phase() 
   
       ###### Unroll Graph ######
@@ -344,8 +350,9 @@ class LatNet(object):
                                 in_cboundary_name="cboundary",
                                 out_name="cstate_from_cstate")
   
+ 
       # decoder
-      self._decoder_state(in_name="cstate", out_name="state_from_cstate")
+      self._decoder_state(in_cstate_name="cstate", in_cboundary_name="cboundary_decoder", out_name="state_from_cstate")
       self.out_tensors['vel_from_cstate'] = self.DxQy.lattice_to_vel(self.out_tensors['state_from_cstate'])
       self.out_tensors['rho_from_cstate'] = self.DxQy.lattice_to_rho(self.out_tensors['state_from_cstate'])
 
@@ -369,7 +376,7 @@ class LatNet(object):
     decoder           = lambda x, y: self.run(['vel_from_cstate', 
                                             'rho_from_cstate'], 
                                  feed_dict={'cstate':x,
-                                            'cboundary':y})
+                                            'cboundary_decoder':y})
     # shape converters
     encoder_shape_converter = self.shape_converters['state', 'cstate_from_state']
     cmapping_shape_converter = self.shape_converters['cstate', 'cstate_from_cstate']
@@ -611,26 +618,32 @@ class LatNet(object):
        
       vel_true_x_min = tf.reduce_min(vel_true_x, axis=[1,2], keep_dims=True)
       vel_true_x_max = tf.reduce_max(vel_true_x, axis=[1,2], keep_dims=True)
-      vel_true_x = (vel_true_x - vel_true_x_min)/(vel_true_x_max - vel_true_x_min + 1e-4)
-      vel_pred_x = (vel_pred_x - vel_true_x_min)/(vel_true_x_max - vel_true_x_min + 1e-4)
+      #vel_true_x = (vel_true_x - vel_true_x_min)/(vel_true_x_max - vel_true_x_min + 1e-3)
+      #vel_pred_x = (vel_pred_x - vel_true_x_min)/(vel_true_x_max - vel_true_x_min + 1e-3)
+      #vel_true_x = (vel_true_x)/(vel_true_x_max - vel_true_x_min + 1e-2)
+      #vel_pred_x = (vel_pred_x)/(vel_true_x_max - vel_true_x_min + 1e-2)
 
       vel_true_y_min = tf.reduce_min(vel_true_y, axis=[1,2], keep_dims=True)
       vel_true_y_max = tf.reduce_max(vel_true_y, axis=[1,2], keep_dims=True)
-      vel_true_y = (vel_true_y - vel_true_y_min)/(vel_true_y_max - vel_true_y_min + 1e-4)
-      vel_pred_y = (vel_pred_y - vel_true_y_min)/(vel_true_y_max - vel_true_y_min + 1e-4)
+      #vel_true_y = (vel_true_y - vel_true_y_min)/(vel_true_y_max - vel_true_y_min + 1e-3)
+      #vel_pred_y = (vel_pred_y - vel_true_y_min)/(vel_true_y_max - vel_true_y_min + 1e-3)
+      #vel_true_y = (vel_true_y)/(vel_true_y_max - vel_true_y_min + 1e-2)
+      #vel_pred_y = (vel_pred_y)/(vel_true_y_max - vel_true_y_min + 1e-2)
 
       rho_true_min = tf.reduce_min(rho_true, axis=[1,2], keep_dims=True)
       rho_true_max = tf.reduce_max(rho_true, axis=[1,2], keep_dims=True)
-      rho_true = (rho_true - rho_true_min)/(rho_true_max - rho_true_min + 1e-4)
-      rho_pred = (rho_pred - rho_true_min)/(rho_true_max - rho_true_min + 1e-4)
+      #rho_true = (rho_true - rho_true_min)/(rho_true_max - rho_true_min + 1e-3)
+      #rho_pred = (rho_pred - rho_true_min)/(rho_true_max - rho_true_min + 1e-3)
+      #rho_true = (rho_true)/(rho_true_max - rho_true_min + 1e-2)
+      #rho_pred = (rho_pred)/(rho_true_max - rho_true_min + 1e-2)
 
       self.out_tensors[loss_name] = 0.0
-      #self.out_tensors[loss_name] += tf.nn.l2_loss(vel_true_x - vel_pred_x)
-      #self.out_tensors[loss_name] += tf.nn.l2_loss(vel_true_y - vel_pred_y)
-      #self.out_tensors[loss_name] += tf.nn.l2_loss(rho_true - rho_pred)
-      self.out_tensors[loss_name] += tf.reduce_mean(tf.abs(vel_true_x - vel_pred_x))
-      self.out_tensors[loss_name] += tf.reduce_mean(tf.abs(vel_true_y - vel_pred_y))
-      self.out_tensors[loss_name] += tf.reduce_mean(tf.abs(rho_true - rho_pred))
+      self.out_tensors[loss_name] += tf.nn.l2_loss(vel_true_x - vel_pred_x)
+      self.out_tensors[loss_name] += tf.nn.l2_loss(vel_true_y - vel_pred_y)
+      self.out_tensors[loss_name] += tf.nn.l2_loss(rho_true - rho_pred)
+      #self.out_tensors[loss_name] += tf.reduce_mean(tf.abs(vel_true_x - vel_pred_x))
+      #self.out_tensors[loss_name] += tf.reduce_mean(tf.abs(vel_true_y - vel_pred_y))
+      #self.out_tensors[loss_name] += tf.reduce_mean(tf.abs(rho_true - rho_pred))
     elif normalize is None:
       self.out_tensors[loss_name] = tf.nn.l2_loss(tf.stop_gradient(self.out_tensors[ true_name]) 
                                                 - self.out_tensors[pred_name])

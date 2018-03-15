@@ -76,7 +76,7 @@ class LatNetController(object):
       group.add_argument('--gpu_fraction', help='all mode', type=float,
                         default=0.9)
       group.add_argument('--max_queue', help='all mode', type=int,
-                        default=25)
+                        default=100)
 
       group = self._config_parser.add_group('Simulation Details')
       group.add_argument('--sim_shape', help='all mode', type=str,

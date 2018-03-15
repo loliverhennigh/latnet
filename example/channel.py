@@ -57,7 +57,7 @@ class ChannelDomain(Domain):
   name = "channel"
   vel = (0.0, 0.0)
   sim_shape = [256, 256]
-  num_simulations = 5
+  num_simulations = 20
   periodic_x = True
   periodic_y = True
 

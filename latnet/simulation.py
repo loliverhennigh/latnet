@@ -108,18 +108,18 @@ class Simulation(object):
         # decode state
         vel, rho = self.cstate_to_state(decoder, 
                                         decoder_shape_converter, 
-                                        cstate)
+                                        cstate,
+                                        cboundary)
+
         # vis and save
         self.vis.update_vel_rho(i, vel, rho)
         self.saver.save(i, vel, rho, cstate)
 
-        # print time states
-        self.update_time_stats()
-        self.print_stats(self.time_stats, i)
-
-      cstate = self.cstate_to_cstate(cmapping, 
+      cstate_new = self.cstate_to_cstate(cmapping, 
                                      cmapping_shape_converter, 
                                      cstate, cboundary)
+      print(np.sum(np.abs(cstate_new - cstate)))
+      cstate = cstate_new
 
     # generate comparision simulation
     if self.compare:
@@ -135,6 +135,7 @@ class Simulation(object):
           # this functionality will probably be changed TODO
           true_vel, true_rho = self.sailfish_runner.read_vel_rho(i + self.sim_restore_iter + 1, add_batch=True)
           generated_vel, generated_rho = self.saver.read_vel_rho(i, add_batch=True)
+          print(np.sum(np.abs(true_vel - generated_vel)))
           self.vis.update_compare_vel_rho(i, true_vel, true_rho, generated_vel, generated_rho)
 
   def input_boundary(self, input_subdomain):
@@ -181,10 +182,17 @@ class Simulation(object):
       # append to list of sub outputs
       output.append(sub_output)
 
+    # make total output shape
+    total_subdomain = SubDomain(len(output_shape)*[0], output_shape)
+    ctotal_subdomain = shape_converter[0].out_in_subdomain(copy(total_subdomain))
+    total_subdomain  = shape_converter[0].in_out_subdomain(copy(ctotal_subdomain))
+    total_subdomain = SubDomain([-x for x in total_subdomain.pos], output_shape)
+
     # stack back together to form one output
     output = llist2list(output)
     for i in xrange(len(output)):
       output[i] = numpy_utils.stack_grid(output[i], nr_subdomains, has_batch=True)
+      output[i] = numpy_utils.mobius_extract(output[i], total_subdomain, has_batch=True)
     if len(output) == 1:
       output = output[0]
     return output
@@ -238,11 +246,13 @@ class Simulation(object):
     def input_generator(cstate_subdomain, cboundary_subdomain):
       sub_cstate    = numpy_utils.mobius_extract(cstate,    cstate_subdomain,    has_batch=True)
       sub_cboundary = numpy_utils.mobius_extract(cboundary, cboundary_subdomain, has_batch=True)
-      return sub_cstate, sub_cboundary
+      return [sub_cstate, sub_cboundary]
 
     [vel, rho] = self.mapping(decoder, [decoder_shape_converter, decoder_shape_converter], 
                               input_generator, self.sim_shape, 
                               self.input_shape)
+    print(np.max(vel))
+    print(np.min(vel))
     return vel, rho
 
   def update_time_stats(self):
