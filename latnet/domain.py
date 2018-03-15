@@ -28,6 +28,7 @@ class Domain(object):
   def __init__(self, config):
     self.config = config
     self.DxQy = lattice.TYPES[config.DxQy]()
+    force = (0.0, 0.0)
 
   @classmethod
   def update_defaults(cls, defaults):
@@ -50,11 +51,16 @@ class Domain(object):
 
   def make_geometry_input(self, where_boundary, velocity, where_velocity, density, where_density):
     # TODO Clean this
-    input_geometry = np.concatenate([np.expand_dims(where_boundary, axis=-1).astype(np.float32),
-                                     np.array(velocity).reshape(len(where_velocity.shape) * [1] + [self.DxQy.dims]) 
-                                       * np.expand_dims(where_velocity, axis=-1).astype(np.float32),
-                                     density 
-                                       *  np.expand_dims(where_density, axis=-1).astype(np.float32)], axis=-1)
+    boundary_array = np.expand_dims(where_boundary, axis=-1).astype(np.float32)
+    velocity_array = np.array(velocity).reshape(len(where_velocity.shape) * [1] + [self.DxQy.dims])
+    velocity_array = velocity_array * np.expand_dims(where_velocity, axis=-1).astype(np.float32)
+    density_array = density * np.expand_dims(where_density, axis=-1).astype(np.float32)
+    force_array = 1e5 * force * np.ones_like(velocity_array).astype(np.float32) # 1e5 to scale force to same range as vel
+
+    input_geometry = np.concatenate([boundary_array,
+                                     velocity_array,
+                                     density_array,
+                                     force_array], axis=-1)
     return input_geometry
 
   def make_sailfish_subdomain(self):
@@ -81,7 +87,6 @@ class Domain(object):
             restore_boundary_conditions = np.load(train_sim_dir[:-10] + "flow_geometry.npy")
             where_boundary = restore_boundary_conditions[...,0].astype(np.bool)
             where_velocity = np.logical_or(restore_boundary_conditions[...,1].astype(np.bool), restore_boundary_conditions[...,2].astype(np.bool))
-            #print(np.where(where_velocity)[0])
             if len(np.where(where_velocity)[0]) == 0:
               velocity = (0.0,0.0)
             else:
@@ -89,6 +94,7 @@ class Domain(object):
                           restore_boundary_conditions[np.where(where_velocity)[0][0], np.where(where_velocity)[1][0], 2])
             where_density  = restore_boundary_conditions[...,3].astype(np.bool)
             density = 1.0
+            self.force = (restore_boundary_conditions[0,0,4], restore_boundary_conditions[0,0,5])
           else:
             where_boundary = geometry_boundary_conditions(hx, hy, [self.gx, self.gy])
             where_velocity, velocity = velocity_boundary_conditions(hx, hy, [self.gx, self.gy])

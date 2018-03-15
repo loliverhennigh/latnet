@@ -74,19 +74,59 @@ class StandardNetwork(LatNet):
   # encoder boundary
   def encoder_boundary(self, in_name, out_name):
    
-    # just do the same as encoder state
-    self.encoder_state(in_name, out_name)
+    # set nonlinearity
+    nonlinearity = set_nonlinearity(self.config.nonlinearity)
+  
+    # encoding peice
+    for i in xrange(self.config.nr_downsamples):
+      filter_size = self.config.filter_size*(pow(2,i))
+      self.res_block(in_name=in_name, out_name=out_name,
+                     filter_size=filter_size,
+                     nonlinearity=nonlinearity, 
+                     stride=2, 
+                     gated=self.config.gated, 
+                     begin_nonlinearity=False,
+                     weight_name="down_sample_res_" + str(i))
+      in_name=out_name
+  
+      for j in xrange(self.config.nr_residual_encoder - 1):
+        self.res_block(in_name=in_name, out_name=out_name,
+                       filter_size=filter_size,
+                       nonlinearity=nonlinearity, 
+                       stride=1, 
+                       gated=self.config.gated, 
+                       weight_name="res_" + str(i) + '_' + str(j))
+  
+  
+    self.res_block(in_name=in_name, out_name=out_name,
+                   filter_size=self.config.filter_size_compression * 2,
+                   nonlinearity=nonlinearity, 
+                   stride=1, 
+                   gated=self.config.gated, 
+                   weight_name="final_res")
+  
+    self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
   
   # compression mapping
-  def compression_mapping(self, in_cstate_name, in_cboundary_name, out_name):
+  def compression_mapping(self, in_cstate_name, in_cboundary_name, out_name, start_apply_boundary=False):
   
     # set nonlinearity
     nonlinearity = set_nonlinearity(self.config.nonlinearity)
   
-    # just concat tensors
-    self.concat_tensors(in_names=[in_cstate_name, in_cboundary_name], 
-                       out_name=out_name, axis=-1)
-  
+    # apply boundary
+    if start_apply_boundary:
+      self.split_tensor(in_name=in_cboundary_name,
+                        out_names=[in_cboundary_name + "_apply",
+                                   in_cboundary_name + "_mask"],
+                        axis=-1)
+      self.image_combine(a_name=in_cstate_name, 
+                         b_name=in_cboundary_name + "_apply",
+                         mask_name=in_cboundary_name + "_mask",
+                         out_name=out_name)
+    else:
+      self.rename_tensor(old_name=in_cstate_name,
+                         new_name=out_name)
+
     # apply residual blocks
     for i in xrange(self.config.nr_residual_compression):
       self.res_block(in_name=out_name, out_name=out_name, 
@@ -100,10 +140,17 @@ class StandardNetwork(LatNet):
     self.trim_tensor(in_name=in_cboundary_name, 
                     out_name=in_cboundary_name, 
                     trim=self.config.nr_residual_compression*2)
- 
-    # normalize 
-    self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
 
+    # apply boundary
+    self.split_tensor(in_name=in_cboundary_name,
+                      out_names=[in_cboundary_name + "_apply",
+                                 in_cboundary_name + "_mask"],
+                      axis=-1)
+    self.image_combine(a_name=out_name, 
+                       b_name=in_cboundary_name + "_apply",
+                       mask_name=in_cboundary_name + "_mask",
+                       out_name=out_name)
+ 
   # decoder state
   def decoder_state(self, in_cstate_name, in_cboundary_name, out_name, lattice_size=9):
   
@@ -111,8 +158,8 @@ class StandardNetwork(LatNet):
     nonlinearity = set_nonlinearity(self.config.nonlinearity)
    
     # just concat tensors
-    self.concat_tensors(in_names=[in_cstate_name, in_cboundary_name], 
-                       out_name=out_name, axis=-1)
+    #self.concat_tensors(in_names=[in_cstate_name, in_cboundary_name], 
+    #                   out_name=out_name, axis=-1)
 
     for i in xrange(self.config.nr_downsamples-1):
       filter_size = int(self.config.filter_size*pow(2,self.config.nr_downsamples-i-2))

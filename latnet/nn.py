@@ -76,7 +76,7 @@ def _activation_summary(x):
 
   Args:
     x: Tensor
-  Returns:
+ Returns:
     nothing
   """
   tensor_name = x.op.name
@@ -139,6 +139,43 @@ def conv_layer(x, kernel_size, stride, filter_size, name, nonlinearity=None, nor
     if nonlinearity is not None:
       conv = nonlinearity(conv)
     return conv
+
+def mimic_conv_pad(x, kernel_size, stride):
+  if stride == 2:
+    x = max_pool(x):
+
+  edge_cut = (kernel_size-1)/2
+  x = trim_tensor(x, edge_cut)
+  return x
+
+def mimic_trans_conv_pad(x, kernel_size, stride):
+  if stride == 2:
+    x = upsampleing_resize(x):
+
+  edge_cut = (kernel_size-1)/2
+  x = trim_tensor(x, edge_cut)
+  return x
+
+def mimic_res_pad(x, kernel_size, stride):
+  if stride == 2:
+    x = max_pool(x):
+
+  edge_cut = (kernel_size-1)/2
+  x = trim_tensor(x, edge_cut)
+  x = trim_tensor(x, edge_cut)
+  return x
+
+def apply_pad(x, pad):
+  x = x * (1.0 - pad)
+  return x
+
+def simple_trans_conv_2d(x, k):
+  """A simplified 2D trans convolution operation"""
+  output_shape = tf.stack([tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2], tf.shape(k)[2]]) 
+  y = tf.nn.conv2d_transpose(x, k, output_shape, [1, 1, 1, 1], padding='SAME')
+  y = tf.reshape(y, [int(x.get_shape()[0]), int(x.get_shape()[1]), int(x.get_shape()[2]), int(k.get_shape()[2])])
+  return y
+
 
 def simple_trans_conv_2d(x, k):
   """A simplified 2D trans convolution operation"""
@@ -244,6 +281,13 @@ def max_pool(x):
     x = tf.nn.max_pool3d(x, [1,2,2,2,1], [1,2,2,2,1], padding='VALID')
   return x
 
+def trim_tensor(x, trim):
+  length_input = len(x.get_shape()) - 2
+  if length_input == 2:
+    x = x[:,trim:-trim, trim:-trim]
+  if length_input == 3:
+    x = x[:,trim:-trim, trim:-trim, trim:-trim]
+  return x
 
 def res_block(x, a=None, 
               filter_size=16, 
@@ -268,7 +312,7 @@ def res_block(x, a=None,
   if stride == 1:
     x = conv_layer(x, kernel_size, stride, filter_size, name + '_conv_1')
     edge_cut = ((kernel_size-1)/2)
-    orig_x = orig_x[:,edge_cut:-edge_cut,edge_cut:-edge_cut]
+    orig_x = trim_tensor(orig_x, edge_cut)
   elif stride == 2:
     x = conv_layer(x, 4, stride, filter_size, name + '_conv_1')
     if length_input == 4:
@@ -302,11 +346,11 @@ def res_block(x, a=None,
     #pass
     x = conv_layer(x, kernel_size, 1, filter_size, name + '_conv_2')
     edge_cut = ((kernel_size-1)/2)
-    orig_x = orig_x[:,edge_cut:-edge_cut,edge_cut:-edge_cut]
+    orig_x = trim_tensor(orig_x, edge_cut)
   else:
     x = conv_layer(x, kernel_size, 1, filter_size*2, name + '_conv_2')
     edge_cut = ((kernel_size-1)/2)
-    orig_x = orig_x[:,edge_cut:-edge_cut,edge_cut:-edge_cut]
+    orig_x = trim_tensor(orig_x, edge_cut)
     x_1, x_2 = tf.split(x,2,length_input-1)
     x = x_1 * tf.nn.sigmoid(x_2)
 
