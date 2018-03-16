@@ -54,7 +54,7 @@ class LatNetController(object):
       group.add_argument('--optimizer', help='all mode', type=str,
                         default='adam')
       group.add_argument('--gan', help='all mode', type=str2bool,
-                        default=True)
+                        default=False)
       group.add_argument('--lr', help='all mode', type=float,
                         default=0.0004)
       group.add_argument('--decay_steps', help='all mode', type=int,
