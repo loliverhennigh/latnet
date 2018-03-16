@@ -69,7 +69,7 @@ class ShapeConverter:
         subdomain.upsample()
 
         # add edges
-        edge_padding = (kernel_size)/2
+        edge_padding = (kernel_size-1)/2
         subdomain.remove_edges(edge_padding)
 
       return subdomain
@@ -83,7 +83,7 @@ class ShapeConverter:
         subdomain.downsample()
 
         # remove edges
-        edge_padding = (kernel_size)/2
+        edge_padding = (kernel_size-1)/2
         subdomain.add_edges(edge_padding)
 
       return subdomain

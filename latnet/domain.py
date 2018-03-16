@@ -28,7 +28,6 @@ class Domain(object):
   def __init__(self, config):
     self.config = config
     self.DxQy = lattice.TYPES[config.DxQy]()
-    force = (0.0, 0.0)
 
   @classmethod
   def update_defaults(cls, defaults):
@@ -55,7 +54,7 @@ class Domain(object):
     velocity_array = np.array(velocity).reshape(len(where_velocity.shape) * [1] + [self.DxQy.dims])
     velocity_array = velocity_array * np.expand_dims(where_velocity, axis=-1).astype(np.float32)
     density_array = density * np.expand_dims(where_density, axis=-1).astype(np.float32)
-    force_array = 1e5 * force * np.ones_like(velocity_array).astype(np.float32) # 1e5 to scale force to same range as vel
+    force_array = 1e5 * np.array(self.force) * np.ones_like(velocity_array).astype(np.float32) # 1e5 to scale force to same range as vel
 
     input_geometry = np.concatenate([boundary_array,
                                      velocity_array,
@@ -75,11 +74,20 @@ class Domain(object):
     make_geometry_input = self.make_geometry_input    
     train_sim_dir = self.config.train_sim_dir
 
+    if hasattr(self, 'force'):
+      dom_force = self.force
+    else:
+      dom_force = None
+
     bc = NTFullBBWall
 
     if self.DxQy.dims == 2:
       class SailfishSubdomain(Subdomain2D):
-        
+
+        print(dom_force)
+        if dom_force is not None:
+          force = dom_force
+          
         def boundary_conditions(self, hx, hy):
   
           # restore from old dir or make new geometry
@@ -94,11 +102,12 @@ class Domain(object):
                           restore_boundary_conditions[np.where(where_velocity)[0][0], np.where(where_velocity)[1][0], 2])
             where_density  = restore_boundary_conditions[...,3].astype(np.bool)
             density = 1.0
-            self.force = (restore_boundary_conditions[0,0,4], restore_boundary_conditions[0,0,5])
+            #self.force = (restore_boundary_conditions[0,0,4], restore_boundary_conditions[0,0,5])
           else:
             where_boundary = geometry_boundary_conditions(hx, hy, [self.gx, self.gy])
             where_velocity, velocity = velocity_boundary_conditions(hx, hy, [self.gx, self.gy])
             where_density, density = density_boundary_conditions(hx, hy, [self.gx, self.gy])
+            #self.force = force
   
           # set boundarys
           self.set_node(where_boundary, bc)

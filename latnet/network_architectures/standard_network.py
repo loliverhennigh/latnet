@@ -118,7 +118,7 @@ class StandardNetwork(LatNet):
       self.split_tensor(in_name=in_cboundary_name,
                         out_names=[in_cboundary_name + "_apply",
                                    in_cboundary_name + "_mask"],
-                        axis=-1)
+                        num_split=2, axis=3)
       self.image_combine(a_name=in_cstate_name, 
                          b_name=in_cboundary_name + "_apply",
                          mask_name=in_cboundary_name + "_mask",
@@ -145,7 +145,7 @@ class StandardNetwork(LatNet):
     self.split_tensor(in_name=in_cboundary_name,
                       out_names=[in_cboundary_name + "_apply",
                                  in_cboundary_name + "_mask"],
-                      axis=-1)
+                      num_split=2, axis=3)
     self.image_combine(a_name=out_name, 
                        b_name=in_cboundary_name + "_apply",
                        mask_name=in_cboundary_name + "_mask",
@@ -160,6 +160,9 @@ class StandardNetwork(LatNet):
     # just concat tensors
     #self.concat_tensors(in_names=[in_cstate_name, in_cboundary_name], 
     #                   out_name=out_name, axis=-1)
+    self.rename_tensor(old_name=in_cstate_name,
+                       new_name=out_name)
+    
 
     for i in xrange(self.config.nr_downsamples-1):
       filter_size = int(self.config.filter_size*pow(2,self.config.nr_downsamples-i-2))

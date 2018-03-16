@@ -69,9 +69,14 @@ class Simulation(object):
     # make saver
     self.saver = SimSaver(self.config)
 
+    # set padding 
+    self.padding_type = ['zero', 'zero']
+    if self.domain.periodic_x:
+      self.padding_type[0] = 'periodic'
+    if self.domain.periodic_y:
+      self.padding_type[1] = 'periodic'
 
   def run(self):
-
 
     # unroll network
     self._network = self.network(self.config)
@@ -167,17 +172,21 @@ class Simulation(object):
       output_subdomain.zero_pos()
 
       # generate input with input generator
+      print(input_subdomain)
       sub_input = input_generator(*input_subdomain)
 
       # perform mapping function and extract out if needed
       if not (type(sub_input) is list):
         sub_input = [sub_input]
+      print(sub_input[0][0].shape)
+      print(sub_input[0][1].shape)
       sub_output = mapping(*sub_input)
       if not (type(sub_output) is list):
         sub_output = [sub_output]
 
       for i in xrange(len(sub_output)):
-        sub_output[i] = numpy_utils.mobius_extract(sub_output[i], output_subdomain, has_batch=True)
+        sub_output[i] = numpy_utils.mobius_extract(sub_output[i], output_subdomain, 
+                                                   has_batch=True)
 
       # append to list of sub outputs
       output.append(sub_output)
@@ -192,7 +201,8 @@ class Simulation(object):
     output = llist2list(output)
     for i in xrange(len(output)):
       output[i] = numpy_utils.stack_grid(output[i], nr_subdomains, has_batch=True)
-      output[i] = numpy_utils.mobius_extract(output[i], total_subdomain, has_batch=True)
+      output[i] = numpy_utils.mobius_extract(output[i], total_subdomain, 
+                                             has_batch=True)
     if len(output) == 1:
       output = output[0]
     return output
@@ -201,13 +211,18 @@ class Simulation(object):
 
     def input_generator(subdomain):
       if self.start_state is not None:
-        start_state = numpy_utils.mobius_extract(self.start_state, subdomain, has_batch=False)
-        start_state = np.expand_dims(start_state, axis=0)
+        start_state, pad_start_state = numpy_utils.mobius_extract(self.start_state, 
+                                                                  subdomain, 
+                                                                  has_batch=False, 
+                                                                  padding_type=self.padding_type,
+                                                                  return_padding=True)
       else:
         vel = self._domain.velocity_initial_conditions(0,0,None)
         feq = self.DxQy.vel_to_feq(vel).reshape([1] + self.DxQy.dims*[1] + [self.DxQy.Q])
         start_state = np.zeros([1] + subdomain.size + [self.DxQy.Q]) + feq
-      return start_state 
+      start_state     = np.expand_dims(start_state, axis=0)
+      pad_start_state = np.expand_dims(pad_start_state, axis=0)
+      return (start_state, pad_start_state)
 
     cstate = self.mapping(encoder, encoder_shape_converter, 
                           input_generator, self.sim_cshape, 
@@ -218,11 +233,16 @@ class Simulation(object):
 
     def input_generator(subdomain):
       if self.start_boundary is not None:
-        input_geometry = numpy_utils.mobius_extract(self.start_boundary, subdomain, has_batch=False)
+        input_geometry, pad_input_geometry = numpy_utils.mobius_extract(self.start_boundary, 
+                                                                        subdomain,
+                                                                        has_batch=False, 
+                                                                        padding_type=self.padding_type,
+                                                                        return_padding=True)
       else:
         input_geometry = self.input_boundary(subdomain)
-      input_geometry = np.expand_dims(input_geometry, axis=0)
-      return input_geometry
+      input_geometry     = np.expand_dims(input_geometry, axis=0)
+      pad_input_geometry = np.expand_dims(pad_input_geometry, axis=0)
+      return (input_geometry, pad_input_geometry)
 
     cboundary = self.mapping(encoder, encoder_shape_converter, 
                             input_generator, self.sim_cshape, 
@@ -232,8 +252,14 @@ class Simulation(object):
   def cstate_to_cstate(self, cmapping, cmapping_shape_converter, cstate, cboundary):
 
     def input_generator(cstate_subdomain, cboundary_subdomain):
-      sub_cstate =    numpy_utils.mobius_extract(cstate,    cstate_subdomain, has_batch=True)
-      sub_cboundary = numpy_utils.mobius_extract(cboundary, cboundary_subdomain, has_batch=True)
+      sub_cstate =    numpy_utils.mobius_extract(cstate, cstate_subdomain, 
+                                                 has_batch=True, 
+                                                 padding_type=self.padding_type,
+                                                 return_padding=True)
+      sub_cboundary = numpy_utils.mobius_extract(cboundary, cboundary_subdomain, 
+                                                 has_batch=True, 
+                                                 padding_type=self.padding_type,
+                                                 return_padding=True)
       return [sub_cstate, sub_cboundary]
 
     cstate = self.mapping(cmapping, [cmapping_shape_converter, cmapping_shape_converter],
@@ -244,15 +270,19 @@ class Simulation(object):
   def cstate_to_state(self, decoder, decoder_shape_converter, cstate, cboundary):
 
     def input_generator(cstate_subdomain, cboundary_subdomain):
-      sub_cstate    = numpy_utils.mobius_extract(cstate,    cstate_subdomain,    has_batch=True)
-      sub_cboundary = numpy_utils.mobius_extract(cboundary, cboundary_subdomain, has_batch=True)
+      sub_cstate    = numpy_utils.mobius_extract(cstate,    cstate_subdomain,    
+                                                 has_batch=True, 
+                                                 padding_type=self.padding_type,
+                                                 return_padding=True)
+      sub_cboundary = numpy_utils.mobius_extract(cboundary, cboundary_subdomain, 
+                                                 has_batch=True,
+                                                 padding_type=self.padding_type,
+                                                 return_padding=True)
       return [sub_cstate, sub_cboundary]
 
     [vel, rho] = self.mapping(decoder, [decoder_shape_converter, decoder_shape_converter], 
                               input_generator, self.sim_shape, 
                               self.input_shape)
-    print(np.max(vel))
-    print(np.min(vel))
     return vel, rho
 
   def update_time_stats(self):

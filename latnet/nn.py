@@ -142,26 +142,23 @@ def conv_layer(x, kernel_size, stride, filter_size, name, nonlinearity=None, nor
 
 def mimic_conv_pad(x, kernel_size, stride):
   if stride == 2:
-    x = max_pool(x):
-
+    x = max_pool(x)
   edge_cut = (kernel_size-1)/2
   x = trim_tensor(x, edge_cut)
   return x
 
 def mimic_trans_conv_pad(x, kernel_size, stride):
   if stride == 2:
-    x = upsampleing_resize(x):
-
+    x = upsampleing_resize(x)
   edge_cut = (kernel_size-1)/2
   x = trim_tensor(x, edge_cut)
   return x
 
 def mimic_res_pad(x, kernel_size, stride):
-  if stride == 2:
-    x = max_pool(x):
-
   edge_cut = (kernel_size-1)/2
   x = trim_tensor(x, edge_cut)
+  if stride == 2:
+    x = max_pool(x)
   x = trim_tensor(x, edge_cut)
   return x
 
@@ -220,11 +217,11 @@ def transpose_conv_layer(x, kernel_size, stride, filter_size, name, nonlinearity
     #reshape (transpose conv causes output to have ? size)
     #shape = int_shape(x)
     if  length_input == 2:
-      conv = conv[:,2:-2,2:-2]
+      conv = conv[:,1:-1,1:-1]
       pass
       #conv = tf.reshape(conv, [shape[0], shape[1]*stride, shape[2]*stride, filter_size])
     if  length_input == 3:
-      conv = conv[:,2:-2,2:-2,2:-2]
+      conv = conv[:,1:-1,1:-1,1:-1]
       pass
       #conv = tf.reshape(conv, [shape[0], shape[1]*stride, shape[2]*stride, shape[3]*stride, filter_size])
       #conv = conv[:,2:-2,2:-2,2:-2]

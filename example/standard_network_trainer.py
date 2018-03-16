@@ -35,8 +35,8 @@ class StandardTrainer(Trainer):
         'latnet_network_dir': './network_save',
         'visc': 0.01,
         'lb_to_ln': 128,
-        'input_cshape': '8x8',
-        'max_sim_iters': 600})
+        'input_cshape': '16x16',
+        'max_sim_iters': 200})
 
 if __name__ == '__main__':
   sim = LatNetController(trainer=StandardTrainer)

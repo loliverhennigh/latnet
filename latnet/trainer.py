@@ -87,7 +87,11 @@ class Trainer(object):
         # TODO integrat this into self.saver
         tf_feed_dict = {}
         for name in feed_dict.keys():
-          tf_feed_dict[self._network.in_tensors[name]] = feed_dict[name]
+          if type(feed_dict[name]) is tuple:
+            tf_feed_dict[self._network.in_tensors[name]] = feed_dict[name][0]
+            tf_feed_dict[self._network.in_pad_tensors[name]] = feed_dict[name][1]
+          else:
+            tf_feed_dict[self._network.in_tensors[name]] = feed_dict[name]
         ###
         self._network.saver.save_summary(self._network.sess, tf_feed_dict, int(self._network.run('gen_global_step')))
 

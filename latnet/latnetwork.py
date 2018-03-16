@@ -23,7 +23,8 @@ class LatNet(object):
     # in and out tensors
     self.in_tensors = {}
     self.out_tensors = {}
-    self.pad_tensors = {}
+    self.in_pad_tensors = {}
+    self.out_pad_tensors = {}
 
     # shape converter from in_tensor to out_tensor
     self.shape_converters = {}
@@ -342,8 +343,8 @@ class LatNet(object):
       self.add_tensor('state',     (1 + self.DxQy.dims) * [None] + [self.DxQy.Q])
       self.add_tensor('boundary',  (1 + self.DxQy.dims) * [None] + [6])
       self.add_tensor('cstate',    (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
-      self.add_tensor('cboundary', (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
-      self.add_tensor('cboundary_decoder', (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
+      self.add_tensor('cboundary', (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression])
+      self.add_tensor('cboundary_decoder', (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression])
       self.add_phase() 
   
       ###### Unroll Graph ######
@@ -573,8 +574,10 @@ class LatNet(object):
     if trim > 0:
       if len(self.out_tensors[in_name].get_shape()) == 4:
         self.out_tensors[out_name] = self.out_tensors[in_name][:,trim:-trim, trim:-trim]
+        self.out_pad_tensors[out_name] = self.out_pad_tensors[in_name][:,trim:-trim, trim:-trim]
       elif len(self.out_tensors[in_name].get_shape()) == 5:
         self.out_tensors[out_name] = self.out_tensors[in_name][:,trim:-trim, trim:-trim, trim:-trim]
+        self.out_pad_tensors[out_name] = self.out_pad_tensors[in_name][:,trim:-trim, trim:-trim, trim:-trim]
 
   def match_trim_tensor(self, in_name, match_name, out_name):
 
@@ -720,7 +723,7 @@ class LatNet(object):
  
   def add_tensor(self, name, shape):
     tensor     = tf.placeholder(tf.float32, shape, name=name)
-    pad_tensor = tf.placeholder(tf.float32, shape[:-1] + [1], name="pad_" + name)
+    pad_tensor = tf.placeholder(tf.float32, shape[:-1] + [1], name=name + "_pad")
     self.in_tensors[name] = tensor
     self.out_tensors[name] = tensor
     self.in_pad_tensors[name] = pad_tensor
@@ -734,6 +737,15 @@ class LatNet(object):
   def rename_tensor(self, old_name, new_name):
     # this may need to be handled with more care
     self.out_tensors[new_name] = self.out_tensors[old_name]
+    if old_name in self.out_pad_tensors.keys():
+      self.out_pad_tensors[new_name] = self.out_pad_tensors[old_name]
+    
+    # add to shape converter
+    for name in self.shape_converters.keys():
+      if name[1] == old_name:
+        self.shape_converters[name[0], new_name] = copy(self.shape_converters[name])
+
+
 
   def lattice_summary(self, in_name, summary_name, 
                       display_norm=True, display_vel=True, display_pressure=True):
@@ -765,7 +777,11 @@ class LatNet(object):
     if feed_dict is not None:
       tf_feed_dict = {}
       for name in feed_dict.keys():
-        tf_feed_dict[self.in_tensors[name]] = feed_dict[name]
+        if type(feed_dict[name]) is tuple:
+          tf_feed_dict[self.in_tensors[name]] = feed_dict[name][0]
+          tf_feed_dict[self.in_pad_tensors[name]] = feed_dict[name][1]
+        else:
+          tf_feed_dict[self.in_tensors[name]] = feed_dict[name]
     else:
       tf_feed_dict=None
 

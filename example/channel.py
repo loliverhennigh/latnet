@@ -55,23 +55,24 @@ def make_boundary(hx, hy, shape):
 
 class ChannelDomain(Domain):
   name = "channel"
-  vel = (0.0, 0.0)
+  vel = (0.05, 0.0)
   sim_shape = [256, 256]
   num_simulations = 20
-  periodic_x = True
-  periodic_y = True
+  periodic_x = False
+  periodic_y = False
+  force = (0.0, 0.0)
 
   def geometry_boundary_conditions(self, hx, hy, shape):
     obj_boundary = make_boundary(hx, hy, shape)
     return obj_boundary
 
   def velocity_boundary_conditions(self, hx, hy, shape):
-    where_velocity = (hx == -2)
+    where_velocity = (hx == 0)
     velocity = self.vel
     return where_velocity, velocity
  
   def density_boundary_conditions(self, hx, hy, shape):
-    where_density = (hx == -2)
+    where_density = (hx == shape[0]-1)
     density = 1.0
     return where_density, density
 

@@ -33,9 +33,9 @@ class SailfishSimulation:
     self.domain = domain(config)
 
     self.padding_type = ['zero', 'zero']
-    if self.periodic_x:
+    if self.domain.periodic_x:
       self.padding_type[0] = 'periodic'
-    if self.periodic_y:
+    if self.domain.periodic_y:
       self.padding_type[1] = 'periodic'
 
   def create_sailfish_simulation(self):
@@ -238,16 +238,17 @@ class SailfishSimulation:
       boundary = np.load(boundary_file)
       boundary = boundary.astype(np.float32)
       boundary = boundary[1:-1,1:-1]
-      pad_boundary = np.ones_like(boundary[...,0:1])
       if subdomain is not None:
-        boundary     = numpy_utils.mobius_extract(boundary, subdomain)
-                                                  padding_type=self.padding_type)
-        pad_boundary = numpy_utils.mobius_extract(pad_boundary, subdomain)
-                                                  padding_type=self.padding_type)
+        boundary, pad_boundary = numpy_utils.mobius_extract(boundary, subdomain,
+                                              padding_type=self.padding_type,
+                                              return_padding=True)
     if add_batch:
       boundary     = np.expand_dims(boundary, axis=0)
       pad_boundary = np.expand_dims(pad_boundary, axis=0)
-    return (boundary, pad_boundary)
+    if subdomain is not None:
+      return (boundary, pad_boundary)
+    else:
+      return boundary
 
   def read_state(self, iteration, subdomain=None, add_batch=False):
     # load flow file
@@ -258,16 +259,18 @@ class SailfishSimulation:
     state = np.swapaxes(state, 0, 1)
     state = np.swapaxes(state, 1, 2)
     state = self.DxQy.subtract_lattice(state)
-    pad_state = np.ones_like(state[...,0:1])
     if subdomain is not None:
-      state    = numpy_utils.mobius_extract(state, subdomain)
-                                            padding_type=self.padding_type)
-      pad_state = numpy_utils.mobius_extract(pad_state, subdomain)
-                                             padding_type=self.padding_type)
+      state, pad_state = numpy_utils.mobius_extract(state, subdomain,
+                                            padding_type=self.padding_type,
+                                            return_padding=True)
     if add_batch:
-      state     = np.expand_dims(state, axis=0)
-      pad_state = np.expand_dims(pad_state, axis=0)
-    return (state, pad_state)
+      state = np.expand_dims(state, axis=0)
+      if subdomain is not None:
+        pad_state = np.expand_dims(pad_state, axis=0)
+    if subdomain is not None:
+      return (state, pad_state)
+    else:
+      return state
 
   def read_vel_rho(self, iteration, subdomain=None, add_batch=False):
     state = self.read_state(iteration, subdomain, add_batch=add_batch)
@@ -296,10 +299,9 @@ class TrainSailfishSimulation(SailfishSimulation):
     # read seq states
     seq_state = []
     for i in xrange(seq_length):
-      seq_state.append(self.read_state(ind + i, seq_state_subdomain)
+      seq_state.append(self.read_state(ind + i, seq_state_subdomain))
 
     # rotate data possibly
-    """
     if augment:
       flip = np.random.randint(0,2)
       if flip == 1:
@@ -317,7 +319,6 @@ class TrainSailfishSimulation(SailfishSimulation):
         boundary = rotate_boundary_vel(boundary, rotate)
         boundary_small = np.rot90(boundary_small, k=rotate, axes=(0,1))
         boundary_small = rotate_boundary_vel(boundary_small, rotate)
-    """
 
     return state, boundary, boundary_small, seq_state
 
