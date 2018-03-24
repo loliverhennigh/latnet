@@ -24,14 +24,15 @@ import glob
 class LDCSimulation(Simulation):
   script_name = __file__
   network = StandardNetwork
-  domain = ChannelDomain
+  #domain = ChannelDomain
+  domain = LDCDomain
 
   @classmethod
   def update_defaults(cls, defaults):
     defaults.update({
         'latnet_network_dir': './network_save',
         'run_mode': 'eval',
-        'visc': 0.01,
+        'visc': 0.0005,
         'lb_to_ln': 128,
         'input_cshape': '8x8',
         'input_shape': '256x256',

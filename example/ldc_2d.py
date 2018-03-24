@@ -20,26 +20,27 @@ import cv2
 import glob
 
 def rand_vel():
-  vel_x = np.random.uniform(0.5, 0.4)
-  return (vel_x, 0.0)
+  vel_x = np.random.uniform(0.1, 0.1)
+  return (0.0, vel_x)
 
 class LDCDomain(Domain):
   script_name = __file__
   name = "lid_driven_cavity"
   vel = rand_vel()
-  num_simulations = 2
-  sim_shape = [512, 512]
+  num_simulations = 1
+  sim_shape = [256, 256]
   periodic_x = False
   periodic_y = False
+  force = (0.0, 0.0)
 
   def geometry_boundary_conditions(self, hx, hy, shape):
-    where_boundary = (shape[0]-9 < hx) & (hx <= shape[0]-1)
-    where_boundary = where_boundary | ((0 <= hy) & (hy < 8))
-    where_boundary = where_boundary | ((shape[1]-9 < hy) & (hy <= shape[1]-1))
+    where_boundary = (hx == shape[0]-1)
+    where_boundary = where_boundary | (0 == hy)
+    where_boundary = where_boundary | (shape[1]-1 == hy)
     return where_boundary
 
   def velocity_boundary_conditions(self, hx, hy, shape):
-    where_velocity = (hy == shape[1]-1) & (hx >= 8) & (hx < shape[0]-1)
+    where_velocity = (hx == 0) & (hy != 0) & (hy != shape[1]-1)
     velocity = self.vel
     return where_velocity, velocity
  
@@ -65,7 +66,7 @@ class EmptyTrainer(Trainer):
   @classmethod
   def update_defaults(cls, defaults):
     defaults.update({
-        'visc': 0.1,
+        'visc': 0.001,
         'domain_name': "lid_driven_cavity",
         'run_mode': 'generate_data',
         'mode': 'visualization',

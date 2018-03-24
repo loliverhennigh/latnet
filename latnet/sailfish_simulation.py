@@ -3,10 +3,13 @@ import os
 import psutil as ps
 import glob
 import sys
+from copy import copy
 
 import lattice
 import utils.numpy_utils as numpy_utils
 from utils.python_utils import *
+
+from shape_converter import SubDomain
 
 # import sailfish
 sys.path.append('../sailfish')
@@ -46,6 +49,8 @@ class SailfishSimulation:
     max_iters = self.max_sim_iters
     lb_to_ln = self.lb_to_ln
     visc = self.config.visc
+    print("visc")
+    print(visc)
     periodic_x = self.domain.periodic_x
     periodic_y = self.domain.periodic_y
     if len(shape) == 3:
@@ -84,7 +89,8 @@ class SailfishSimulation:
           'periodic_y': periodic_y,
           'lat_nx': shape[1],
           'lat_ny': shape[0],
-          'checkpoint_from': 0
+          'checkpoint_from': 0,
+          'visc': visc
           })
         if len(shape) == 3:
           defaults.update({
@@ -284,22 +290,24 @@ class TrainSailfishSimulation(SailfishSimulation):
     SailfishSimulation.__init__(self, config, domain, save_dir)
     self.num_cpoints = config.max_sim_iters
     # more configs will probably be added later
+    self.data_points = []
 
-  def read_train_data(self, state_subdomain, boundary_subdomain, boundary_small_subdomain, seq_state_subdomain, seq_length, augment=False):
+  def read_train_data(self, augment=False):
+
+    # select datapoint
+    point_ind = np.random.randint(0, len(self.data_points))
+    data_point = self.data_points[point_ind]
 
     # read state
-    state_files = glob.glob(self.save_dir + "/*.0.cpoint.npz")
-    ind = np.random.randint(1, len(state_files) - seq_length)
-    state = self.read_state(ind, state_subdomain)
+    state = self.read_state(data_point.ind, data_point.state_subdomain)
 
     # read boundary
-    boundary = self.read_boundary(boundary_subdomain)
-    boundary_small = self.read_boundary(boundary_small_subdomain)
+    boundary = self.read_boundary(data_point.state_subdomain)
 
     # read seq states
     seq_state = []
-    for i in xrange(seq_length):
-      seq_state.append(self.read_state(ind + i, seq_state_subdomain))
+    for i in xrange(data_point.seq_length):
+      seq_state.append(self.read_state(data_point.ind + i, data_point.seq_state_subdomain))
 
     # rotate data possibly
     if augment:
@@ -320,7 +328,21 @@ class TrainSailfishSimulation(SailfishSimulation):
         boundary_small = np.rot90(boundary_small, k=rotate, axes=(0,1))
         boundary_small = rotate_boundary_vel(boundary_small, rotate)
 
-    return state, boundary, boundary_small, seq_state
+    return state, boundary, seq_state
+
+  def data_point_to_data(self, data_point, add_batch=False):
+    # read state
+    state = self.read_state(data_point.ind, data_point.state_subdomain, add_batch)
+
+    # read boundary
+    boundary = self.read_boundary(data_point.state_subdomain, add_batch)
+
+    # read seq states
+    seq_state = []
+    for i in xrange(data_point.seq_length):
+      seq_state.append(self.read_state(data_point.ind + i, data_point.seq_state_subdomain, add_batch))
+
+    return state, boundary, seq_state
 
   def generate_train_data(self):
     self.new_sim(self.num_cpoints)
@@ -336,6 +358,41 @@ class TrainSailfishSimulation(SailfishSimulation):
       need = True 
     return need 
 
+  def add_data_point(self, data_point):
+    self.data_points.append(data_point)
+
+  def make_rand_data_points(self, num_points, seq_length, state_shape_converter, seq_state_shape_converter, input_cshape, cratio):
+    for i in xrange(num_points):
+      # make datapoint and add to list
+      self.data_points.append(self.rand_data_point(seq_length, state_shape_converter, seq_state_shape_converter, input_cshape, cratio))
+
+  def rand_data_point(self, seq_length, state_shape_converter, seq_state_shape_converter, input_cshape, cratio):
+    # select random index
+    state_files = glob.glob(self.save_dir + "/*.0.cpoint.npz")
+    ind = np.random.randint(1, len(state_files) - seq_length)
+
+    # select random pos to grab from data
+    rand_pos = [np.random.randint(-input_cshape[0], self.sim_shape[0]/cratio),
+                np.random.randint(-input_cshape[1], self.sim_shape[1]/cratio)]
+    cstate_subdomain = SubDomain(rand_pos, input_cshape)
+
+    # get state subdomain and geometry_subdomain
+    state_subdomain = state_shape_converter.out_in_subdomain(copy(cstate_subdomain))
+
+    # get seq state subdomain
+    seq_state_subdomain = seq_state_shape_converter.in_out_subdomain(copy(state_subdomain))
+
+    # data point and return it
+    return DataPoint(ind, seq_length, state_subdomain, seq_state_subdomain)
+
+class DataPoint:
+
+  def __init__(self, ind, seq_length, state_subdomain, seq_state_subdomain):
+    self.ind = ind
+    self.seq_length = seq_length
+    self.state_subdomain = state_subdomain
+    self.seq_state_subdomain = seq_state_subdomain
+
 def flip_boundary_vel(boundary):
   boundary[...,1] = -boundary[...,1]
   return boundary
@@ -346,7 +403,4 @@ def rotate_boundary_vel(boundary, k):
     boundary[...,0] = -boundary[...,1]
     boundary[...,1] = boundary[...,0]
   return boundary
-
-
-
 

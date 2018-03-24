@@ -174,7 +174,7 @@ class LatNet(object):
               # normalize loss to make comparable for diffrent input sizes
               # TODO remove 100.0 (only in to make comparable to previous code)
               #l2_factor = 1.0*(256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
-              l2_factor = 100.0*(256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
+              l2_factor = 1.0*(256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
               self.l2_loss(true_name='true_state' + seq_str(j),
                            pred_name='pred_state' + seq_str(j),
                            loss_name='loss_l2' + seq_str(j),
@@ -343,7 +343,9 @@ class LatNet(object):
       self.add_tensor('state',     (1 + self.DxQy.dims) * [None] + [self.DxQy.Q])
       self.add_tensor('boundary',  (1 + self.DxQy.dims) * [None] + [6])
       self.add_tensor('cstate',    (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
+      self.add_tensor('cboundary_first', (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression])
       self.add_tensor('cboundary', (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression])
+      self.add_tensor('cboundary_decoder', (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression])
       self.add_tensor('cboundary_decoder', (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression])
       self.add_phase() 
   
@@ -351,6 +353,13 @@ class LatNet(object):
       # encoders
       self._encoder_state(in_name="state", out_name="cstate_from_state")
       self._encoder_boundary(in_name="boundary", out_name="cboundary_from_boundary")
+  
+   
+      # compression mapping first step
+      self._compression_mapping(in_cstate_name="cstate", 
+                                in_cboundary_name="cboundary_first",
+                                out_name="cstate_from_cstate_first",
+                                start_apply_boundary=True)
   
       # compression mapping
       self._compression_mapping(in_cstate_name="cstate", 
@@ -380,18 +389,25 @@ class LatNet(object):
     cmapping         = lambda x, y: self.run('cstate_from_cstate', 
                                  feed_dict={'cstate':x,
                                             'cboundary':y})
-    decoder           = lambda x, y: self.run(['vel_from_cstate', 
-                                            'rho_from_cstate'], 
+    cmapping_first   = lambda x, y: self.run('cstate_from_cstate_first', 
+                                 feed_dict={'cstate':x,
+                                            'cboundary_first':y})
+    decoder_vel_rho  = lambda x, y: self.run(['vel_from_cstate', 
+                                              'rho_from_cstate'], 
                                  feed_dict={'cstate':x,
                                             'cboundary_decoder':y})
+    decoder_state    = lambda x, y: self.run('state_from_cstate',
+                                 feed_dict={'cstate':x,
+                                            'cboundary_decoder':y})
+
     # shape converters
     encoder_shape_converter = self.shape_converters['state', 'cstate_from_state']
     cmapping_shape_converter = self.shape_converters['cstate', 'cstate_from_cstate']
     decoder_shape_converter = self.shape_converters['cstate', 'state_from_cstate']
 
-    return (state_encoder, boundary_encoder, cmapping, decoder,
-            encoder_shape_converter, cmapping_shape_converter, 
-            decoder_shape_converter) # This should probably be cleaned up
+    return (state_encoder, boundary_encoder, cmapping, cmapping_first, decoder_vel_rho,
+            decoder_state, encoder_shape_converter, cmapping_shape_converter, 
+            decoder_shape_converter) # TODO This should probably be cleaned up
 
   def fc(self, in_name, out_name,
          hidden, weight_name='fc', 
@@ -635,10 +651,10 @@ class LatNet(object):
       self.lattice_summary(in_name=true_name + '_' + pred_name, summary_name='loss_image')
 
     if normalize == 'std':
-      mean, var = tf.nn.moments(self.out_tensors[true_name], axes=[1,2,3], keep_dims=True)
+      mean, var = tf.nn.moments(self.out_tensors[true_name], axes=[1,2], keep_dims=True)
       std = tf.sqrt(var)
-      self.out_tensors[true_name] = self.out_tensors[true_name] / (100.0 * std + 1e-2) # TODO take out 10.0, only in to compare with previous code
-      self.out_tensors[pred_name] = self.out_tensors[pred_name] / (100.0 * std + 1e-2)
+      self.out_tensors[true_name] = self.out_tensors[true_name] / (1000.0 * std + 0.0001) # TODO take out 10.0, only in to compare with previous code
+      self.out_tensors[pred_name] = self.out_tensors[pred_name] / (1000.0 * std + 0.0001)
       self.out_tensors[loss_name] = tf.nn.l2_loss(tf.stop_gradient(self.out_tensors[ true_name]) 
                                                 - self.out_tensors[pred_name])
     elif normalize == 'vel':

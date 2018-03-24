@@ -26,17 +26,18 @@ import glob
 class StandardTrainer(Trainer):
   script_name = __file__
   network = StandardNetwork
-  domains = [ChannelDomain]
+  #domains = [ChannelDomain]
+  domains = [LDCDomain]
 
   @classmethod
   def update_defaults(cls, defaults):
     defaults.update({
         'train_sim_dir': './train_data',
         'latnet_network_dir': './network_save',
-        'visc': 0.01,
+        'visc': 0.0005,
         'lb_to_ln': 128,
         'input_cshape': '16x16',
-        'max_sim_iters': 200})
+        'max_sim_iters': 1000})
 
 if __name__ == '__main__':
   sim = LatNetController(trainer=StandardTrainer)

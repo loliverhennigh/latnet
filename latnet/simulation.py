@@ -80,8 +80,8 @@ class Simulation(object):
 
     # unroll network
     self._network = self.network(self.config)
-    (state_encoder, boundary_encoder, cmapping, decoder,
-      encoder_shape_converter, cmapping_shape_converter, 
+    (state_encoder, boundary_encoder, cmapping, cmapping_first, decoder_vel_rho,
+      decoder_state, encoder_shape_converter, cmapping_shape_converter, 
       decoder_shape_converter) = self._network.eval_unroll()
 
     # possibly generate start state and boundary (really just used for testing)
@@ -103,6 +103,15 @@ class Simulation(object):
 
     # run simulation
     for i in xrange(self.num_iters):
+      if i == 0:
+        cstate = self.cstate_to_cstate(cmapping_first, 
+                                       cmapping_shape_converter, 
+                                       cstate, cboundary)
+      else:
+        cstate = self.cstate_to_cstate(cmapping, 
+                                       cmapping_shape_converter, 
+                                       cstate, cboundary)
+
       if i % self.print_stats_every == 0:
         # print time states
         self.update_time_stats()
@@ -111,20 +120,15 @@ class Simulation(object):
 
       if i % self.sim_save_every == 0:
         # decode state
-        vel, rho = self.cstate_to_state(decoder, 
-                                        decoder_shape_converter, 
-                                        cstate,
-                                        cboundary)
+        vel, rho = self.cstate_to_vel_rho(decoder_vel_rho, 
+                                          decoder_shape_converter, 
+                                          cstate,
+                                          cboundary)
 
         # vis and save
         self.vis.update_vel_rho(i, vel, rho)
         self.saver.save(i, vel, rho, cstate)
 
-      cstate_new = self.cstate_to_cstate(cmapping, 
-                                     cmapping_shape_converter, 
-                                     cstate, cboundary)
-      print(np.sum(np.abs(cstate_new - cstate)))
-      cstate = cstate_new
 
     # generate comparision simulation
     if self.compare:
@@ -140,7 +144,6 @@ class Simulation(object):
           # this functionality will probably be changed TODO
           true_vel, true_rho = self.sailfish_runner.read_vel_rho(i + self.sim_restore_iter + 1, add_batch=True)
           generated_vel, generated_rho = self.saver.read_vel_rho(i, add_batch=True)
-          print(np.sum(np.abs(true_vel - generated_vel)))
           self.vis.update_compare_vel_rho(i, true_vel, true_rho, generated_vel, generated_rho)
 
   def input_boundary(self, input_subdomain):
@@ -172,14 +175,11 @@ class Simulation(object):
       output_subdomain.zero_pos()
 
       # generate input with input generator
-      print(input_subdomain)
       sub_input = input_generator(*input_subdomain)
 
       # perform mapping function and extract out if needed
       if not (type(sub_input) is list):
         sub_input = [sub_input]
-      print(sub_input[0][0].shape)
-      print(sub_input[0][1].shape)
       sub_output = mapping(*sub_input)
       if not (type(sub_output) is list):
         sub_output = [sub_output]
@@ -268,6 +268,24 @@ class Simulation(object):
     return cstate
 
   def cstate_to_state(self, decoder, decoder_shape_converter, cstate, cboundary):
+
+    def input_generator(cstate_subdomain, cboundary_subdomain):
+      sub_cstate    = numpy_utils.mobius_extract(cstate,    cstate_subdomain,    
+                                                 has_batch=True, 
+                                                 padding_type=self.padding_type,
+                                                 return_padding=True)
+      sub_cboundary = numpy_utils.mobius_extract(cboundary, cboundary_subdomain, 
+                                                 has_batch=True,
+                                                 padding_type=self.padding_type,
+                                                 return_padding=True)
+      return [sub_cstate, sub_cboundary]
+
+    state = self.mapping(decoder, [decoder_shape_converter, decoder_shape_converter], 
+                              input_generator, self.sim_shape, 
+                              self.input_shape)
+    return state
+
+  def cstate_to_vel_rho(self, decoder, decoder_shape_converter, cstate, cboundary):
 
     def input_generator(cstate_subdomain, cboundary_subdomain):
       sub_cstate    = numpy_utils.mobius_extract(cstate,    cstate_subdomain,    

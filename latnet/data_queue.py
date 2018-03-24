@@ -19,6 +19,7 @@ from Queue import Queue
 from shape_converter import SubDomain
 import lattice
 import threading
+from utils.text_histogram import vector_to_text_hist
 
 class DataQueue:
   def __init__(self, config, domains, shape_converters):
@@ -38,7 +39,14 @@ class DataQueue:
     self.DxQy = lattice.TYPES[config.DxQy]()
     self.input_cshape = str2shape(config.input_cshape)
 
+    # shape converter
     self.shape_converters = shape_converters
+    gpu_str = '_gpu_' + str(self.gpus[0])
+    self.state_shape_converter = self.shape_converters['state' + gpu_str,
+                            'cstate_' + str(self.seq_length-1) + gpu_str]
+    self.seq_state_shape_converter = self.shape_converters['state' + gpu_str, 
+                            'pred_state_' + str(self.seq_length-1) + gpu_str]
+    self.cratio = pow(2, self.nr_downsamples)
 
     # make queue
     self.max_queue = config.max_queue
@@ -47,12 +55,20 @@ class DataQueue:
 
     # generate base dataset and start queues
     self.sim_runners = []
+    start_num_data_points = 1000
     for domain in domains:
       print("generating " + domain.name + " dataset")
       for i in tqdm(xrange(domain.num_simulations)):
         sim = TrainSailfishSimulation(config, domain, self.base_dir + '/sim_' + domain.name + '_' + str(i).zfill(4))
         if sim.need_to_generate():
           sim.generate_train_data()
+        sim.make_rand_data_points(start_num_data_points, 
+                                 seq_length=self.seq_length,
+                                 state_shape_converter=self.state_shape_converter, 
+                                 seq_state_shape_converter=self.seq_state_shape_converter,
+                                 input_cshape=self.input_cshape,
+                                 cratio=self.cratio)
+        self.sim_runners.append(sim)
         thr = threading.Thread(target= (lambda: self.data_worker(sim)))
         thr.daemon = True
         thr.start()
@@ -61,36 +77,35 @@ class DataQueue:
     while True:
       self.queue.get()
 
-      # select random piece to grab from data
-      cratio = pow(2, self.nr_downsamples)
-      rand_pos = [np.random.randint(-self.input_cshape[0], sim.sim_shape[0]/cratio),
-                  np.random.randint(-self.input_cshape[1], sim.sim_shape[1]/cratio)]
-      #rand_pos = [-self.input_cshape[0],-self.input_cshape[1]]
-      cstate_subdomain = SubDomain(rand_pos, self.input_cshape)
-
-      # get state subdomain and geometry_subdomain
-      gpu_str = '_gpu_' + str(self.gpus[0])
-      state_shape_converter = self.shape_converters['state' + gpu_str,
-                                                   'cstate_' + str(self.seq_length-1) + gpu_str]
-      geometry_subdomain = state_shape_converter.out_in_subdomain(copy(cstate_subdomain))
-      state_subdomain = copy(geometry_subdomain)
-
-      # get seq state subdomain
-      seq_state_shape_converter = self.shape_converters['state' + gpu_str, 
-                                                   'pred_state_' + str(self.seq_length-1) + gpu_str]
-      seq_state_subdomain = seq_state_shape_converter.in_out_subdomain(copy(state_subdomain))
-      geometry_small_subdomain = copy(seq_state_subdomain)
-
       # get geometry and lat data
-      state, geometry, geometry_small, seq_state = sim.read_train_data(state_subdomain,
-                                                             geometry_subdomain,
-                                                             geometry_small_subdomain,
-                                                             seq_state_subdomain,
-                                                             self.seq_length)
+      state, geometry, seq_state = sim.read_train_data()
 
       # add to que
-      self.queue_batches.append((state, geometry, geometry_small, seq_state))
+      self.queue_batches.append((state, geometry, seq_state))
       self.queue.task_done()
+
+  def rand_data_point(self):
+    sim_index = np.random.randint(0, len(self.sim_runners))
+    data_point = self.sim_runners[sim_index].rand_data_point(
+                                 seq_length=self.seq_length,
+                                 state_shape_converter=self.state_shape_converter, 
+                                 seq_state_shape_converter=self.seq_state_shape_converter,
+                                 input_cshape=self.input_cshape,
+                                 cratio=self.cratio)
+    state, geometry, seq_state = self.sim_runners[sim_index].data_point_to_data(data_point, add_batch=True)
+
+    # make feed dict
+    feed_dict = {}
+    gpu_str = '_gpu_' + str(self.gpus[0])
+    feed_dict['state' + gpu_str] = state
+    feed_dict['boundary' + gpu_str] = geometry
+    for j in xrange(self.seq_length):
+      feed_dict['true_state_' + str(j) + gpu_str] = seq_state[j][0]
+
+    return sim_index, data_point, feed_dict
+
+  def add_data_point(self, sim_index, data_point):
+    self.sim_runners[sim_index].add_data_point(data_point)
  
   def minibatch(self):
 
@@ -109,8 +124,6 @@ class DataQueue:
     batch_pad_state = []
     batch_geometry = []
     batch_pad_geometry = []
-    #batch_geometry_small = []
-    #batch_pad_geometry_small = []
     batch_seq_state = []
     batch_pad_seq_state = []
     for i in xrange(self.batch_size*len(self.gpus)): 
@@ -118,10 +131,8 @@ class DataQueue:
       batch_pad_state.append(self.queue_batches[0][0][1])
       batch_geometry.append(self.queue_batches[0][1][0])
       batch_pad_geometry.append(self.queue_batches[0][1][1])
-      #batch_geometry_small.append(self.queue_batches[0][2][0])
-      #batch_pad_geometry_small.append(self.queue_batches[0][2][1])
-      batch_seq_state.append([x[0] for x in self.queue_batches[0][3]])
-      batch_pad_seq_state.append([x[1] for x in self.queue_batches[0][3]])
+      batch_seq_state.append([x[0] for x in self.queue_batches[0][2]])
+      batch_pad_seq_state.append([x[1] for x in self.queue_batches[0][2]])
       self.queue_batches.pop(0)
 
     # concate batches together
@@ -129,8 +140,6 @@ class DataQueue:
     batch_pad_state = np.stack(batch_pad_state, axis=0)
     batch_geometry = np.stack(batch_geometry, axis=0)
     batch_pad_geometry = np.stack(batch_pad_geometry, axis=0)
-    #batch_geometry_small = np.stack(batch_geometry_small, axis=0)
-    #batch_pad_geometry_small = np.stack(batch_pad_geometry_small, axis=0)
     new_batch_seq_state = []
     new_batch_pad_seq_state = []
     for i in xrange(self.seq_length):
@@ -147,20 +156,35 @@ class DataQueue:
                                       batch_pad_state[i*self.batch_size:(i+1)*self.batch_size])
       feed_dict['boundary' + gpu_str] = (batch_geometry[i*self.batch_size:(i+1)*self.batch_size],
                                          batch_pad_geometry[i*self.batch_size:(i+1)*self.batch_size])
-      #feed_dict['boundary_small' + gpu_str] = batch_geometry_small[i*self.batch_size:(i+1)*self.batch_size]
       for j in xrange(self.seq_length):
         feed_dict['true_state_' + str(j) + gpu_str] = batch_seq_state[j][i*self.batch_size:(i+1)*self.batch_size]
       
     return feed_dict
+
+  def num_data_points(self):
+    num_points = 0
+    for i in xrange(len(self.sim_runners)):
+      num_points += len(self.sim_runners[i].data_points)
+    return num_points
+
+  def ind_histogram(self):
+    inds = []
+    for i in xrange(len(self.sim_runners)):
+      for j in xrange(len(self.sim_runners[i].data_points)):
+        inds.append(self.sim_runners[i].data_points[j].ind)
+    inds = np.array(inds)
+    return vector_to_text_hist(inds, bins=10)
 
   def queue_stats(self):
     stats = {}
     stats['percent full'] = int(100*float(len(self.queue_batches))/float(self.max_queue))
     stats['total_wait_time'] = int(self.waiting_time)
     stats['queue_waited'] = self.needed_to_wait
+    stats['num_data_points'] = self.num_data_points()
+    stats['ind_histogram'] = self.ind_histogram()
     if len(self.queue_batches) > 1:
       stats['input_shape'] = self.queue_batches[0][0][0].shape
-      stats['output_shape'] = self.queue_batches[0][3][0][0].shape
+      stats['output_shape'] = self.queue_batches[0][2][0][0].shape
     self.needed_to_wait = False
     return stats
 
