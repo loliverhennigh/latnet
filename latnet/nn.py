@@ -258,8 +258,13 @@ def downsample(x, sampling="avg"):
   return x
 
 def upsampleing_resize(x):
-  x_shape = tf.shape(x)
-  x = tf.image.resize_nearest_neighbor(x, [2*x_shape[1], 2*x_shape[2]])
+  if len(x.get_shape()) == 4:
+    x_shape = tf.shape(x)
+    x = tf.image.resize_nearest_neighbor(x, [2*x_shape[1], 2*x_shape[2]])
+  else:
+    x = tf.concat([x,x], axis=1)
+    x = tf.concat([x,x], axis=2)
+    x = tf.concat([x,x], axis=3)
   return x
 
 def avg_pool(x):

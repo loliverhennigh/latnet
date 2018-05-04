@@ -118,7 +118,7 @@ class StandardNetwork(LatNet):
       self.split_tensor(in_name=in_cboundary_name,
                         out_names=[in_cboundary_name + "_apply",
                                    in_cboundary_name + "_mask"],
-                        num_split=2, axis=3)
+                        num_split=2, axis=-1)
       self.image_combine(a_name=in_cstate_name, 
                          b_name=in_cboundary_name + "_apply",
                          mask_name=in_cboundary_name + "_mask",
@@ -145,7 +145,7 @@ class StandardNetwork(LatNet):
     self.split_tensor(in_name=in_cboundary_name,
                       out_names=[in_cboundary_name + "_apply",
                                  in_cboundary_name + "_mask"],
-                      num_split=2, axis=3)
+                      num_split=2, axis=-1)
     self.image_combine(a_name=out_name, 
                        b_name=in_cboundary_name + "_apply",
                        mask_name=in_cboundary_name + "_mask",
@@ -182,22 +182,6 @@ class StandardNetwork(LatNet):
                     kernel_size=4, stride=2,
                     filter_size=lattice_size,
                     weight_name="last_up_conv")
-  
-    """ 
-    self.concat_tensors(in_names=[in_boundary_name, out_name],
-                        out_name=out_name, axis=-1) # concat on feature
- 
-    self.conv(in_name=out_name, out_name=out_name,
-              kernel_size=3, stride=1,
-              nonlinearity=nonlinearity,
-              filter_size=64,
-              weight_name="boundary_last_conv")
-  
-    self.conv(in_name=out_name, out_name=out_name,
-              kernel_size=3, stride=1,
-              filter_size=lattice_size,
-              weight_name="last_conv")
-    """ 
   
   # discriminator
   def discriminator_conditional(self, in_boundary_name, in_state_name, in_seq_state_names, out_name):

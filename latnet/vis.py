@@ -39,6 +39,10 @@ class Visualizations:
     return feild
 
   def vel_rho_to_frame(self, vel, rho):
-    vel = np.sqrt(np.square(vel[0,:,:,0]) + np.square(vel[0,:,:,1]))
-    rho = rho[0,:,:,0]
+    if self.DxQy.dims == 2:
+      vel = np.sqrt(np.square(vel[0,:,:,0]) + np.square(vel[0,:,:,1]))
+      rho = rho[0,:,:,0]
+    elif self.DxQy.dims == 3:
+      vel = np.sqrt(np.square(vel[0,...,0,0]) + np.square(vel[0,...,0,1]))
+      rho = rho[0,...,0,0]
     return np.concatenate([vel, rho], axis=0)

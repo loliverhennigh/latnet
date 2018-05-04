@@ -50,8 +50,18 @@ class Trainer(object):
   def make_data_queue(self):
     # add script name to domains
     for domain in self.domains:
-      domain.script_name = self.script_name
-    self.data_queue = DataQueue(self.config, self.domains, self._network.train_shape_converter())
+      if domain is not None:
+        domain.script_name = self.script_name
+    self.data_queue_train = DataQueue(self.config, 
+                                      self.config.train_sim_dir + '/train',
+                                      self.domains, 
+                                      self._network.train_shape_converter(), 
+                                      self.start_num_data_points_test)
+    self.data_queue_test = DataQueue(self.config, 
+                                     self.config.train_sim_dir + '/test' , 
+                                     self.domains, 
+                                     self._network.train_shape_converter(), 
+                                     self.start_num_data_points_test)
 
   def train(self):
  
@@ -60,7 +70,7 @@ class Trainer(object):
 
     while True: 
       # get batch of data
-      feed_dict = self.data_queue.minibatch()
+      feed_dict = self.data_queue_train.minibatch()
       feed_dict['phase'] = 1
 
       # perform optimization step for gen
@@ -84,7 +94,7 @@ class Trainer(object):
       # print required data and save
       step = self._network.run('gen_global_step')
       if step % steps_per_print == 0:
-        self.print_stats(self.loss_stats, self.time_stats, self.data_queue.queue_stats(), step)
+        self.print_stats(self.loss_stats, self.time_stats, self.data_queue_train.queue_stats(), step)
         # TODO integrat this into self.saver
         tf_feed_dict = {}
         for name in feed_dict.keys():
@@ -99,9 +109,22 @@ class Trainer(object):
       if step % self.config.save_network_freq == 0:
         self._network.saver.save_checkpoint(self._network.sess, int(self._network.run('gen_global_step')))
 
-      if step % 2000 == 0:
-        print("getting new data")
-        self.active_data_add()
+      #if step % 2000 == 0:
+      #  print("getting new data")
+      #  self.active_data_add()
+
+      # test data
+      if step % 1000 == 0:
+        feed_dict = self.data_queue_test.minibatch()
+        feed_dict['phase'] = 1
+        seq_str = lambda x: '_' + str(x) + '_gpu_0'
+        gen_names = []
+        for i in xrange(self.seq_length):
+          gen_names.append('pred_state' + seq_string(i))
+        gen_output = self._network.run(gen_names, feed_dict=feed_dict, return_dict=True)
+        
+        
+        
 
       # end simulation
       if step > self.train_iters:
@@ -111,14 +134,14 @@ class Trainer(object):
     # TODO this should be cleaned up
     loss_data_point_pair = []
     for i in tqdm(xrange(1000)):
-      sim_index, data_point, feed_dict = self.data_queue.rand_data_point()
+      sim_index, data_point, feed_dict = self.data_queue_train.rand_data_point()
       loss_names = ['loss_l2']
       loss_output = self._network.run(loss_names, feed_dict=feed_dict, return_dict=True)
       loss_data_point_pair.append((loss_output['loss_l2'], sim_index, data_point))
 
     loss_data_point_pair.sort() 
     for i in xrange(100):
-      self.data_queue.add_data_point(loss_data_point_pair[-i][1], loss_data_point_pair[-i][2])
+      self.data_queue_train.add_data_point(loss_data_point_pair[-i][1], loss_data_point_pair[-i][2])
 
   def update_loss_stats(self, output):
     names = output.keys()

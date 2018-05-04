@@ -13,6 +13,7 @@ import psutil as ps
 import shutil
 from copy import copy
 from sailfish_simulation import TrainSailfishSimulation
+from john_hopkins_simulation import TrainJohnHopkinsSimulation
 from utils.python_utils import *
 
 from Queue import Queue
@@ -22,14 +23,15 @@ import threading
 from utils.text_histogram import vector_to_text_hist
 
 class DataQueue:
-  def __init__(self, config, domains, shape_converters):
+  def __init__(self, config, base_dir, domains, shape_converters, start_num_data_points):
 
     # base dir where all the xml files are
-    self.base_dir = config.train_sim_dir
+    self.base_dir = base_dir
     self.waiting_time = 0.0
     self.needed_to_wait = False
 
     # configs
+    self.dataset         = config.dataset
     self.batch_size      = config.batch_size
     self.seq_length      = config.seq_length
     self.nr_downsamples  = config.nr_downsamples
@@ -55,14 +57,16 @@ class DataQueue:
 
     # generate base dataset and start queues
     self.sim_runners = []
-    start_num_data_points = 1000
     for domain in domains:
       print("generating " + domain.name + " dataset")
       for i in tqdm(xrange(domain.num_simulations)):
-        sim = TrainSailfishSimulation(config, domain, self.base_dir + '/sim_' + domain.name + '_' + str(i).zfill(4))
+        if self.dataset == "sailfish":
+          sim = TrainSailfishSimulation(config, domain, self.base_dir + '/sim_' + domain.name + '_' + str(i).zfill(4))
+        elif self.dataset == "JHTDB":
+          sim = TrainJohnHopkinsSimulation(config, self.base_dir + '/sim_' + domain.name + '_' + str(i).zfill(4))
         if sim.need_to_generate():
           sim.generate_train_data()
-        sim.make_rand_data_points(start_num_data_points, 
+        sim.make_rand_data_points(start_num_data_points/domain.num_simulations, 
                                  seq_length=self.seq_length,
                                  state_shape_converter=self.state_shape_converter, 
                                  seq_state_shape_converter=self.seq_state_shape_converter,
@@ -78,7 +82,7 @@ class DataQueue:
       self.queue.get()
 
       # get geometry and lat data
-      state, geometry, seq_state = sim.read_train_data()
+      state, geometry, seq_state = sim.read_data()
 
       # add to que
       self.queue_batches.append((state, geometry, seq_state))

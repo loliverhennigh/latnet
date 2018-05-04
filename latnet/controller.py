@@ -27,6 +27,8 @@ class LatNetController(object):
             choices=['batch', 'visualization', 'benchmark'], default='batch'),
       group.add_argument('--run_mode', help='all modes', type=str,
             choices=['generate_data', 'train', 'eval'], default='train')
+      group.add_argument('--dataset', help='all modes', type=str,
+            choices=['sailfish', 'JHTDB'], default='JHTDB')
 
       group = self._config_parser.add_group('Network Details')
       group.add_argument('--latnet_network_dir', help='all mode', type=str,
@@ -72,7 +74,11 @@ class LatNetController(object):
 
       group = self._config_parser.add_group('Data Queue Details')
       group.add_argument('--train_sim_dir', help='train mode', type=str,
-                        default='./train_data/sailfish_sim')
+                        default='./data')
+      group.add_argument('--start_num_data_points_train', help='train mode', type=int,
+                        default=80)
+      group.add_argument('--start_num_data_points_test', help='train mode', type=int,
+                        default=20)
       group.add_argument('--gpu_fraction', help='all mode', type=float,
                         default=0.9)
       group.add_argument('--max_queue', help='all mode', type=int,

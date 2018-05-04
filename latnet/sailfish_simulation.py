@@ -49,8 +49,6 @@ class SailfishSimulation:
     max_iters = self.max_sim_iters
     lb_to_ln = self.lb_to_ln
     visc = self.config.visc
-    print("visc")
-    print(visc)
     periodic_x = self.domain.periodic_x
     periodic_y = self.domain.periodic_y
     if len(shape) == 3:

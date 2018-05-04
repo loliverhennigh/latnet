@@ -79,8 +79,8 @@ class LatNet(object):
         with tf.device('/gpu:%d' % self.gpus[i]):
           # make input state and boundary
           self.add_tensor('state' + gpu_str, (1 + self.DxQy.dims) * [None] + [self.DxQy.Q])
-          self.add_tensor('boundary' + gpu_str, (1 + self.DxQy.dims) * [None] + [6])
-          self.add_tensor('boundary_small' + gpu_str, (1 + self.DxQy.dims) * [None] + [6])
+          self.add_tensor('boundary' + gpu_str, (1 + self.DxQy.dims) * [None] + [self.DxQy.boundary_dims])
+          self.add_tensor('boundary_small' + gpu_str, (1 + self.DxQy.dims) * [None] + [self.DxQy.boundary_dims])
           self.add_phase() 
           if i == 0:
             with tf.device('/cpu:0'):
@@ -122,7 +122,8 @@ class LatNet(object):
                                    out_name="cstate" + seq_str(j))
             self._decoder_state(in_cstate_name="cstate" + seq_str(j), 
                                 in_cboundary_name="cboundary" + gpu_str, 
-                                out_name="pred_state" + seq_str(j))
+                                out_name="pred_state" + seq_str(j),
+                                lattice_size=self.DxQy.Q)
   
             if i == 0:
               with tf.device('/cpu:0'):
@@ -341,7 +342,7 @@ class LatNet(object):
       ###### Inputs to Graph ######
       # make input state and boundary
       self.add_tensor('state',     (1 + self.DxQy.dims) * [None] + [self.DxQy.Q])
-      self.add_tensor('boundary',  (1 + self.DxQy.dims) * [None] + [6])
+      self.add_tensor('boundary',  (1 + self.DxQy.dims) * [None] + [self.DxQy.boundary_dims])
       self.add_tensor('cstate',    (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
       self.add_tensor('cboundary_first', (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression])
       self.add_tensor('cboundary', (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression])
@@ -368,7 +369,7 @@ class LatNet(object):
   
  
       # decoder
-      self._decoder_state(in_cstate_name="cstate", in_cboundary_name="cboundary_decoder", out_name="state_from_cstate")
+      self._decoder_state(in_cstate_name="cstate", in_cboundary_name="cboundary_decoder", out_name="state_from_cstate", lattice_size=self.DxQy.Q)
       self.out_tensors['vel_from_cstate'] = self.DxQy.lattice_to_vel(self.out_tensors['state_from_cstate'])
       self.out_tensors['rho_from_cstate'] = self.DxQy.lattice_to_rho(self.out_tensors['state_from_cstate'])
 
@@ -565,6 +566,8 @@ class LatNet(object):
                    num_split, axis):
 
     # perform split on tensor
+    if axis == -1:
+      axis = len(self.out_tensors[in_name].get_shape())-1
     splited_tensors  = tf.split(self.out_tensors[in_name],
                                 num_split, axis)
     for i in xrange(len(out_names)):
@@ -766,21 +769,33 @@ class LatNet(object):
   def lattice_summary(self, in_name, summary_name, 
                       display_norm=True, display_vel=True, display_pressure=True):
     if display_norm:
-      tf.summary.image(summary_name + '_norm', self.DxQy.lattice_to_norm(self.out_tensors[in_name]))
+      if self.DxQy.dims == 2:
+        tf.summary.image(summary_name + '_norm', self.DxQy.lattice_to_norm(self.out_tensors[in_name]))
+      elif self.DxQy.dims == 3:
+        tf.summary.image(summary_name + '_norm', self.DxQy.lattice_to_norm(self.out_tensors[in_name])[:,0])
     if display_pressure:
-      tf.summary.image(summary_name + '_rho', self.DxQy.lattice_to_rho(self.out_tensors[in_name]))
+      if self.DxQy.dims == 2:
+        tf.summary.image(summary_name + '_rho', self.DxQy.lattice_to_rho(self.out_tensors[in_name]))
+      elif self.DxQy.dims == 3:
+        tf.summary.image(summary_name + '_rho', self.DxQy.lattice_to_rho(self.out_tensors[in_name])[:,0])
     if display_vel:
-      vel = self.DxQy.lattice_to_vel(self.out_tensors[in_name])
-      tf.summary.image(summary_name + '_vel_x', vel[...,0:1])
-      tf.summary.image(summary_name + '_vel_y', vel[...,1:2])
+      if self.DxQy.dims == 2:
+        vel = self.DxQy.lattice_to_vel(self.out_tensors[in_name])
+        tf.summary.image(summary_name + '_vel_x', vel[...,0:1])
+        tf.summary.image(summary_name + '_vel_y', vel[...,1:2])
+      elif self.DxQy.dims == 3:
+        vel = self.DxQy.lattice_to_vel(self.out_tensors[in_name])[:,0]
+        tf.summary.image(summary_name + '_vel_x', vel[...,0:1])
+        tf.summary.image(summary_name + '_vel_y', vel[...,1:2])
 
   def boundary_summary(self, in_name, summary_name):
-    tf.summary.image('physical_boundary', self.out_tensors[in_name][...,0:1])
-    tf.summary.image('vel_x_boundary', self.out_tensors[in_name][...,1:2])
-    tf.summary.image('vel_y_boundary', self.out_tensors[in_name][...,2:3])
-    if len(self.out_tensors[in_name].get_shape()) == 5:
-      tf.summary.image('vel_z_boundary', self.out_tensors[in_name][...,3:4])
-    tf.summary.image('density_boundary', self.out_tensors[in_name][...,-1:])
+    if self.DxQy.dims == 2:
+      tf.summary.image('physical_boundary', self.out_tensors[in_name][...,0:1])
+      tf.summary.image('vel_x_boundary', self.out_tensors[in_name][...,1:2])
+      tf.summary.image('vel_y_boundary', self.out_tensors[in_name][...,2:3])
+      if len(self.out_tensors[in_name].get_shape()) == 5:
+        tf.summary.image('vel_z_boundary', self.out_tensors[in_name][...,3:4])
+      tf.summary.image('density_boundary', self.out_tensors[in_name][...,-1:])
 
   def run(self, out_names, feed_dict=None, return_dict=False):
     # convert out_names to tensors 
