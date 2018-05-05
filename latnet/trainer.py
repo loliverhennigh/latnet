@@ -114,7 +114,7 @@ class Trainer(object):
       #  self.active_data_add()
 
       # test data
-      if step % 1000 == 0:
+      if step % 100 == 0:
         feed_dict = self.data_queue_test.minibatch()
         feed_dict['phase'] = 1
         seq_str = lambda x: '_' + str(x) + '_gpu_0'
@@ -122,13 +122,32 @@ class Trainer(object):
         for i in xrange(self.seq_length):
           gen_names.append('pred_state' + seq_string(i))
         gen_output = self._network.run(gen_names, feed_dict=feed_dict, return_dict=True)
-        
-        
-        
+        for key in feed_dict.keys():
+          if 'true' not in key:
+            feed_dict.pop(key)
+        self.save_test_sample(feed_dict, gen_output)
 
       # end simulation
       if step > self.train_iters:
         break
+
+  def save_test_sample(self, true_dict, gen_dict):
+    save_dir = self.network_dir + '/snapshot/'
+    try:
+      os.makedirs(save_dir)
+    except:
+      pass
+    for key in true_dict.keys():
+      np.save(save_dir + key, true_dict[key])
+      true_dict[key]
+      # probably make method for this or remove the image save
+      plt.imshow(self.DxQy.lattice_to_norm(true_dict[key])[0,0])
+      plt.figsave(save_dir + key + '.png')
+    for key in gen_dict.keys():
+      np.save(save_dir + key, true_dict[key])
+      # probably make method for this or remove the image save
+      plt.imshow(self.DxQy.lattice_to_norm(gen_dict[key])[0,0])
+      plt.figsave(save_dir + key + '.png')
 
   def active_data_add(self):
     # TODO this should be cleaned up

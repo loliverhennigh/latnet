@@ -109,18 +109,12 @@ class TrainJohnHopkinsSimulation(JohnHopkinsSimulation):
   def __init__(self, config, save_dir):
     JohnHopkinsSimulation.__init__(self, config, save_dir)
     # more configs will probably be added later
-    train_test_split = 0.8
     self.data_points = []
 
-  def read_data(self, augment=False, train=True):
+  def read_data(self, augment=False):
 
     # select datapoint
-    while True:
-      point_ind = np.random.randint(0, len(self.data_points))
-      if (self.data_points[point_ind].train == 1) and train:
-        break
-      elif (self.data_points[point_ind].train == 0) and (not train):
-        break
+    point_ind = np.random.randint(0, len(self.data_points))
     data_point = self.data_points[point_ind]
 
     # read state
@@ -206,9 +200,6 @@ class TrainJohnHopkinsSimulation(JohnHopkinsSimulation):
     # select random index
     ind = np.random.randint(0, (5024/self.step_ratio)-seq_length)
 
-    # select if in train or test set
-    train = np.random.randint(0,2)
-
     # select random pos to grab from data
     rand_pos = [np.random.randint(input_cshape[0], self.sim_shape[0]/cratio - input_cshape[0]),
                 np.random.randint(input_cshape[1], self.sim_shape[1]/cratio - input_cshape[1]),
@@ -227,7 +218,7 @@ class TrainJohnHopkinsSimulation(JohnHopkinsSimulation):
       self.download_datapoint(seq_state_subdomain, ind+i)
 
     # data point and return it
-    return DataPoint(ind, train, seq_length, state_subdomain, seq_state_subdomain)
+    return DataPoint(ind, seq_length, state_subdomain, seq_state_subdomain)
 
   def need_to_generate(self):
     return False
