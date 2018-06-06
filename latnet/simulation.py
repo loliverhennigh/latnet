@@ -108,29 +108,23 @@ class Simulation(object):
       self.start_boundary = None
 
     # generate compressed state
+    print("computeing compressed state")
     cstate    = self.state_to_cstate(state_encoder, 
                                      encoder_shape_converter)
+    self.start_state = None
     cboundary = self.boundary_to_cboundary(boundary_encoder, 
                                            encoder_shape_converter)
+    self.start_boundary = None
 
     # run simulation
     for i in xrange(self.num_iters):
-      if i == 0:
-        cstate = self.cstate_to_cstate(cmapping_first, 
-                                       cmapping_shape_converter, 
-                                       cstate, cboundary)
-      else:
-        cstate = self.cstate_to_cstate(cmapping, 
-                                       cmapping_shape_converter, 
-                                       cstate, cboundary)
 
       if i % self.print_stats_every == 0:
         # print time states
         self.update_time_stats()
         self.print_stats(self.time_stats, i)
 
-
-      if i % self.sim_save_every == 0:
+      if (i+1) % self.sim_save_every == 0:
         # decode state
         vel, rho = self.cstate_to_vel_rho(decoder_vel_rho, 
                                           decoder_shape_converter, 
@@ -140,23 +134,46 @@ class Simulation(object):
         # vis and save
         self.vis.update_vel_rho(i, vel, rho)
         self.saver.save(i, vel, rho, cstate)
+        vel = None
+        rho = None
 
+      if i == 0:
+        cstate = self.cstate_to_cstate(cmapping_first, 
+                                       cmapping_shape_converter, 
+                                       cstate, cboundary)
+      else:
+        cstate = self.cstate_to_cstate(cmapping, 
+                                       cmapping_shape_converter, 
+                                       cstate, cboundary)
 
     # generate comparision simulation
     if self.compare:
-      if self.sailfish_runner is not None:
-        self.sailfish_runner.restart_sim(self.num_iters)
-      else:
-        self.sailfish_runner = SailfishSimulation(self.config, self.domain, self.sim_dir + '/sailfish')
-        self.sailfish_runner.new_sim(self.num_iters)
+      if self.dataset == 'sailfish':
+        if self.sailfish_runner is not None:
+          self.sailfish_runner.restart_sim(self.num_iters)
+        else:
+          self.sailfish_runner = SailfishSimulation(self.config, self.domain, self.sim_dir + '/sailfish')
+          self.sailfish_runner.new_sim(self.num_iters)
+      elif self.dataset == 'JHTDB':
+        print("Downloading compare data of JHTDB")
+        for i in tqdm(xrange(self.num_iters+3)):
+          subdomain = SubDomain([0, 0, 0], self.domain.sim_shape)
+          self.jhtdb_runner.download_datapoint(subdomain, i)
 
       # run comparision function
-      for i in xrange(self.num_iters):
+      print("Comparing network generated and true")
+      for i in tqdm(xrange(self.num_iters)):
         if i % self.sim_save_every == 0:
           # this functionality will probably be changed TODO
-          true_vel, true_rho = self.sailfish_runner.read_vel_rho(i + self.sim_restore_iter + 1, add_batch=True)
-          generated_vel, generated_rho = self.saver.read_vel_rho(i, add_batch=True)
-          self.vis.update_compare_vel_rho(i, true_vel, true_rho, generated_vel, generated_rho)
+          if self.dataset == 'sailfish':
+            true_vel, true_rho = self.sailfish_runner.read_vel_rho(i + self.sim_restore_iter + 1, add_batch=True)
+            generated_vel, generated_rho = self.saver.read_vel_rho(i, add_batch=True)
+            self.vis.update_compare_vel_rho(i, true_vel, true_rho, generated_vel, generated_rho)
+          elif self.dataset == 'JHTDB':
+            subdomain = SubDomain([0, 0, 0], self.domain.sim_shape)
+            true_vel, true_rho = self.jhtdb_runner.read_vel_rho(i + self.sim_restore_iter + 1, subdomain=subdomain, add_batch=True)
+            generated_vel, generated_rho = self.saver.read_vel_rho(i, add_batch=True)
+            self.vis.update_compare_vel_rho(i, true_vel, true_rho, generated_vel, generated_rho)
 
   def input_boundary(self, input_subdomain):
     h = np.mgrid[input_subdomain.pos[0]:input_subdomain.pos[0] + input_subdomain.size[0],
@@ -173,7 +190,8 @@ class Simulation(object):
     nr_subdomains = [int(math.ceil(x/float(y))) for x, y in zip(output_shape, run_output_shape)]
     output = []
     iter_list = [xrange(x) for x in nr_subdomains]
-    for ijk in tqdm(itertools.product(*iter_list)):
+    for ijk in itertools.product(*iter_list):
+      print(str(ijk) + " out of " + str(nr_subdomains))
       # make input and output subdomains
       if not(type(shape_converter) is list):
         shape_converter = [shape_converter]

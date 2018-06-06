@@ -163,7 +163,7 @@ def mimic_res_pad(x, kernel_size, stride):
   return x
 
 def apply_pad(x, pad):
-  x = x * (1.0 - pad)
+  #x = x * (1.0 - pad)
   return x
 
 def simple_trans_conv_2d(x, k):
@@ -284,11 +284,12 @@ def max_pool(x):
   return x
 
 def trim_tensor(x, trim):
-  length_input = len(x.get_shape()) - 2
-  if length_input == 2:
-    x = x[:,trim:-trim, trim:-trim]
-  if length_input == 3:
-    x = x[:,trim:-trim, trim:-trim, trim:-trim]
+  if trim != 0:
+    length_input = len(x.get_shape()) - 2
+    if length_input == 2:
+      x = x[:,trim:-trim, trim:-trim]
+    if length_input == 3:
+      x = x[:,trim:-trim, trim:-trim, trim:-trim]
   return x
 
 def res_block(x, a=None, 

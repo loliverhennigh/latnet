@@ -20,7 +20,7 @@ import cv2
 import glob
 
 class FakeDomain(Domain):
-  sim_shape = [128,128,128]
+  sim_shape = [200,200,200]
   name = "JHTDB"
   num_simulations = 10
   periodic_x = True
@@ -45,8 +45,9 @@ class JHTDBSimulation(Simulation):
         'filter_size': 16,
         'filter_size_compression': 32,
         'nr_residual_compression': 1,
+        'nr_residual_encoder': 2,
         'seq_length': 4,
-        'compare': 'False',
+        'compare': False,
         'DxQy': 'D3Q4'})
 
 if __name__ == '__main__':

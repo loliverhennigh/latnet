@@ -36,6 +36,7 @@ class LatNet(object):
     self.seq_length = config.seq_length
     self.gan = config.gan
     self.train_iters = config.train_iters
+    self.train_autoencoder = config.train_autoencoder
     gpus = config.gpus.split(',')
     self.gpus = map(int, gpus)
     self.loss_stats = {}
@@ -89,7 +90,7 @@ class LatNet(object):
           # make seq of output states
           for j in xrange(self.seq_length):
             self.add_tensor('true_state' + seq_str(j), (1 + self.DxQy.dims) * [None] + [self.DxQy.Q])
-            self.out_tensors["true_state" + seq_str(j)] = self.out_tensors["true_state" + seq_str(j)]
+            #self.out_tensors["true_state" + seq_str(j)] = self.out_tensors["true_state" + seq_str(j)]
             if i == 0:
               with tf.device('/cpu:0'):
                 self.lattice_summary(in_name='true_state' + seq_str(j), summary_name='true_' + str(j))
@@ -124,6 +125,11 @@ class LatNet(object):
                                 in_cboundary_name="cboundary" + gpu_str, 
                                 out_name="pred_state" + seq_str(j),
                                 lattice_size=self.DxQy.Q)
+            if not self.train_autoencoder:
+              print("true_state" + seq_str(j))
+              print("true_cstate" + seq_str(j))
+              self._encoder_state(in_name="true_state" + seq_str(j),
+                                  out_name="true_cstate" + seq_str(j))
   
             if i == 0:
               with tf.device('/cpu:0'):
@@ -171,18 +177,31 @@ class LatNet(object):
             # factor to account for how much the sim is changing
             seq_factor = tf.nn.l2_loss(self.out_tensors['true_state' + seq_str(0)]
                                      - self.out_tensors['true_state' + seq_str(self.seq_length-1)])
-            for j in range(1, self.seq_length):
-              # normalize loss to make comparable for diffrent input sizes
-              # TODO remove 100.0 (only in to make comparable to previous code)
-              #l2_factor = 1.0*(256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
-              l2_factor = 1.0*(256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
-              self.l2_loss(true_name='true_state' + seq_str(j),
-                           pred_name='pred_state' + seq_str(j),
-                           loss_name='loss_l2' + seq_str(j),
-                           factor=l2_factor/1.0)
-                           #factor=l2_factor/num_samples)
-              # add up losses
-              self.out_tensors['loss_l2' + gpu_str] += self.out_tensors['loss_l2' + seq_str(j)] 
+            if self.train_autoencoder:
+              for j in range(0, self.seq_length):
+                # normalize loss to make comparable for diffrent input sizes
+                #l2_factor = 1.0*(256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
+                l2_factor = (256.0*256.0)/(len(self.gpus)*self.config.batch_size*self.num_lattice_cells('pred_state' + seq_str(j), return_float=True))
+                self.l2_loss(true_name='true_state' + seq_str(j),
+                             pred_name='pred_state' + seq_str(j),
+                             loss_name='loss_l2' + seq_str(j),
+                             factor=l2_factor/1.0)
+                             #factor=l2_factor/num_samples)
+                # add up losses
+                self.out_tensors['loss_l2' + gpu_str] += self.out_tensors['loss_l2' + seq_str(j)] 
+            else:
+              for j in range(1, self.seq_length):
+                # normalize loss to make comparable for diffrent input sizes
+                #l2_factor = 1.0*(256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
+                l2_factor = (256.0*256.0)/(len(self.gpus)*self.config.batch_size*self.num_lattice_cells('pred_state' + seq_str(j), return_float=True))
+                self.l2_loss(true_name='true_cstate' + seq_str(j),
+                             pred_name='cstate' + seq_str(j),
+                             loss_name='loss_l2' + seq_str(j),
+                             factor=l2_factor/1.0)
+                             #factor=l2_factor/num_samples)
+                # add up losses
+                self.out_tensors['loss_l2' + gpu_str] += self.out_tensors['loss_l2' + seq_str(j)] 
+ 
           ### L1 loss ###
           if self.gan:
             self.out_tensors["loss_l1" + gpu_str] = 0.0
@@ -240,6 +259,11 @@ class LatNet(object):
             all_params = tf.trainable_variables()
             gen_params = [v for i, v in enumerate(all_params) if "discriminator" not in v.name[:v.name.index(':')]]
             disc_params = [v for i, v in enumerate(all_params) if "discriminator" in v.name[:v.name.index(':')]]
+            if not self.train_autoencoder:
+              gen_params = [v for i, v in enumerate(gen_params) if "compression_mapping" in v.name[:v.name.index(':')]]
+          print("trainable variables")
+          for v in gen_params:
+            print(v.name)
           self.out_tensors['gen_grads' + gpu_str] = tf.gradients(self.out_tensors['loss_gen' + gpu_str], gen_params)
           if self.gan:
             self.out_tensors['disc_grads' + gpu_str] = tf.gradients(self.out_tensors['loss_disc' + gpu_str], disc_params)
@@ -332,6 +356,10 @@ class LatNet(object):
         shape_converters[name] = self.shape_converters[name]
         name = ("state" + gpu_str, "cstate_" + str(j) + gpu_str)
         shape_converters[name] = self.shape_converters[name]
+        print(self.train_autoencoder)
+        if not self.train_autoencoder:
+          name = ("true_state_" + str(j) + gpu_str, "true_cstate_" + str(j) + gpu_str)
+          shape_converters[name] = self.shape_converters[name]
     return shape_converters
 
   def eval_unroll(self):
@@ -344,10 +372,14 @@ class LatNet(object):
       self.add_tensor('state',     (1 + self.DxQy.dims) * [None] + [self.DxQy.Q])
       self.add_tensor('boundary',  (1 + self.DxQy.dims) * [None] + [self.DxQy.boundary_dims])
       self.add_tensor('cstate',    (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
-      self.add_tensor('cboundary_first', (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression])
-      self.add_tensor('cboundary', (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression])
-      self.add_tensor('cboundary_decoder', (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression])
-      self.add_tensor('cboundary_decoder', (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression])
+      #self.add_tensor('cboundary_first', (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression])
+      #self.add_tensor('cboundary', (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression])
+      #self.add_tensor('cboundary_decoder', (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression])
+      #self.add_tensor('cboundary_decoder', (1 + self.DxQy.dims) * [None] + [2*self.config.filter_size_compression])
+      self.add_tensor('cboundary_first', (1 + self.DxQy.dims) * [None] + [1])
+      self.add_tensor('cboundary', (1 + self.DxQy.dims) * [None] + [1])
+      self.add_tensor('cboundary_decoder', (1 + self.DxQy.dims) * [None] + [1])
+      self.add_tensor('cboundary_decoder', (1 + self.DxQy.dims) * [None] + [1])
       self.add_phase() 
   
       ###### Unroll Graph ######
@@ -443,10 +475,10 @@ class LatNet(object):
                                               normalize=normalize)
 
     # remove edges or pool of pad tensor
-    self.out_pad_tensors[out_name] = nn.mimic_conv_pad(self.out_pad_tensors[in_name], kernel_size, stride)
+    #self.out_pad_tensors[out_name] = nn.mimic_conv_pad(self.out_pad_tensors[in_name], kernel_size, stride)
 
     # ensure zeros padding
-    self.out_tensors[out_name] = nn.apply_pad(self.out_tensors[out_name], self.out_pad_tensors[out_name])
+    #self.out_tensors[out_name] = nn.apply_pad(self.out_tensors[out_name], self.out_pad_tensors[out_name])
 
     # add conv to the shape converter
     for name in self.shape_converters.keys():
@@ -464,10 +496,10 @@ class LatNet(object):
                                                         name=weight_name, nonlinearity=nonlinearity)
 
     # remove edges or pool of pad tensor
-    self.out_pad_tensors[out_name] = nn.mimic_trans_conv_pad(self.out_pad_tensors[in_name], kernel_size, stride)
+    #self.out_pad_tensors[out_name] = nn.mimic_trans_conv_pad(self.out_pad_tensors[in_name], kernel_size, stride)
 
     # ensure zeros padding
-    self.out_tensors[out_name] = nn.apply_pad(self.out_tensors[out_name], self.out_pad_tensors[out_name])
+    #self.out_tensors[out_name] = nn.apply_pad(self.out_tensors[out_name], self.out_pad_tensors[out_name])
 
     # add conv to the shape converter
     for name in self.shape_converters.keys():
@@ -520,10 +552,10 @@ class LatNet(object):
                                             normalize=normalize)
 
     # remove edges or pool of pad tensor
-    self.out_pad_tensors[out_name] = nn.mimic_res_pad(self.out_pad_tensors[in_name], kernel_size, stride)
+    #self.out_pad_tensors[out_name] = nn.mimic_res_pad(self.out_pad_tensors[in_name], kernel_size, stride)
 
     # ensure zeros padding
-    self.out_tensors[out_name] = nn.apply_pad(self.out_tensors[out_name], self.out_pad_tensors[out_name])
+    #self.out_tensors[out_name] = nn.apply_pad(self.out_tensors[out_name], self.out_pad_tensors[out_name])
 
     # add res block to the shape converter
     for name in self.shape_converters.keys():
@@ -549,10 +581,10 @@ class LatNet(object):
                                                    begin_nonlinearity=begin_nonlinearity)
 
     # remove edges or pool of pad tensor
-    self.out_pad_tensors[out_name] = nn.mimic_res_pad(self.out_pad_tensors[in_name], kernel_size, stride)
+    #self.out_pad_tensors[out_name] = nn.mimic_res_pad(self.out_pad_tensors[in_name], kernel_size, stride)
 
     # ensure zeros padding
-    self.out_tensors[out_name] = nn.apply_pad(self.out_tensors[out_name], self.out_pad_tensors[out_name])
+    #self.out_tensors[out_name] = nn.apply_pad(self.out_tensors[out_name], self.out_pad_tensors[out_name])
 
     # add res block to the shape converter
     for name in self.shape_converters.keys():
@@ -593,10 +625,10 @@ class LatNet(object):
     if trim > 0:
       if len(self.out_tensors[in_name].get_shape()) == 4:
         self.out_tensors[out_name] = self.out_tensors[in_name][:,trim:-trim, trim:-trim]
-        self.out_pad_tensors[out_name] = self.out_pad_tensors[in_name][:,trim:-trim, trim:-trim]
+        #self.out_pad_tensors[out_name] = self.out_pad_tensors[in_name][:,trim:-trim, trim:-trim]
       elif len(self.out_tensors[in_name].get_shape()) == 5:
         self.out_tensors[out_name] = self.out_tensors[in_name][:,trim:-trim, trim:-trim, trim:-trim]
-        self.out_pad_tensors[out_name] = self.out_pad_tensors[in_name][:,trim:-trim, trim:-trim, trim:-trim]
+        #self.out_pad_tensors[out_name] = self.out_pad_tensors[in_name][:,trim:-trim, trim:-trim, trim:-trim]
 
   def match_trim_tensor(self, in_name, match_name, out_name):
 
@@ -611,7 +643,7 @@ class LatNet(object):
                                 #+ (self.out_tensors[b_name] * (1 - self.out_tensors[mask_name])))
 
     # update padding name
-    self.out_pad_tensors[out_name] = self.out_pad_tensors[a_name]
+    #self.out_pad_tensors[out_name] = self.out_pad_tensors[a_name]
 
     # take shape converters from a_name
     for name in self.shape_converters.keys():
@@ -651,7 +683,7 @@ class LatNet(object):
     with tf.device('/cpu:0'):
       self.out_tensors[true_name + '_' + pred_name] = tf.abs(self.out_tensors[true_name]
                                                 - self.out_tensors[pred_name])
-      self.lattice_summary(in_name=true_name + '_' + pred_name, summary_name='loss_image')
+      #self.lattice_summary(in_name=true_name + '_' + pred_name, summary_name='loss_image')
 
     if normalize == 'std':
       mean, var = tf.nn.moments(self.out_tensors[true_name], axes=[1,2], keep_dims=True)

@@ -11,6 +11,7 @@ from tqdm import *
 import lattice
 import nn as nn
 
+import matplotlib.pyplot as plt
 from shape_converter import ShapeConverter
 from optimizer import Optimizer
 from shape_converter import SubDomain
@@ -56,12 +57,12 @@ class Trainer(object):
                                       self.config.train_sim_dir + '/train',
                                       self.domains, 
                                       self._network.train_shape_converter(), 
-                                      self.start_num_data_points_test)
+                                      self.config.start_num_data_points_train)
     self.data_queue_test = DataQueue(self.config, 
                                      self.config.train_sim_dir + '/test' , 
                                      self.domains, 
                                      self._network.train_shape_converter(), 
-                                     self.start_num_data_points_test)
+                                     self.config.start_num_data_points_test)
 
   def train(self):
  
@@ -114,13 +115,13 @@ class Trainer(object):
       #  self.active_data_add()
 
       # test data
-      if step % 100 == 0:
+      if step % 1000 == 0:
         feed_dict = self.data_queue_test.minibatch()
         feed_dict['phase'] = 1
         seq_str = lambda x: '_' + str(x) + '_gpu_0'
         gen_names = []
         for i in xrange(self.seq_length):
-          gen_names.append('pred_state' + seq_string(i))
+          gen_names.append('pred_state' + seq_str(i))
         gen_output = self._network.run(gen_names, feed_dict=feed_dict, return_dict=True)
         for key in feed_dict.keys():
           if 'true' not in key:
@@ -139,15 +140,23 @@ class Trainer(object):
       pass
     for key in true_dict.keys():
       np.save(save_dir + key, true_dict[key])
-      true_dict[key]
+      #true_dict[key]
       # probably make method for this or remove the image save
-      plt.imshow(self.DxQy.lattice_to_norm(true_dict[key])[0,0])
-      plt.figsave(save_dir + key + '.png')
+      plt.imshow(self.DxQy.lattice_to_norm(true_dict[key])[0,0,...,0])
+      plt.savefig(save_dir + key + 'x.png')
+      plt.imshow(self.DxQy.lattice_to_norm(true_dict[key])[0,:,0,:,0])
+      plt.savefig(save_dir + key + 'y.png')
+      plt.imshow(self.DxQy.lattice_to_norm(true_dict[key])[0,...,0,0])
+      plt.savefig(save_dir + key + 'z.png')
     for key in gen_dict.keys():
-      np.save(save_dir + key, true_dict[key])
+      np.save(save_dir + key, gen_dict[key])
       # probably make method for this or remove the image save
-      plt.imshow(self.DxQy.lattice_to_norm(gen_dict[key])[0,0])
-      plt.figsave(save_dir + key + '.png')
+      plt.imshow(self.DxQy.lattice_to_norm(gen_dict[key])[0,0,...,0])
+      plt.savefig(save_dir + key + 'x.png')
+      plt.imshow(self.DxQy.lattice_to_norm(gen_dict[key])[0,:,0,:,0])
+      plt.savefig(save_dir + key + 'y.png')
+      plt.imshow(self.DxQy.lattice_to_norm(gen_dict[key])[0,...,0,0])
+      plt.savefig(save_dir + key + 'z.png')
 
   def active_data_add(self):
     # TODO this should be cleaned up

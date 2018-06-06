@@ -68,9 +68,9 @@ class StandardNetwork(LatNet):
                    stride=1, 
                    gated=self.config.gated, 
                    weight_name="final_res")
-  
-    self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
 
+    self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
+  
   # encoder boundary
   def encoder_boundary(self, in_name, out_name):
    
@@ -104,7 +104,7 @@ class StandardNetwork(LatNet):
                    stride=1, 
                    gated=self.config.gated, 
                    weight_name="final_res")
-  
+
     self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
   
   # compression mapping
@@ -114,6 +114,7 @@ class StandardNetwork(LatNet):
     nonlinearity = set_nonlinearity(self.config.nonlinearity)
   
     # apply boundary
+    """
     if start_apply_boundary:
       self.split_tensor(in_name=in_cboundary_name,
                         out_names=[in_cboundary_name + "_apply",
@@ -126,6 +127,18 @@ class StandardNetwork(LatNet):
     else:
       self.rename_tensor(old_name=in_cstate_name,
                          new_name=out_name)
+    """
+    self.rename_tensor(old_name=in_cstate_name,
+                       new_name=out_name)
+
+    # 1x1 res block
+    self.res_block(in_name=out_name, out_name=out_name, 
+                   kernel_size=1,
+                   filter_size=self.config.filter_size_compression, 
+                   nonlinearity=nonlinearity, 
+                   stride=1, 
+                   gated=self.config.gated, 
+                   weight_name="first_res")
 
     # apply residual blocks
     for i in xrange(self.config.nr_residual_compression):
@@ -135,13 +148,25 @@ class StandardNetwork(LatNet):
                      stride=1, 
                      gated=self.config.gated, 
                      weight_name="res_" + str(i+1))
+ 
+    # 1x1 res block
+    self.res_block(in_name=out_name, out_name=out_name, 
+                   kernel_size=1,
+                   filter_size=self.config.filter_size_compression, 
+                   nonlinearity=nonlinearity, 
+                   stride=1, 
+                   gated=self.config.gated, 
+                   weight_name="final_res")
+
+    self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
   
     # trim cboundary
-    self.trim_tensor(in_name=in_cboundary_name, 
-                    out_name=in_cboundary_name, 
-                    trim=self.config.nr_residual_compression*2)
+    #self.trim_tensor(in_name=in_cboundary_name, 
+    #                out_name=in_cboundary_name, 
+    #                trim=self.config.nr_residual_compression*2)
 
     # apply boundary
+    """
     self.split_tensor(in_name=in_cboundary_name,
                       out_names=[in_cboundary_name + "_apply",
                                  in_cboundary_name + "_mask"],
@@ -150,6 +175,7 @@ class StandardNetwork(LatNet):
                        b_name=in_cboundary_name + "_apply",
                        mask_name=in_cboundary_name + "_mask",
                        out_name=out_name)
+    """
  
   # decoder state
   def decoder_state(self, in_cstate_name, in_cboundary_name, out_name, lattice_size=9):
@@ -189,9 +215,9 @@ class StandardNetwork(LatNet):
     # set nonlinearity
     nonlinearity = set_nonlinearity('leaky_relu')
   
-    self.concat_tensors(in_names=[in_boundary_name]
-                               + [in_state_name] 
-                               + in_seq_state_names, 
+    #self.concat_tensors(in_names=[in_boundary_name]
+    self.concat_tensors(in_names=[in_state_name] 
+                                + in_seq_state_names, 
                         out_name=out_name, axis=-1) # concat on feature
     filter_size=self.config.filter_size
     for i in xrange(self.config.nr_residual_compression):

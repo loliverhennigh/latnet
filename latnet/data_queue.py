@@ -31,11 +31,12 @@ class DataQueue:
     self.needed_to_wait = False
 
     # configs
-    self.dataset         = config.dataset
-    self.batch_size      = config.batch_size
-    self.seq_length      = config.seq_length
-    self.nr_downsamples  = config.nr_downsamples
-    self.free_gpu        = True
+    self.dataset           = config.dataset
+    self.batch_size        = config.batch_size
+    self.seq_length        = config.seq_length
+    self.nr_downsamples    = config.nr_downsamples
+    self.train_autoencoder = config.train_autoencoder
+    self.free_gpu          = True
     gpus = config.gpus.split(',')
     self.gpus = map(int, gpus)
     self.DxQy = lattice.TYPES[config.DxQy]()
@@ -46,8 +47,13 @@ class DataQueue:
     gpu_str = '_gpu_' + str(self.gpus[0])
     self.state_shape_converter = self.shape_converters['state' + gpu_str,
                             'cstate_' + str(self.seq_length-1) + gpu_str]
-    self.seq_state_shape_converter = self.shape_converters['state' + gpu_str, 
-                            'pred_state_' + str(self.seq_length-1) + gpu_str]
+    if self.train_autoencoder:
+      self.seq_state_shape_converter = self.shape_converters['state' + gpu_str, 
+                              'pred_state_' + str(self.seq_length-1) + gpu_str]
+    else:
+      print("Wrong")
+      self.seq_state_shape_converter = self.shape_converters['true_state_' + str(self.seq_length-1) + gpu_str, 
+                              'true_cstate_' + str(self.seq_length-1) + gpu_str]
     self.cratio = pow(2, self.nr_downsamples)
 
     # make queue

@@ -43,6 +43,6 @@ class Visualizations:
       vel = np.sqrt(np.square(vel[0,:,:,0]) + np.square(vel[0,:,:,1]))
       rho = rho[0,:,:,0]
     elif self.DxQy.dims == 3:
-      vel = np.sqrt(np.square(vel[0,...,0,0]) + np.square(vel[0,...,0,1]))
-      rho = rho[0,...,0,0]
+      vel = np.sqrt(np.square(vel[0,...,vel.shape[-2]/2,0]) + np.square(vel[0,...,vel.shape[-2]/2,1]))
+      rho = rho[0,...,vel.shape[-2]/2,0]
     return np.concatenate([vel, rho], axis=0)

@@ -29,11 +29,12 @@ class JohnHopkinsSimulation:
 
   def __init__(self, config, save_dir=None):
 
-    self.save_dir = save_dir
-    if not os.path.exists(save_dir):
-      os.makedirs(save_dir)
+    self.save_dir = save_dir + '_seq_length_' + str(config.seq_length)
+    if not os.path.exists(self.save_dir):
+      os.makedirs(self.save_dir)
     self.step_ratio = 2
     self.config=config
+    self.train_autoencoder = config.train_autoencoder
  
     self.sim_shape = [1024, 1024, 1024]
 
@@ -58,13 +59,16 @@ class JohnHopkinsSimulation:
     path_filename = self.save_dir + filename
     if not os.path.isfile(path_filename):
       r = ''
-      while (r == '') or (r == '<h1>Server Error (500)</h1>'):
+      while (r == ''):
         try:
           r = requests.get(self.make_url(subdomain, iteration)) 
           #print(r)
         except:
           print("having trouble getting data, will sleep and try again")
           time.sleep(2)
+        if type(r) is not str:
+          if r.status_code == 500:
+            r = ''
       with open(path_filename, 'wb') as f:
         f.write(r.content)
 
@@ -102,7 +106,13 @@ class JohnHopkinsSimulation:
       state_pad = np.zeros(list(state.shape[:-1]) + [1])
       return state, state_pad
     else:
+      if add_batch:
+        state = np.expand_dims(state, axis=0)
       return state
+
+  def read_vel_rho(self, iteration, subdomain=None, add_batch=False):
+    state = self.read_state(iteration, subdomain, add_batch, return_padding=False)
+    return state[...,0:3], state[...,3:4]
 
 class TrainJohnHopkinsSimulation(JohnHopkinsSimulation):
 
@@ -192,7 +202,7 @@ class TrainJohnHopkinsSimulation(JohnHopkinsSimulation):
     with open(datapoint_filename, "r") as f:
       string_points = f.readlines()
       for p in string_points: 
-        d = DataPoint(0,0,0,0,0)
+        d = DataPoint(0,0,0,0)
         d.load_string(p)
         self.data_points.append(d)
 
@@ -210,7 +220,10 @@ class TrainJohnHopkinsSimulation(JohnHopkinsSimulation):
     state_subdomain = state_shape_converter.out_in_subdomain(copy(cstate_subdomain))
 
     # get seq state subdomain
-    seq_state_subdomain = seq_state_shape_converter.in_out_subdomain(copy(state_subdomain))
+    if self.train_autoencoder:
+      seq_state_subdomain = seq_state_shape_converter.in_out_subdomain(copy(state_subdomain))
+    else:
+      seq_state_subdomain = seq_state_shape_converter.out_in_subdomain(copy(cstate_subdomain))
 
     # download data
     self.download_datapoint(state_subdomain, ind)
@@ -225,9 +238,8 @@ class TrainJohnHopkinsSimulation(JohnHopkinsSimulation):
 
 class DataPoint:
 
-  def __init__(self, ind, train, seq_length, state_subdomain, seq_state_subdomain):
+  def __init__(self, ind, seq_length, state_subdomain, seq_state_subdomain):
     self.ind = ind
-    self.train = train
     self.seq_length = seq_length
     self.state_subdomain = state_subdomain
     self.seq_state_subdomain = seq_state_subdomain
@@ -235,7 +247,6 @@ class DataPoint:
   def to_string(self):
     string  = ''
     string += str(self.ind) + ','
-    string += str(self.train) + ','
     string += str(self.seq_length) + ','
     for p in self.state_subdomain.pos:
       string += str(p) + ','
@@ -252,7 +263,6 @@ class DataPoint:
     values = string.split(',')[:-1]
     values = [int(x) for x in values]
     self.ind = values.pop(0)
-    self.train = values.pop(0)
     self.seq_length = values.pop(0)
     dims = len(values)/4
     self.state_subdomain = SubDomain([values[0], values[1], values[2]], 
