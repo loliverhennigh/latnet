@@ -69,7 +69,6 @@ class StandardNetwork(LatNet):
                    gated=self.config.gated, 
                    weight_name="final_res")
   
-    self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
 
   # encoder boundary
   def encoder_boundary(self, in_name, out_name):
@@ -105,7 +104,6 @@ class StandardNetwork(LatNet):
                    gated=self.config.gated, 
                    weight_name="final_res")
   
-    self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
   
   # compression mapping
   def compression_mapping(self, in_cstate_name, in_cboundary_name, out_name, start_apply_boundary=False):

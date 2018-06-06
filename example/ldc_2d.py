@@ -28,7 +28,7 @@ class LDCDomain(Domain):
   name = "lid_driven_cavity"
   vel = rand_vel()
   num_simulations = 1
-  sim_shape = [256, 256]
+  sim_shape = [512, 512]
   periodic_x = False
   periodic_y = False
   force = (0.0, 0.0)

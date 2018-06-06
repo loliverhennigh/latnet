@@ -66,18 +66,16 @@ This will generate a video comparing the generated simulation to the original in
 
 * Data augmentation such as flipping and rotating simulation.
 
+* Active Learning. New data is dynamically added to the train set while training. The added data is ment to fool and network and make it more rebust. This appears to greatly stabalize training and improve model.
+
 # Future Improvements
 
 These are the features with priority that will be released in future versions.
 
-* Active Learning. High priority.
+* 3D simulations. (Currently available in development branch `john_hopkins`)
 
-* 3D simulations. Most code already in however will finish adding after all 2D tests complete.
+* Physically inspired network architecture. (Some already available such as `LESNet` and `generalized_lb` however these are untested and working a progress)
 
-* Multi-GPU evaluating on single server.
-
-* Physically inspired network architecture. 
-
-* Add other non-Lattice Boltzmann solvers.
+* Add other non-Lattice Boltzmann solvers. (Currently available in development branch `john_hopkins` where latnet can be trained on john hopkins turbulence dataset) 
 
 

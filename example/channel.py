@@ -55,8 +55,8 @@ def make_boundary(hx, hy, shape):
 
 class ChannelDomain(Domain):
   name = "channel"
-  vel = (0.05, 0.0)
-  sim_shape = [256, 256]
+  vel = (0.05, 0.05*(np.random.rand()-.5))
+  sim_shape = [512, 512]
   num_simulations = 20
   periodic_x = False
   periodic_y = False
