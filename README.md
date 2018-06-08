@@ -22,11 +22,11 @@ To obtain the Sailfish library run,
 ./setup_sailfish.sh
 `
 
-There are multiple forks of Sailfish and this version was tested with Python 2.7 and a GTX 1080 GPU with CUDA 8.0. We will test with CUDA 9.0 soon.
+There are multiple forks of Sailfish and this version was tested with Python 2.7 and a GTX 1080 GPU with CUDA 8.0. We tested on CUDA 9.0 and there appear to be no problems.
 
 ## Train Network
 
-To run the network reported in the original paper, move to the example directory and run
+To run the network reported in the original paper, move to the `example/channel` directory and run
 
 `
 python standard_network_trainer.py
@@ -58,11 +58,11 @@ This will generate a video comparing the generated simulation to the original in
 
 * Multi-GPU training.
 
-* Running simulations on CPU ram instead of GPU dram allowing for much larger simulations to be generated (1,000 by 1,000 by 2,000 grid cells with only 8 GB of CPU ram).
+* Running simulations on CPU ram instead of GPU dram allowing for much larger simulations to be generated (1,000 by 1,000 by 1,000 grid cells with only 32 GB of CPU ram).
 
 * New network architectures.
 
-* New domains such as lid driven cavity and forced simulation.
+* New domains such as lid driven cavity and isotropic turbulence.
 
 * Data augmentation such as flipping and rotating simulation.
 
