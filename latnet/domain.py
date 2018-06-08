@@ -11,7 +11,7 @@ from shape_converter import SubDomain
 import lattice
 
 # import sailfish
-sys.path.append('../sailfish')
+sys.path.append('../../sailfish')
 from sailfish.subdomain import Subdomain2D, Subdomain3D
 from sailfish.node_type import NTEquilibriumVelocity, NTFullBBWall, NTDoNothing, NTZouHeVelocity
 

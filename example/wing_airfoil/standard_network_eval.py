@@ -9,37 +9,34 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 # import domains
-from channel import ChannelDomain
-from ldc_2d import LDCDomain
+from wing_sim import WingDomain
 
 # import latnet
-sys.path.append('../latnet')
-from domain import Domain
+sys.path.append('../../latnet')
+from simulation import Simulation
 from controller import LatNetController
-from trainer import Trainer
 from network_architectures.standard_network import StandardNetwork
-import utils.binvox_rw as binvox_rw
 import numpy as np
 import cv2
 import glob
 
-class StandardTrainer(Trainer):
+class LDCSimulation(Simulation):
   script_name = __file__
   network = StandardNetwork
-  #domains = [ChannelDomain]
-  domains = [LDCDomain]
+  domain = WingDomain
 
   @classmethod
   def update_defaults(cls, defaults):
     defaults.update({
-        'train_sim_dir': './train_data',
         'latnet_network_dir': './network_save',
-        'visc': 0.0005,
+        'run_mode': 'eval',
+        'visc': 0.0002,
         'lb_to_ln': 128,
-        'input_cshape': '16x16',
-        'max_sim_iters': 1000})
+        'input_cshape': '256x256',
+        'input_shape': '512x512',
+        'max_sim_iters': 1600})
 
 if __name__ == '__main__':
-  sim = LatNetController(trainer=StandardTrainer)
+  sim = LatNetController(simulation=LDCSimulation)
   sim.run()
 

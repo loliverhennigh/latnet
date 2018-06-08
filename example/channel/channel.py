@@ -7,7 +7,7 @@ import time
 import matplotlib.pyplot as plt
 
 # import latnet
-sys.path.append('../latnet')
+sys.path.append('../../latnet')
 from domain import Domain
 from trainer import Trainer
 from controller import LatNetController
@@ -55,8 +55,8 @@ def make_boundary(hx, hy, shape):
 
 class ChannelDomain(Domain):
   name = "channel"
-  vel = (0.05, 0.05*(np.random.rand()-.5))
-  sim_shape = [512, 512]
+  vel = (0.05, 0.0)
+  sim_shape = [256, 256]
   num_simulations = 20
   periodic_x = False
   periodic_y = False
@@ -105,3 +105,4 @@ if __name__ == '__main__':
   sim = LatNetController(trainer=EmptyTrainer)
   sim.run()
 
+        #'sim_shape': '256x256',

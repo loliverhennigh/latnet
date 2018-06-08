@@ -9,35 +9,34 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 # import domains
-from channel import ChannelDomain
+from isotropic_flow import IsotropicDomain
 
 # import latnet
-sys.path.append('../latnet')
+sys.path.append('../../latnet')
 from domain import Domain
 from controller import LatNetController
-from simulation import Simulation
-from network_architectures.tempogan_network import TempoGAN
+from trainer import Trainer
+from network_architectures.standard_network import StandardNetwork
 import numpy as np
 import cv2
 import glob
 
-class TempoGanSimulation(Simulation):
+class StandardTrainer(Trainer):
   script_name = __file__
-  network = TempoGAN
-  domain = ChannelDomain
-  domain.sim_shape = [256,256]
+  network = StandardNetwork
+  domains = [IsotropicDomain]
 
   @classmethod
   def update_defaults(cls, defaults):
     defaults.update({
-        'run_mode': 'eval',
+        'train_sim_dir': './train_data',
         'latnet_network_dir': './network_save',
         'visc': 0.01,
         'lb_to_ln': 128,
-        'input_cshape': '64x64',
-        'max_sim_iters': 400})
+        'input_cshape': '16x16',
+        'max_sim_iters': 100})
 
 if __name__ == '__main__':
-  sim = LatNetController(simulation=TempoGanSimulation)
+  sim = LatNetController(trainer=StandardTrainer)
   sim.run()
 

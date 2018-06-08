@@ -1,4 +1,4 @@
-#/usr/bin/env python
+#!/usr/bin/env python
 
 import sys
 import os
@@ -10,35 +10,34 @@ import matplotlib.pyplot as plt
 
 # import domains
 from channel import ChannelDomain
-#from ldc_2d import LDCDomain
 
 # import latnet
-sys.path.append('../latnet')
-from domain import Domain
+sys.path.append('../../latnet')
+from simulation import Simulation
 from controller import LatNetController
-from trainer import Trainer
-from network_architectures.tempogan_network import TempoGAN
+from network_architectures.standard_network import StandardNetwork
 import numpy as np
 import cv2
 import glob
 
-class TempoGanTrainer(Trainer):
+class LDCSimulation(Simulation):
   script_name = __file__
-  network = TempoGAN
-  domains = [ChannelDomain]
+  network = StandardNetwork
+  domain = ChannelDomain
+  domain.sim_shape = [512, 512]
 
   @classmethod
   def update_defaults(cls, defaults):
     defaults.update({
-        'train_sim_dir': './train_data',
         'latnet_network_dir': './network_save',
+        'run_mode': 'eval',
         'visc': 0.01,
         'lb_to_ln': 128,
-        'seq_length': 2,
-        'input_cshape': '64x64',
-        'max_sim_iters': 800})
+        'input_cshape': '256x256',
+        'input_shape': '512x512',
+        'max_sim_iters': 1600})
 
 if __name__ == '__main__':
-  sim = LatNetController(trainer=TempoGanTrainer)
+  sim = LatNetController(simulation=LDCSimulation)
   sim.run()
 
