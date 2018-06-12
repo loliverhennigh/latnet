@@ -34,6 +34,7 @@ class LatNet(object):
     self.DxQy = lattice.TYPES[config.DxQy]()
     self.network_dir  = config.latnet_network_dir
     self.seq_length = config.seq_length
+    self.train_autoencoder = config.train_autoencoder
     self.gan = config.gan
     self.train_iters = config.train_iters
     gpus = config.gpus.split(',')
@@ -123,11 +124,18 @@ class LatNet(object):
             self._decoder_state(in_cstate_name="cstate" + seq_str(j), 
                                 in_cboundary_name="cboundary" + gpu_str, 
                                 out_name="pred_state" + seq_str(j))
-  
+
+
+            ### encode seq state  
+            if not self.train_autoencoder:
+              self._encoder_state(in_name="true_state" + seq_str(j),
+                                  out_name="true_cstate" + seq_str(j))
+
             if i == 0:
               with tf.device('/cpu:0'):
                 # make image summary
                 self.lattice_summary(in_name='pred_state' + seq_str(j), summary_name='pred_' + str(j))
+
  
           ### unconditional discriminator of gan ###
           if self.gan:
@@ -170,18 +178,34 @@ class LatNet(object):
             # factor to account for how much the sim is changing
             seq_factor = tf.nn.l2_loss(self.out_tensors['true_state' + seq_str(0)]
                                      - self.out_tensors['true_state' + seq_str(self.seq_length-1)])
-            for j in range(1, self.seq_length):
-              # normalize loss to make comparable for diffrent input sizes
-              # TODO remove 100.0 (only in to make comparable to previous code)
-              #l2_factor = 1.0*(256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
-              l2_factor = 1.0*(256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
-              self.l2_loss(true_name='true_state' + seq_str(j),
-                           pred_name='pred_state' + seq_str(j),
-                           loss_name='loss_l2' + seq_str(j),
-                           factor=l2_factor/1.0)
-                           #factor=l2_factor/num_samples)
-              # add up losses
-              self.out_tensors['loss_l2' + gpu_str] += self.out_tensors['loss_l2' + seq_str(j)] 
+            if self.train_autoencoder:
+              for j in range(0, self.seq_length):
+                # normalize loss to make comparable for diffrent input sizes
+                # TODO remove 100.0 (only in to make comparable to previous code)
+                #l2_factor = 1.0*(256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
+                l2_factor = 1.0*(256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
+                self.l2_loss(true_name='true_state' + seq_str(j),
+                             pred_name='pred_state' + seq_str(j),
+                             loss_name='loss_l2' + seq_str(j),
+                             factor=l2_factor/1.0)
+                             #factor=l2_factor/num_samples)
+                # add up losses
+                self.out_tensors['loss_l2' + gpu_str] += self.out_tensors['loss_l2' + seq_str(j)] 
+            else:
+              for j in range(1, self.seq_length):
+                # normalize loss to make comparable for diffrent input sizes
+                #l2_factor = 1.0*(256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
+                l2_factor = (256.0*256.0)/(len(self.gpus)*self.config.batch_size*self.num_lattice_cells('pred_state' + seq_str(j), return_float=True))
+                self.l2_loss(true_name='true_cstate' + seq_str(j),
+                             pred_name='cstate' + seq_str(j),
+                             loss_name='loss_l2' + seq_str(j),
+                             factor=l2_factor/1.0)
+                             #factor=l2_factor/num_samples)
+                # add up losses
+                self.out_tensors['loss_l2' + gpu_str] += self.out_tensors['loss_l2' + seq_str(j)] 
+ 
+
+
           ### L1 loss ###
           if self.gan:
             self.out_tensors["loss_l1" + gpu_str] = 0.0
@@ -239,6 +263,8 @@ class LatNet(object):
             all_params = tf.trainable_variables()
             gen_params = [v for i, v in enumerate(all_params) if "discriminator" not in v.name[:v.name.index(':')]]
             disc_params = [v for i, v in enumerate(all_params) if "discriminator" in v.name[:v.name.index(':')]]
+            if not self.train_autoencoder:
+              gen_params = [v for i, v in enumerate(gen_params) if "compression_mapping" in v.name[:v.name.index(':')]]
           self.out_tensors['gen_grads' + gpu_str] = tf.gradients(self.out_tensors['loss_gen' + gpu_str], gen_params)
           if self.gan:
             self.out_tensors['disc_grads' + gpu_str] = tf.gradients(self.out_tensors['loss_disc' + gpu_str], disc_params)
@@ -331,6 +357,9 @@ class LatNet(object):
         shape_converters[name] = self.shape_converters[name]
         name = ("state" + gpu_str, "cstate_" + str(j) + gpu_str)
         shape_converters[name] = self.shape_converters[name]
+        if not self.train_autoencoder:
+          name = ("true_state_" + str(j) + gpu_str, "true_cstate_" + str(j) + gpu_str)
+          shape_converters[name] = self.shape_converters[name]
     return shape_converters
 
   def eval_unroll(self):
