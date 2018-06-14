@@ -360,6 +360,7 @@ class LatNet(object):
         if not self.train_autoencoder:
           name = ("true_state_" + str(j) + gpu_str, "true_cstate_" + str(j) + gpu_str)
           shape_converters[name] = self.shape_converters[name]
+    print(shape_converters.keys())
     return shape_converters
 
   def eval_unroll(self):
@@ -677,7 +678,7 @@ class LatNet(object):
     with tf.device('/cpu:0'):
       self.out_tensors[true_name + '_' + pred_name] = tf.abs(self.out_tensors[true_name]
                                                 - self.out_tensors[pred_name])
-      self.lattice_summary(in_name=true_name + '_' + pred_name, summary_name='loss_image')
+      #self.lattice_summary(in_name=true_name + '_' + pred_name, summary_name='loss_image')
 
     if normalize == 'std':
       mean, var = tf.nn.moments(self.out_tensors[true_name], axes=[1,2], keep_dims=True)

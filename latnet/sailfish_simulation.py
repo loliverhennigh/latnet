@@ -28,6 +28,7 @@ class SailfishSimulation:
     self.max_sim_iters = config.max_sim_iters
     self.debug_sailfish = config.debug_sailfish
     self.train_sim_dir = config.train_sim_dir
+    self.train_autoencoder = config.train_autoencoder
     self.config=config
  
     self.sim_shape = domain.sim_shape
@@ -49,8 +50,6 @@ class SailfishSimulation:
     max_iters = self.max_sim_iters
     lb_to_ln = self.lb_to_ln
     visc = self.config.visc
-    print("visc")
-    print(visc)
     periodic_x = self.domain.periodic_x
     periodic_y = self.domain.periodic_y
     if len(shape) == 3:
@@ -380,7 +379,10 @@ class TrainSailfishSimulation(SailfishSimulation):
     state_subdomain = state_shape_converter.out_in_subdomain(copy(cstate_subdomain))
 
     # get seq state subdomain
-    seq_state_subdomain = seq_state_shape_converter.in_out_subdomain(copy(state_subdomain))
+    if self.train_autoencoder:
+      seq_state_subdomain = seq_state_shape_converter.in_out_subdomain(copy(state_subdomain))
+    else:
+      seq_state_subdomain = seq_state_shape_converter.out_in_subdomain(copy(cstate_subdomain))
 
     # data point and return it
     return DataPoint(ind, seq_length, state_subdomain, seq_state_subdomain)

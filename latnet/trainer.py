@@ -101,7 +101,7 @@ class Trainer(object):
 
       if step % 2000 == 0:
         print("getting new data")
-        self.active_data_add()
+        #self.active_data_add()
 
       # end simulation
       if step > self.train_iters:

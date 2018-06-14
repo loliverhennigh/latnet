@@ -21,9 +21,9 @@ class StandardNetwork(LatNet):
     group.add_argument('--nr_residual_compression', help='network config', type=int,
                            default=2)
     group.add_argument('--nr_residual_encoder', help='network config', type=int,
-                           default=1)
+                           default=2)
     group.add_argument('--nr_downsamples', help='network config', type=int,
-                           default=4)
+                           default=2)
     group.add_argument('--nonlinearity', help='network config', type=str,
                            default='relu')
     group.add_argument('--gated', help='network config', type=bool,
