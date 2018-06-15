@@ -32,9 +32,11 @@ class StandardTrainer(Trainer):
     defaults.update({
         'train_sim_dir': './train_data',
         'latnet_network_dir': './network_save',
-        'visc': 0.0002,
+        'visc': 0.0001,
         'lb_to_ln': 128,
-        'input_cshape': '16x16',
+        'seq_length': 5,
+        'train_autoencoder': True,
+        'input_cshape': '32x32',
         'max_sim_iters': 100})
 
 if __name__ == '__main__':

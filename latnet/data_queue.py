@@ -60,9 +60,9 @@ class DataQueue:
 
     # generate base dataset and start queues
     self.sim_runners = []
-    start_num_data_points = 1000
     for domain in domains:
       print("generating " + domain.name + " dataset")
+      start_num_data_points = 1000/(len(domains)*domain.num_simulations)
       for i in tqdm(xrange(domain.num_simulations)):
         sim = TrainSailfishSimulation(config, domain, self.base_dir + '/sim_' + domain.name + '_' + str(i).zfill(4))
         if sim.need_to_generate():
@@ -105,7 +105,7 @@ class DataQueue:
     feed_dict['state' + gpu_str] = state
     feed_dict['boundary' + gpu_str] = geometry
     for j in xrange(self.seq_length):
-      feed_dict['true_state_' + str(j) + gpu_str] = seq_state[j][0]
+      feed_dict['true_state_' + str(j) + gpu_str] = seq_state[j]
 
     return sim_index, data_point, feed_dict
 

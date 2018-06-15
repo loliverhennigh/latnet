@@ -23,16 +23,16 @@ import glob
 class WingDomain(Domain):
   name = "channel"
   vel = (0.05, 0.0)
-  sim_shape = [512, 1024]
-  wing_shape = [256, 256]
-  num_simulations = 20
+  sim_shape = [128, 256]
+  wing_shape = [64, 64]
+  num_simulations = 40
   periodic_x = False
   periodic_y = False
   force = (0.0, 0.0)
   _, wing_boundary = wing_boundary_batch(25, 1, wing_shape, 2)
   wing_boundary = wing_boundary[0,:,:]
   #pos = [np.random.randint(0, wing_shape[0]), np.random.randint(wing_shape[1]/2 - sim_shape[1], wing_shape[1]/2)]
-  pos = [-128, -128]
+  pos = [-32, -32]
   subdomain = SubDomain(pos, sim_shape)
   wing_boundary = mobius_extract(wing_boundary, subdomain, padding_type=['zero', 'zero'])
   wing_boundary = mobius_extract(wing_boundary, SubDomain([-1,-1], [sim_shape[0]+2, sim_shape[1]+2]))
@@ -71,7 +71,7 @@ class EmptyTrainer(Trainer):
   @classmethod
   def update_defaults(cls, defaults):
     defaults.update({
-        'visc': 0.0002,
+        'visc': 0.0001,
         'domain_name': "channel",
         'run_mode': 'generate_data',
         'mode': 'visualization',

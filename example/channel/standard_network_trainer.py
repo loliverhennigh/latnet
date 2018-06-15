@@ -34,8 +34,8 @@ class StandardTrainer(Trainer):
         'latnet_network_dir': './network_save',
         'visc': 0.01,
         'lb_to_ln': 128,
-        'seq_length': 2,
-        'train_autoencoder': True,
+        'seq_length': 5,
+        'train_autoencoder': False,
         'input_cshape': '16x16',
         'max_sim_iters': 100})
 

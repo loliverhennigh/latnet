@@ -19,7 +19,7 @@ class StandardNetwork(LatNet):
   @classmethod
   def add_options(cls, group):
     group.add_argument('--nr_residual_compression', help='network config', type=int,
-                           default=2)
+                           default=4)
     group.add_argument('--nr_residual_encoder', help='network config', type=int,
                            default=2)
     group.add_argument('--nr_downsamples', help='network config', type=int,
@@ -68,6 +68,8 @@ class StandardNetwork(LatNet):
                    stride=1, 
                    gated=self.config.gated, 
                    weight_name="final_res")
+
+    self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
   
 
   # encoder boundary
@@ -104,6 +106,7 @@ class StandardNetwork(LatNet):
                    gated=self.config.gated, 
                    weight_name="final_res")
   
+    self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
   
   # compression mapping
   def compression_mapping(self, in_cstate_name, in_cboundary_name, out_name, start_apply_boundary=False):
@@ -148,6 +151,8 @@ class StandardNetwork(LatNet):
                        b_name=in_cboundary_name + "_apply",
                        mask_name=in_cboundary_name + "_mask",
                        out_name=out_name)
+
+    self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
  
   # decoder state
   def decoder_state(self, in_cstate_name, in_cboundary_name, out_name, lattice_size=9):

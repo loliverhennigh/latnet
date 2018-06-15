@@ -195,7 +195,7 @@ class LatNet(object):
               for j in range(1, self.seq_length):
                 # normalize loss to make comparable for diffrent input sizes
                 #l2_factor = 1.0*(256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
-                l2_factor = (256.0*256.0)/(len(self.gpus)*self.config.batch_size*self.num_lattice_cells('pred_state' + seq_str(j), return_float=True))
+                l2_factor = (16.0*16.0)/(len(self.gpus)*self.config.batch_size*self.num_lattice_cells('pred_state' + seq_str(j), return_float=True))
                 self.l2_loss(true_name='true_cstate' + seq_str(j),
                              pred_name='cstate' + seq_str(j),
                              loss_name='loss_l2' + seq_str(j),

@@ -371,8 +371,10 @@ class TrainSailfishSimulation(SailfishSimulation):
     ind = np.random.randint(1, len(state_files) - seq_length)
 
     # select random pos to grab from data
-    rand_pos = [np.random.randint(-input_cshape[0], self.sim_shape[0]/cratio),
-                np.random.randint(-input_cshape[1], self.sim_shape[1]/cratio)]
+    rand_pos = [np.random.randint(-input_cshape[0], self.sim_shape[0]/cratio+1),
+                np.random.randint(-input_cshape[1], self.sim_shape[1]/cratio+1)]
+    #rand_pos = [np.random.randint(-1, self.sim_shape[0]/cratio-input_cshape[0]),
+    #            np.random.randint(-1, self.sim_shape[1]/cratio-input_cshape[1])]
     cstate_subdomain = SubDomain(rand_pos, input_cshape)
 
     # get state subdomain and geometry_subdomain

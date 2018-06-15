@@ -99,9 +99,9 @@ class Trainer(object):
       if step % self.config.save_network_freq == 0:
         self._network.saver.save_checkpoint(self._network.sess, int(self._network.run('gen_global_step')))
 
-      if step % 2000 == 0:
+      if step % 400 == 0:
         print("getting new data")
-        #self.active_data_add()
+        self.active_data_add()
 
       # end simulation
       if step > self.train_iters:
@@ -110,14 +110,14 @@ class Trainer(object):
   def active_data_add(self):
     # TODO this should be cleaned up
     loss_data_point_pair = []
-    for i in tqdm(xrange(1000)):
+    for i in tqdm(xrange(200)):
       sim_index, data_point, feed_dict = self.data_queue.rand_data_point()
       loss_names = ['loss_l2']
       loss_output = self._network.run(loss_names, feed_dict=feed_dict, return_dict=True)
       loss_data_point_pair.append((loss_output['loss_l2'], sim_index, data_point))
 
     loss_data_point_pair.sort() 
-    for i in xrange(100):
+    for i in xrange(40):
       self.data_queue.add_data_point(loss_data_point_pair[-i][1], loss_data_point_pair[-i][2])
 
   def update_loss_stats(self, output):
