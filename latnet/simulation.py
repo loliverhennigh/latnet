@@ -116,10 +116,12 @@ class Simulation(object):
                                            encoder_shape_converter)
     self.start_boundary = None
 
+    print("finised makeing compressed state and boundary")
+
     # run simulation
     for i in xrange(self.num_iters):
 
-      if i % self.print_stats_every == 0:
+      if (i) % self.print_stats_every == 0:
         # print time states
         self.update_time_stats()
         self.print_stats(self.time_stats, i)
@@ -251,7 +253,8 @@ class Simulation(object):
       else:
         vel = self._domain.velocity_initial_conditions(0,0,None)
         feq = self.DxQy.vel_to_feq(vel).reshape([1] + self.DxQy.dims*[1] + [self.DxQy.Q])
-        start_state = np.zeros([1] + subdomain.size + [self.DxQy.Q]) + feq
+        start_state = np.zeros(subdomain.size + [self.DxQy.Q]) + feq[0]
+        pad_start_state = np.zeros(subdomain.size + [1])
       start_state     = np.expand_dims(start_state, axis=0)
       pad_start_state = np.expand_dims(pad_start_state, axis=0)
       return (start_state, pad_start_state)
@@ -273,6 +276,7 @@ class Simulation(object):
                                                                         return_padding=True)
       else:
         input_geometry = self.input_boundary(subdomain)
+        pad_input_geometry = np.zeros(subdomain.size + [1])
       input_geometry     = np.expand_dims(input_geometry, axis=0)
       pad_input_geometry = np.expand_dims(pad_input_geometry, axis=0)
       return (input_geometry, pad_input_geometry)
@@ -285,7 +289,8 @@ class Simulation(object):
   def cstate_to_cstate(self, cmapping, cmapping_shape_converter, cstate, cboundary):
 
     def input_generator(cstate_subdomain, cboundary_subdomain):
-      sub_cstate =    numpy_utils.mobius_extract_2(cstate, cstate_subdomain, 
+      tic = time.time()
+      sub_cstate =    numpy_utils.mobius_extract(cstate, cstate_subdomain, 
                                                  has_batch=True, 
                                                  padding_type=self.padding_type,
                                                  return_padding=True)
@@ -293,6 +298,8 @@ class Simulation(object):
                                                  has_batch=True, 
                                                  padding_type=self.padding_type,
                                                  return_padding=True)
+      toc = time.time()
+      print(tic - toc)
       return [sub_cstate, sub_cboundary]
 
     cstate = self.mapping(cmapping, [cmapping_shape_converter, cmapping_shape_converter],
@@ -344,6 +351,8 @@ class Simulation(object):
     # update total step time
     self.time_stats['MLOPS'] = (self.config.lb_to_ln*self.print_stats_every*float(np.prod(np.array(self.sim_shape))) / 
                                (1000000*(self.toc - self.tic)))
+    # time per step
+    self.time_stats['time_per_step'] = (self.toc - self.tic)/self.print_stats_every
     # start timer
     self.tic = time.time()
 

@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import cv2
 fourcc = cv2.cv.CV_FOURCC('m', 'p', '4', 'v') 
 import numpy as np
+import os
+import psutil as ps
 from utils.python_utils import *
 
 # this class will handle visualizaitions with pygame
@@ -16,6 +18,10 @@ class Visualizations:
     self.DxQy = lattice.TYPES[config.DxQy]
     self.simulation_video = cv2.VideoWriter()
     self.compare_video = cv2.VideoWriter()
+    with open(os.devnull, 'w') as devnull:
+      p = ps.subprocess.Popen(('mkdir -p figs').split(' '), 
+                               stdout=devnull, stderr=devnull)
+      p.communicate()
     self.simulation_video.open('figs/simulation_video.mov', fourcc, 5, (self.sim_shape[1], self.sim_shape[0]*2), True)
     self.compare_video.open('figs/compare_video.mov', fourcc, 5, (self.sim_shape[1], self.sim_shape[0]*4), True)
 

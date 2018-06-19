@@ -107,6 +107,7 @@ class StandardNetwork(LatNet):
 
     self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
   
+  
   # compression mapping
   def compression_mapping(self, in_cstate_name, in_cboundary_name, out_name, start_apply_boundary=False):
   
