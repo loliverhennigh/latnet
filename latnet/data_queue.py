@@ -45,12 +45,12 @@ class DataQueue:
     gpu_str = '_gpu_' + str(self.gpus[0])
     self.state_shape_converter = self.shape_converters['state' + gpu_str,
                             'cstate_' + str(self.seq_length-1) + gpu_str]
-    if self.train_autoencoder:
-      self.seq_state_shape_converter = self.shape_converters['state' + gpu_str, 
-                              'pred_state_' + str(self.seq_length-1) + gpu_str]
-    else:
-      self.seq_state_shape_converter = self.shape_converters['true_state_' + str(self.seq_length-1) + gpu_str, 
-                              'true_cstate_' + str(self.seq_length-1) + gpu_str]
+    #if self.train_autoencoder:
+    #  self.seq_state_shape_converter = self.shape_converters['state' + gpu_str, 
+    #                          'pred_state_' + str(self.seq_length-1) + gpu_str]
+    #else:
+    self.seq_state_shape_converter = self.shape_converters['true_state_' + str(self.seq_length-1) + gpu_str, 
+                            'true_cstate_' + str(self.seq_length-1) + gpu_str]
     self.cratio = pow(2, self.nr_downsamples)
 
     # make queue

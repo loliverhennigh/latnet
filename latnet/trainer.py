@@ -29,6 +29,7 @@ class Trainer(object):
     self.network_dir  = config.latnet_network_dir
     self.seq_length = config.seq_length
     self.gan = config.gan
+    self.train_autoencoder = config.train_autoencoder
     self.train_iters = config.train_iters
     gpus = config.gpus.split(',')
     self.gpus = map(int, gpus)
@@ -66,7 +67,9 @@ class Trainer(object):
       # perform optimization step for gen
       gen_names = ['gen_train_op', 'loss_gen']
       if not self.gan:
-        gen_names += ['loss_l2']
+        if self.train_autoencoder:
+          gen_names += ['loss_auto_l2']
+        gen_names += ['loss_comp_l2']
       if self.gan:
         gen_names += ['loss_l1', 'loss_gen_un_class', 'loss_layer_l2', 'loss_gen_con_class']
       gen_output = self._network.run(gen_names, feed_dict=feed_dict, return_dict=True)
@@ -112,9 +115,9 @@ class Trainer(object):
     loss_data_point_pair = []
     for i in tqdm(xrange(200)):
       sim_index, data_point, feed_dict = self.data_queue.rand_data_point()
-      loss_names = ['loss_l2']
+      loss_names = ['loss_gen']
       loss_output = self._network.run(loss_names, feed_dict=feed_dict, return_dict=True)
-      loss_data_point_pair.append((loss_output['loss_l2'], sim_index, data_point))
+      loss_data_point_pair.append((loss_output['loss_gen'], sim_index, data_point))
 
     loss_data_point_pair.sort() 
     for i in xrange(40):

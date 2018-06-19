@@ -381,10 +381,10 @@ class TrainSailfishSimulation(SailfishSimulation):
     state_subdomain = state_shape_converter.out_in_subdomain(copy(cstate_subdomain))
 
     # get seq state subdomain
-    if self.train_autoencoder:
-      seq_state_subdomain = seq_state_shape_converter.in_out_subdomain(copy(state_subdomain))
-    else:
-      seq_state_subdomain = seq_state_shape_converter.out_in_subdomain(copy(cstate_subdomain))
+    #if self.train_autoencoder:
+    #  seq_state_subdomain = seq_state_shape_converter.in_out_subdomain(copy(state_subdomain))
+    #else:
+    seq_state_subdomain = seq_state_shape_converter.out_in_subdomain(copy(cstate_subdomain))
 
     # data point and return it
     return DataPoint(ind, seq_length, state_subdomain, seq_state_subdomain)
