@@ -9,7 +9,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 # import latnet
-sys.path.append('../latnet')
+sys.path.append('../../latnet')
 from domain import Domain
 from simulation import Simulation
 from controller import LatNetController

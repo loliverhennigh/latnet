@@ -22,7 +22,7 @@ import glob
 class FakeDomain(Domain):
   sim_shape = [200,200,200]
   name = "JHTDB"
-  num_simulations = 10
+  num_simulations = 4
   periodic_x = True
   periodic_y = True
   periodic_z = True

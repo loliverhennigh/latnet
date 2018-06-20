@@ -51,7 +51,6 @@ class DataQueue:
       self.seq_state_shape_converter = self.shape_converters['state' + gpu_str, 
                               'pred_state_' + str(self.seq_length-1) + gpu_str]
     else:
-      print("Wrong")
       self.seq_state_shape_converter = self.shape_converters['true_state_' + str(self.seq_length-1) + gpu_str, 
                               'true_cstate_' + str(self.seq_length-1) + gpu_str]
     self.cratio = pow(2, self.nr_downsamples)
