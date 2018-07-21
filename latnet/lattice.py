@@ -105,6 +105,7 @@ class DxQy:
 class D2Q9(DxQy):
   dims = 2
   Q = 9
+  boundary_dims = 6
   weights = np.array([4./9.,  1./9.,  1./9., 
                       1./9.,  1./9.,  1./36.,
                       1./36., 1./36., 1./36.])
@@ -176,6 +177,7 @@ class D2Q9(DxQy):
 class D3Q15(DxQy):
   dims = 3
   Q = 15
+  boundary_dims = 6
   weights = np.array([2./9.,  1./9.,  1./9.,
                       1./9.,  1./9.,  1./9., 
                       1./9.,  1./72., 1./72.,
@@ -215,9 +217,25 @@ class D3Q15(DxQy):
     print("vel_to_feq not implemented for D3Q15 yet")
     exit()
 
+class D3Q4(DxQy):
+  dims = 3
+  Q = 4
+  boundary_dims = 1
+  weights = np.array([1.0, 1.0, 1.0, 1.0])
+  c = np.array([[ 1, 0, 0], [ 0, 1, 0], [ 0, 0, 1], [0, 0, 0]])
+
+  def vel_to_feq(self, vel):
+    print("vel_to_feq not implemented for D3Q4 yet")
+    exit()
+
+  def lattice_to_rho(cls, lattice):
+    rho = lattice[...,-1:]
+    return rho
+
 TYPES = {}
 TYPES['D2Q9']  = D2Q9
 TYPES['D3Q15'] = D3Q15
+TYPES['D3Q4'] = D3Q4
 
 """
 def lattice_to_flux(lattice, boundary):

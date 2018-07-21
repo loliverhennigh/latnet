@@ -22,7 +22,7 @@ def print_dict(name, dictionary, color):
       print_element = '   ' + name + ':'
       print_element = print_element.ljust(28)
       if type(dictionary[name]) is float:
-        print_element += str(round(dictionary[name], 3))
+        print_element += str(round(dictionary[name], 5))
       else:
         print_element += str(dictionary[name])
       print_element += '\n'
@@ -38,5 +38,11 @@ def llist2list(llist):
       store_out_list.append(llist[i][j])
     out_list.append(store_out_list)
   return out_list
+
+
+
+
+
+
 
  

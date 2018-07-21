@@ -16,58 +16,146 @@ from shape_converter import SubDomain
 from network_saver import NetworkSaver
 
 class LatNet(object):
-  # default network name
-  #network_name = 'advanced_network'
-
-  #def __init__(self, config):
-  def __init__(self, config, network_arch):
-    # in and out tensors
-    self.in_tensors = {}
-    self.out_tensors = {}
-    self.in_pad_tensors = {}
-    self.out_pad_tensors = {}
-
-    # shape converter from in_tensor to out_tensor
-    self.shape_converters = {}
-
+  def __init__(self, config):
     # needed configs
-    self.config = config # TODO remove this when config is corrected
     self.DxQy = lattice.TYPES[config.DxQy]()
     self.network_dir  = config.latnet_network_dir
     self.seq_length = config.seq_length
-    self.train_autoencoder = config.train_autoencoder
-    self.gan = config.gan
-    self.train_iters = config.train_iters
-    self.train_autoencoder = config.train_autoencoder
     gpus = config.gpus.split(',')
     self.gpus = map(int, gpus)
-    self.loss_stats = {}
-    self.time_stats = {}
-    self.start_time = time.time()
-    self.tic = time.time()
-    self.toc = time.time()
-    self.stats_history_length = 300
-
-    # 
-    self.make_network_templates()
 
   @classmethod
   def add_options(cls, group):
     pass
 
-  def make_network_templates(self):
-    # piecese of network
-    self._encoder_state                = tf.make_template('encoder_state', self.encoder_state)
-    self._encoder_boundary             = tf.make_template('encoder_boundary', self.encoder_boundary)
-    self._compression_mapping          = tf.make_template('compression_mapping', self.compression_mapping)
-    self._decoder_state                = tf.make_template('decoder_state', self.decoder_state)
-    if self.gan:
-      self._discriminator_conditional    = tf.make_template('discriminator_conditional', self.discriminator_conditional)
-      self._discriminator_unconditional  = tf.make_template('discriminator_unconditional', self.discriminator_unconditional)
+  def unroll_global_step(self, name):
+    # global step counter
+    self.add_step_counter(name) 
+    global_step = lambda : self.run(name, feed_dict={})
+    return global_step
+
+  def run(self, out_names, feed_dict=None, return_dict=False):
+    # convert out_names to tensors 
+    if type(out_names) is list:
+      out_tensors = [self.out_tensors[x] for x in out_names]
+    else:
+      out_tensors = self.out_tensors[out_names]
+
+    # convert feed_dict to tensorflow version
+    if feed_dict is not None:
+      tf_feed_dict = {}
+      for name in feed_dict.keys():
+        if type(feed_dict[name]) is tuple:
+          tf_feed_dict[self.in_tensors[name]] = feed_dict[name][0]
+          tf_feed_dict[self.in_pad_tensors[name]] = feed_dict[name][1]
+        else:
+          tf_feed_dict[self.in_tensors[name]] = feed_dict[name]
+        #print(tf_feed_dict[self.in_tensors[name]].shape)
+    else:
+      tf_feed_dict=None
+
+    # run with tensorflow
+    tf_output = self.sess.run(out_tensors, feed_dict=tf_feed_dict)
+    
+    # possibly convert output to dictionary 
+    if return_dict:
+      output = {}
+      if type(out_names) is list:
+        for i in xrange(len(out_names)):
+          output[out_names[i]] = tf_output[i]
+      else:
+        output[out_names] = tf_output
+    else:
+      output = tf_output
+    return output
+
+  def start_session(self):
+    #gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.9)
+    #sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+    sess = tf.Session()
+    init = tf.global_variables_initializer()
+    sess.run(init)
+    return sess
+
+
+class TrainLatNet(LatNet):
+
+  def __init__(self, config):
+    super(LatNet, self).__init__(config)
+
+    # shape converter from in_tensor to out_tensor
+    self.train_shape_converters = {}
+
+    # needed configs
+    self.train_mode = config.train_mode
+    self.train_iters = config.train_iters
+
+  @classmethod
+  def add_options(cls, group):
+    pass
+
+  def unroll_train_full(self):
+    for i in xrange(len(self.gpus)):
+      # make input names and output names
+      gpu_str = '_gpu_' + str(self.gpus[i])
+      state_name = 'state' + gpu_str
+      boundary_name = 'boundary' + gpu_str
+      pred_state_names = ['pred_state' + gpu_str + '_' + str(x) for x in range(self.seq_length)]
+      true_state_names = ['true_state' + gpu_str + '_' + str(x) for x in range(self.seq_length)]
+      loss_name = 'l2_loss' + gpu_str
+      grad_name = 'gradient' + gpu_str
+
+      with tf.device('/gpu:%d' % self.gpus[i]):
+        # make input state and boundary
+        self.network_arch.add_lattice(state_name, gpu_id=i)
+        self.network_arch.add_boundary(boundary_name, gpu_id=i)
+        for j in xrange(self.seq_length):
+          self.network_arch.add_lattice(true_state_names[j], gpu_id=i)
+      
+        # unroll network
+        self.network_arch.unroll_full(in_name_state=state_name,
+                                      in_name_boundary=boundary_name,
+                                      out_names=pred_state_names,
+                                      gpu_id=i)
+    
+        # calc loss
+        self.network_arch.l2_loss(true_name=true_state_names,
+                                  pred_name=pred_state_names,
+                                  loss_name=loss_name,
+                                  normalize=True)
+ 
+        # calc grad
+        if i == 0:
+          all_params = tf.trainable_variables()
+        self.network_arch.gradients(params=all_params, out_name=gradient_name)
+
+    ###### Round up losses and Gradients on gpu:0 ######
+    with tf.device('/gpu:%d' % self.gpus[0]):
+      # round up losses
+      loss_names = ['l2_loss_gpu_' + str(x) for x in xrange(self.seq_length)]
+      loss_name = 'l2_loss'
+      self.network_arch.sum_losses(in_names=loss_names, out_name=loss_name)
+      # round up gradients
+      gradient_names = ['gradient_gpu_' + str(x) for x in xrange(self.seq_length)]
+      gradient_name = 'gradient'
+      self.network_arch.sum_gradients(in_names=gradient_names, out_name=gradient_name)
+
+    ###### Train Operation ######
+    self.optimizer = Optimizer(self.config, name='opt', optimizer_name='adam')
+    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    self.out_tensors['gen_train_op'] = self.gen_optimizer.train_op(gen_params, 
+                                             self.out_tensors['gen_grads' + gpu_str(0)], 
+                                             self.out_tensors['gen_global_step'],
+                                             mom1=self.config.beta1,
+                                             other_update=update_ops)
+
+    def train_step(feed_dict):
+      self.run('loss', 
+    train_step = lambda x: self.run('cstate_from_state', 
+                             feed_dict={'state':x})
 
   def train_unroll(self):
 
-    # graph
     with tf.Graph().as_default():
 
       ###### Inputs to Graph ######
@@ -478,370 +566,20 @@ class LatNet(object):
     cstate = self.run('cstate_auto', feed_dict={'state_gpu_0': state})
     return cstate
 
-  def fc(self, in_name, out_name,
-         hidden, weight_name='fc', 
-         nonlinearity=None, flat=False):
-
-    # add conv to tensor computation
-    self.out_tensors[out_name] =  nn.fc_layer(self.out_tensors[in_name],
-                                              hidden, name=weight_name, 
-                                              nonlinearity=nonlinearity, flat=flat)
-
-  def simple_conv(self, in_name, out_name, kernel):
-
-    # add conv to tensor computation
-    self.out_tensors[out_name] =  nn.simple_conv_2d(self.out_tensors[in_name], k=kernel)
-
-    # add conv to the shape converter
-    for name in self.shape_converters.keys():
-      if name[1] == in_name:
-        self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
-        self.shape_converters[name[0], out_name].add_conv(3, 1)
-
-  def conv(self, in_name, out_name,
-           kernel_size, stride, filter_size, 
-           weight_name="conv", nonlinearity=None,
-           normalize=None):
-
-    # add conv to tensor computation
-    self.out_tensors[out_name] =  nn.conv_layer(self.out_tensors[in_name],
-                                              kernel_size, stride, filter_size, 
-                                              name=weight_name, nonlinearity=nonlinearity,
-                                              phase=self.out_tensors['phase'],
-                                              normalize=normalize)
-
-    # remove edges or pool of pad tensor
-    self.out_pad_tensors[out_name] = nn.mimic_conv_pad(self.out_pad_tensors[in_name], kernel_size, stride)
-
-    # ensure zeros padding
-    self.out_tensors[out_name] = nn.apply_pad(self.out_tensors[out_name], self.out_pad_tensors[out_name])
-
-    # add conv to the shape converter
-    for name in self.shape_converters.keys():
-      if name[1] == in_name:
-        self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
-        self.shape_converters[name[0], out_name].add_conv(kernel_size, stride)
-
-  def trans_conv(self, in_name, out_name,
-                 kernel_size, stride, filter_size, 
-                 weight_name="trans_conv", nonlinearity=None):
-
-    # add conv to tensor computation
-    self.out_tensors[out_name] =  nn.transpose_conv_layer(self.out_tensors[in_name],
-                                                        kernel_size, stride, filter_size, 
-                                                        name=weight_name, nonlinearity=nonlinearity)
-
-    # remove edges or pool of pad tensor
-    self.out_pad_tensors[out_name] = nn.mimic_trans_conv_pad(self.out_pad_tensors[in_name], kernel_size, stride)
-
-    # ensure zeros padding
-    self.out_tensors[out_name] = nn.apply_pad(self.out_tensors[out_name], self.out_pad_tensors[out_name])
-
-    # add conv to the shape converter
-    for name in self.shape_converters.keys():
-      if name[1] == in_name:
-        self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
-        self.shape_converters[name[0], out_name].add_trans_conv(kernel_size, stride)
-
-  def upsample(self, in_name, out_name):
-
-    # add conv to tensor computation
-    self.out_tensors[out_name] =  nn.upsampleing_resize(self.out_tensors[in_name])
-
-    # remove edges or pool of pad tensor
-    self.out_pad_tensors[out_name] = nn.mimic_trans_conv_pad(self.out_pad_tensors[in_name], 1, 2)
-
-    # add conv to the shape converter
-    for name in self.shape_converters.keys():
-      if name[1] == in_name:
-        self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
-        self.shape_converters[name[0], out_name].add_trans_conv(0, 2)
-
-  def downsample(self, in_name, out_name, sampling='ave'):
-
-    # add conv to tensor computation
-    self.out_tensors[out_name] =  nn.downsample(self.out_tensors[in_name], sampling=sampling)
-
-    # remove edges or pool of pad tensor
-    self.out_pad_tensors[out_name] = nn.mimic_conv_pad(self.out_pad_tensors[in_name], 1, 2)
-
-    # add conv to the shape converter
-    for name in self.shape_converters.keys():
-      if name[1] == in_name:
-        self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
-        self.shape_converters[name[0], out_name].add_conv(1, 2)
-
-  def res_block(self, in_name, out_name,
-                a_name = None,
-                filter_size=16, 
-                kernel_size=3, 
-                nonlinearity=nn.concat_elu, 
-                keep_p=1.0, stride=1, 
-                gated=True, weight_name="resnet", 
-                begin_nonlinearity=True, 
-                normalize=None):
-                #normalize='batch_norm'):
-
-    # add res block to tensor computation
-    self.out_tensors[out_name] = nn.res_block(self.out_tensors[in_name],
-                                            filter_size=filter_size, 
-                                            kernel_size=kernel_size, 
-                                            nonlinearity=nonlinearity, 
-                                            keep_p=keep_p, stride=stride, 
-                                            gated=gated, name=weight_name, 
-                                            begin_nonlinearity=begin_nonlinearity, 
-                                            phase=self.out_tensors['phase'],
-                                            normalize=normalize)
-
-    # remove edges or pool of pad tensor
-    self.out_pad_tensors[out_name] = nn.mimic_res_pad(self.out_pad_tensors[in_name], kernel_size, stride)
-
-    # ensure zeros padding
-    self.out_tensors[out_name] = nn.apply_pad(self.out_tensors[out_name], self.out_pad_tensors[out_name])
-
-    # add res block to the shape converter
-    for name in self.shape_converters.keys():
-      if name[1] == in_name:
-        self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
-        self.shape_converters[name[0], out_name].add_res_block(kernel_size, stride)
-
-  def fast_res_block(self, in_name, out_name,
-                     filter_size=16, 
-                     filter_size_conv=4, 
-                     kernel_size=7, 
-                     nonlinearity=nn.concat_elu, 
-                     weight_name="resnet", 
-                     begin_nonlinearity=True):
-
-    # add res block to tensor computation
-    self.out_tensors[out_name] = nn.fast_res_block(self.out_tensors[in_name],
-                                                   filter_size=filter_size, 
-                                                   filter_size_conv=filter_size_conv, 
-                                                   kernel_size=kernel_size, 
-                                                   nonlinearity=nonlinearity, 
-                                                   name=weight_name, 
-                                                   begin_nonlinearity=begin_nonlinearity)
-
-    # remove edges or pool of pad tensor
-    self.out_pad_tensors[out_name] = nn.mimic_res_pad(self.out_pad_tensors[in_name], kernel_size, stride)
-
-    # ensure zeros padding
-    self.out_tensors[out_name] = nn.apply_pad(self.out_tensors[out_name], self.out_pad_tensors[out_name])
-
-    # add res block to the shape converter
-    for name in self.shape_converters.keys():
-      if name[1] == in_name:
-        self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
-        self.shape_converters[name[0], out_name].add_res_block(kernel_size, 1)
-
-
-  def split_tensor(self, in_name,
-                   out_names,
-                   num_split, axis):
-
-    # perform split on tensor
-    if axis == -1:
-      axis = len(self.out_tensors[in_name].get_shape())-1
-    splited_tensors  = tf.split(self.out_tensors[in_name],
-                                num_split, axis)
-    for i in xrange(len(out_names)):
-      self.out_tensors[out_names[i]] = splited_tensors[i]
-
-    # add to shape converters
-    for name in self.shape_converters.keys():
-      if name[1] == in_name:
-        for i in xrange(len(out_names)):
-          self.shape_converters[name[0], out_names[i]] = copy(self.shape_converters[name])
-
-  def concat_tensors(self, in_names, out_name, axis=-1):
-    in_tensors = [self.out_tensors[name] for name in in_names]
-    self.out_tensors[out_name] = tf.concat(in_tensors, 
-                                           axis=axis)
-
-    # add to shape converters
-    for name in self.shape_converters.keys():
-      if name[1] in in_names:
-        self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
-
-  def trim_tensor(self, in_name, out_name, trim):
-    if trim > 0:
-      if len(self.out_tensors[in_name].get_shape()) == 4:
-        self.out_tensors[out_name] = self.out_tensors[in_name][:,trim:-trim, trim:-trim]
-        self.out_pad_tensors[out_name] = self.out_pad_tensors[in_name][:,trim:-trim, trim:-trim]
-      elif len(self.out_tensors[in_name].get_shape()) == 5:
-        self.out_tensors[out_name] = self.out_tensors[in_name][:,trim:-trim, trim:-trim, trim:-trim]
-        self.out_pad_tensors[out_name] = self.out_pad_tensors[in_name][:,trim:-trim, trim:-trim, trim:-trim]
-
-  def match_trim_tensor(self, in_name, match_name, out_name, in_out=False):
-
-    if in_out: 
-      subdomain = SubDomain(self.DxQy.dims*[0], self.DxQy.dims*[128])
-      new_subdomain = self.shape_converters[in_name, match_name].in_out_subdomain(subdomain)
-      #self.trim_tensor(in_name, out_name, abs(new_subdomain.pos[0])+1)
-      self.trim_tensor(in_name, out_name, abs(new_subdomain.pos[0]))
-    else:
-      subdomain = SubDomain(self.DxQy.dims*[0], self.DxQy.dims*[1])
-      new_subdomain = self.shape_converters[in_name, match_name].out_in_subdomain(subdomain)
-      self.trim_tensor(in_name, out_name, abs(new_subdomain.pos[0]))
-
-  def image_combine(self, a_name, b_name, mask_name, out_name):
-    # as seen in "Generating Videos with Scene Dynamics" figure 1
-    self.out_tensors[out_name] = ((self.out_tensors[a_name] *      self.out_tensors[mask_name] )
-                                + self.out_tensors[b_name])
-                                #+ (self.out_tensors[b_name] * (1 - self.out_tensors[mask_name])))
-
-    # update padding name
-    self.out_pad_tensors[out_name] = self.out_pad_tensors[a_name]
-
-    # take shape converters from a_name
-    for name in self.shape_converters.keys():
-      if name[1] == a_name:
-        self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
-      if name[1] == b_name:
-        self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
-      if name[1] == mask_name:
-        self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
-
-  def lattice_shape(self, in_name):
-    shape = tf.shape(self.out_tensors[in_name])[1:-1]
-    return shape
-
-  def num_lattice_cells(self, in_name, return_float=False):
-    lattice_shape = self.lattice_shape(in_name)
-    lattice_cells = tf.reduce_prod(lattice_shape)
-    if return_float:
-      lattice_cells = tf.cast(lattice_cells, tf.float32)
-    return lattice_cells
-
-  def add_shape_converter(self, name):
-    self.shape_converters[name, name] = ShapeConverter()
-
-  def nonlinearity(self, name, nonlinearity_name):
-    nonlin = nn.set_nonlinearity(nonlinearity_name)
-    self.out_tensors[name] = nonlin(self.out_tensors[name])
-
-  def l1_loss(self, true_name, pred_name, loss_name, factor=None):
-    self.out_tensors[loss_name] = tf.reduce_mean(tf.abs(tf.stop_gradient(self.out_tensors[ true_name])
-                                              - self.out_tensors[pred_name]))
-    if factor is not None:
-      self.out_tensors[loss_name] = factor * self.out_tensors[loss_name]
-
-  def l2_loss(self, true_name, pred_name, loss_name, factor=None):
-
-    #with tf.device('/cpu:0'):
-    #self.out_tensors[true_name + '_' + pred_name] = tf.abs(self.out_tensors[true_name]
-    #                                          - self.out_tensors[pred_name])
-    #self.lattice_summary(in_name=true_name + '_' + pred_name, summary_name='loss_image')
-
-    self.out_tensors[loss_name] = tf.nn.l2_loss(tf.stop_gradient(self.out_tensors[ true_name]) 
-                                                - self.out_tensors[pred_name])
-    if factor is not None:
-      self.out_tensors[loss_name] = factor * self.out_tensors[loss_name]
-
-  def gen_loss(self, class_name, loss_name, factor=None):
-    self.out_tensors[loss_name] = -tf.reduce_mean(tf.log(self.out_tensors[class_name]))
-    if factor is not None:
-      self.out_tensors[loss_name] = factor * self.out_tensors[loss_name]
-
-  def disc_loss(self, true_class_name, pred_class_name, loss_name, factor=None):
-    self.out_tensors[loss_name] = -tf.reduce_mean(tf.log(self.out_tensors[true_class_name])
-                                          + tf.log(1.0 - self.out_tensors[pred_class_name]))
-    if factor is not None:
-      self.out_tensors[loss_name] = factor * self.out_tensors[loss_name]
-
-  def combine_pipe(self, other_pipe):
-    self.in_tensors.update(other_pipe.in_tensors)
-    self.out_tensors.update(other_pipe.out_tensors)
-    self.shape_converters.update(other_pipe.shape_converters)
-
-  def split_pipe(self, old_name, new_name):
-    self.out_tensors[new_name] = self.out_tensors[old_name]
-    for name in self.shape_converters.keys():
-      if name[1] == old_name:
-        self.shape_converters[name[0],new_name] = copy(self.shape_converters[name])
-
-  def remove_tensor(self, rm_name):
-    self.out_tensors.pop(rm_name)
-    for name in self.shape_converters.keys():
-      if name[1] == rm_name:
-        self.shape_converters.pop(name)
-
-  def add_step_counter(self, name):
-    counter = tf.get_variable(name, [], 
-              initializer=tf.constant_initializer(0), trainable=False)
-    self.in_tensors[name] = counter
-    self.out_tensors[name] = counter
-    self.shape_converters[name,name] = ShapeConverter()
- 
-  def add_tensor(self, name, shape):
-    tensor     = tf.placeholder(tf.float32, shape, name=name)
-    pad_tensor = tf.placeholder(tf.float32, shape[:-1] + [1], name=name + "_pad")
-    self.in_tensors[name] = tensor
-    self.out_tensors[name] = tensor
-    self.in_pad_tensors[name] = pad_tensor
-    self.out_pad_tensors[name] = pad_tensor
-    self.shape_converters[name,name] = ShapeConverter()
-     
-  def add_phase(self): 
-    self.in_tensors['phase'] = tf.placeholder(tf.bool, name='phase')
-    self.out_tensors['phase'] = self.in_tensors['phase']
-
-  def rename_tensor(self, old_name, new_name):
-    # this may need to be handled with more care
-    self.out_tensors[new_name] = self.out_tensors[old_name]
-    if old_name in self.out_pad_tensors.keys():
-      self.out_pad_tensors[new_name] = self.out_pad_tensors[old_name]
-    
-    # add to shape converter
-    for name in self.shape_converters.keys():
-      if name[1] == old_name:
-        self.shape_converters[name[0], new_name] = copy(self.shape_converters[name])
-
-  def lattice_summary(self, in_name, summary_name, 
-                      display_norm=True, display_vel=True, display_pressure=True):
-    if display_norm:
-      if self.DxQy.dims == 2:
-        tf.summary.image(summary_name + '_norm', self.DxQy.lattice_to_norm(self.out_tensors[in_name]))
-      elif self.DxQy.dims == 3:
-        tf.summary.image(summary_name + '_norm', self.DxQy.lattice_to_norm(self.out_tensors[in_name])[:,0])
-    if display_pressure:
-      if self.DxQy.dims == 2:
-        tf.summary.image(summary_name + '_rho', self.DxQy.lattice_to_rho(self.out_tensors[in_name]))
-      elif self.DxQy.dims == 3:
-        tf.summary.image(summary_name + '_rho', self.DxQy.lattice_to_rho(self.out_tensors[in_name])[:,0])
-    if display_vel:
-      if self.DxQy.dims == 2:
-        vel = self.DxQy.lattice_to_vel(self.out_tensors[in_name])
-        tf.summary.image(summary_name + '_vel_x', vel[...,0:1])
-        tf.summary.image(summary_name + '_vel_y', vel[...,1:2])
-      elif self.DxQy.dims == 3:
-        vel = self.DxQy.lattice_to_vel(self.out_tensors[in_name])[:,0]
-        tf.summary.image(summary_name + '_vel_x', vel[...,0:1])
-        tf.summary.image(summary_name + '_vel_y', vel[...,1:2])
-
-  def boundary_summary(self, in_name, summary_name):
-    if self.DxQy.dims == 2:
-      tf.summary.image('physical_boundary', self.out_tensors[in_name][...,0:1])
-      tf.summary.image('vel_x_boundary', self.out_tensors[in_name][...,1:2])
-      tf.summary.image('vel_y_boundary', self.out_tensors[in_name][...,2:3])
-      if len(self.out_tensors[in_name].get_shape()) == 5:
-        tf.summary.image('vel_z_boundary', self.out_tensors[in_name][...,3:4])
-      tf.summary.image('density_boundary', self.out_tensors[in_name][...,-1:])
-
   def run(self, out_names, feed_dict=None, return_dict=False):
     # convert out_names to tensors 
     if type(out_names) is list:
-      out_tensors = [self.out_tensors[x] for x in out_names]
+      out_tensors = [self.network_arch.out_tensors[x] for x in out_names]
     else:
-      out_tensors = self.out_tensors[out_names]
+      out_tensors = self.network_arch.out_tensors[out_names]
 
     # convert feed_dict to tensorflow version
     if feed_dict is not None:
       tf_feed_dict = {}
       for name in feed_dict.keys():
         if type(feed_dict[name]) is tuple:
-          tf_feed_dict[self.in_tensors[name]] = feed_dict[name][0]
-          tf_feed_dict[self.in_pad_tensors[name]] = feed_dict[name][1]
+          tf_feed_dict[self.network_arch.in_tensors[name]] = feed_dict[name][0]
+          tf_feed_dict[self.network_arch.in_pad_tensors[name]] = feed_dict[name][1]
         else:
           tf_feed_dict[self.in_tensors[name]] = feed_dict[name]
         #print(tf_feed_dict[self.in_tensors[name]].shape)
@@ -870,4 +608,9 @@ class LatNet(object):
     init = tf.global_variables_initializer()
     sess.run(init)
     return sess
+
+
+class TrainLatNet(LatNet):
+
+
 

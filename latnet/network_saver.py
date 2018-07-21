@@ -23,7 +23,8 @@ class NetworkSaver:
                            'debug_sailfish', 'every', 'unit_test', 'propagation_enabled',
                            'time_dependence', 'space_dependence', 'incompressible', 
                            'relaxation_enabled', 'quiet', 'periodic_x', 'domain_name',
-                           'periodic_y', 'train_autoencoder']
+                           'periodic_y', 'periodic_z', 'start_num_data_points_train', 
+                           'start_num_data_points_test', 'train_autoencoder']
 
     self.checkpoint_path = self._make_checkpoint_path()
     self._make_saver()

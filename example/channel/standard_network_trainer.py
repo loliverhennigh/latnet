@@ -32,6 +32,7 @@ class StandardTrainer(Trainer):
     defaults.update({
         'train_sim_dir': './train_data',
         'latnet_network_dir': './network_save',
+        'dataset': 'sailfish',
         'visc': 0.01,
         'lb_to_ln': 128,
         'seq_length': 5,

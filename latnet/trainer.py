@@ -11,6 +11,7 @@ from tqdm import *
 import lattice
 import nn as nn
 
+import matplotlib.pyplot as plt
 from shape_converter import ShapeConverter
 from optimizer import Optimizer
 from shape_converter import SubDomain
@@ -31,6 +32,7 @@ class Trainer(object):
     self.gan = config.gan
     self.train_autoencoder = config.train_autoencoder
     self.train_iters = config.train_iters
+    self.dataset = config.dataset
     gpus = config.gpus.split(',')
     self.gpus = map(int, gpus)
     self.loss_stats = {}
@@ -51,25 +53,53 @@ class Trainer(object):
   def make_data_queue(self):
     # add script name to domains
     for domain in self.domains:
-      domain.script_name = self.script_name
-    self.data_queue = DataQueue(self.config, self.domains, self._network.train_shape_converter())
-
-  def train(self):
+      if domain is not None:
+        domain.script_name = self.script_name
+    if self.train_autoencoder:
+      mapping = None
+    else:
+      mapping = self._network.encoder_lambda
+    self.data_queue_train = DataQueue(self.config, 
+                                      self.config.train_sim_dir + '/train',
+                                      self.domains, 
+                                      self._network.train_shape_converter(), 
+                                      self.config.start_num_data_points_train,
+                                      self.config.max_queue,
+                                      mapping=mapping)
+    self.data_queue_test = DataQueue(self.config, 
+                                     self.config.train_sim_dir + '/test' , 
+                                     self.domains, 
+                                     self._network.train_shape_converter(), 
+                                     self.config.start_num_data_points_test,
+                                     len(self.gpus)*self.config.batch_size*4,
+                                      mapping=mapping)
  
+ 
+  def train(self):
+
+    if self.train_mode == "full": 
+      train_op = self.unroll_train_full()
+ 
+  def train_full(self):
+    # make train step
+    with tf.Graph().as_default():
+      train_step, save_summary = self.unroll_full()
+    
+
     # steps per print (hard set for now untill done debugging)
     steps_per_print = 20
 
     while True: 
       # get batch of data
-      feed_dict = self.data_queue.minibatch()
-      feed_dict['phase'] = 1
+      feed_dict = self.data_queue_train.minibatch()
 
       # perform optimization step for gen
       gen_names = ['gen_train_op', 'loss_gen']
       if not self.gan:
         if self.train_autoencoder:
           gen_names += ['loss_auto_l2']
-        gen_names += ['loss_comp_l2']
+        else:
+          gen_names += ['loss_comp_l2']
       if self.gan:
         gen_names += ['loss_l1', 'loss_gen_un_class', 'loss_layer_l2', 'loss_gen_con_class']
       gen_output = self._network.run(gen_names, feed_dict=feed_dict, return_dict=True)
@@ -87,7 +117,9 @@ class Trainer(object):
       # print required data and save
       step = self._network.run('gen_global_step')
       if step % steps_per_print == 0:
-        self.print_stats(self.loss_stats, self.time_stats, self.data_queue.queue_stats(), step)
+        self.print_stats(self.loss_stats, self.time_stats, self.data_queue_train.queue_stats(), step)
+
+      if step % 100 == 0 and self.train_autoencoder:
         # TODO integrat this into self.saver
         tf_feed_dict = {}
         for name in feed_dict.keys():
@@ -102,26 +134,71 @@ class Trainer(object):
       if step % self.config.save_network_freq == 0:
         self._network.saver.save_checkpoint(self._network.sess, int(self._network.run('gen_global_step')))
 
-      if step % 400 == 0:
+      if step % 200 == 0:
         print("getting new data")
         self.active_data_add()
+
+      """
+      # test data
+      if step % 1000 == 0:
+        feed_dict = self.data_queue_test.minibatch()
+        feed_dict['phase'] = 1
+        seq_str = lambda x: '_' + str(x) + '_gpu_0'
+        gen_names = []
+        for i in xrange(self.seq_length):
+          gen_names.append('pred_state' + seq_str(i))
+        gen_output = self._network.run(gen_names, feed_dict=feed_dict, return_dict=True)
+        for key in feed_dict.keys():
+          if 'true' not in key:
+            feed_dict.pop(key)
+        self.save_test_sample(feed_dict, gen_output)
+      """
+
 
       # end simulation
       if step > self.train_iters:
         break
 
+  def save_test_sample(self, true_dict, gen_dict):
+    save_dir = self.network_dir + '/snapshot/'
+    try:
+      os.makedirs(save_dir)
+    except:
+      pass
+    for key in true_dict.keys():
+      np.save(save_dir + key, true_dict[key][0])
+      # probably make method for this or remove the image save
+      if self.DxQy.dims == 2:
+        plt.imshow(self.DxQy.lattice_to_norm(true_dict[key][0])[0,...,0])
+      elif self.DxQy.dims == 3:
+        plt.imshow(self.DxQy.lattice_to_norm(true_dict[key][0])[0,0,...,0])
+      plt.savefig(save_dir + key + '.png')
+    for key in gen_dict.keys():
+      np.save(save_dir + key, gen_dict[key])
+      # probably make method for this or remove the image save
+      if self.DxQy.dims == 2:
+        plt.imshow(self.DxQy.lattice_to_norm(gen_dict[key])[0,...,0])
+      elif self.DxQy.dims == 3:
+        plt.imshow(self.DxQy.lattice_to_norm(gen_dict[key])[0,0,...,0])
+      plt.savefig(save_dir + key + '.png')
+
   def active_data_add(self):
     # TODO this should be cleaned up
-    loss_data_point_pair = []
-    for i in tqdm(xrange(200)):
-      sim_index, data_point, feed_dict = self.data_queue.rand_data_point()
-      loss_names = ['loss_gen']
-      loss_output = self._network.run(loss_names, feed_dict=feed_dict, return_dict=True)
-      loss_data_point_pair.append((loss_output['loss_gen'], sim_index, data_point))
-
-    loss_data_point_pair.sort() 
-    for i in xrange(40):
-      self.data_queue.add_data_point(loss_data_point_pair[-i][1], loss_data_point_pair[-i][2])
+    if self.dataset == "JHTDB":
+      loss_data_point_pair = []
+      for i in tqdm(xrange(200)):
+        sim_index, data_point, feed_dict = self.data_queue_train.rand_data_point()
+        loss_names = ['loss_gen']
+        loss_output = self._network.run(loss_names, feed_dict=feed_dict, return_dict=True)
+        loss_data_point_pair.append((loss_output['loss_gen'], sim_index, data_point))
+  
+      loss_data_point_pair.sort() 
+      for i in xrange(40):
+        self.data_queue_train.add_data_point(loss_data_point_pair[-i][1], loss_data_point_pair[-i][2])
+    elif self.dataset == "JHTDB":
+      pass
+    else:
+      pass
 
   def update_loss_stats(self, output):
     names = output.keys()

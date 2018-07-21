@@ -27,6 +27,8 @@ class LatNetController(object):
             choices=['batch', 'visualization', 'benchmark'], default='batch'),
       group.add_argument('--run_mode', help='all modes', type=str,
             choices=['generate_data', 'train', 'eval'], default='train')
+      group.add_argument('--dataset', help='all modes', type=str,
+            choices=['sailfish', 'JHTDB'], default='JHTDB')
 
       group = self._config_parser.add_group('Network Details')
       group.add_argument('--latnet_network_dir', help='all mode', type=str,
@@ -45,8 +47,6 @@ class LatNetController(object):
                         default=100)
 
       group = self._config_parser.add_group('Network Train Details')
-      group.add_argument('--train_autoencoder', help='all mode', type=str, 
-                        default=True)
       group.add_argument('--seq_length', help='all mode', type=int, 
                         default=5)
       group.add_argument('--batch_size', help='all mode', type=int,
@@ -57,6 +57,8 @@ class LatNetController(object):
                         default='adam')
       group.add_argument('--gan', help='all mode', type=str2bool,
                         default=False)
+      group.add_argument('--train_autoencoder', help='all mode', type=str2bool,
+                        default=True)
       group.add_argument('--lr', help='all mode', type=float,
                         default=0.0004)
       group.add_argument('--decay_steps', help='all mode', type=int,
@@ -74,11 +76,15 @@ class LatNetController(object):
 
       group = self._config_parser.add_group('Data Queue Details')
       group.add_argument('--train_sim_dir', help='train mode', type=str,
-                        default='./train_data/sailfish_sim')
+                        default='./data')
+      group.add_argument('--start_num_data_points_train', help='train mode', type=int,
+                        default=200)
+      group.add_argument('--start_num_data_points_test', help='train mode', type=int,
+                        default=20)
       group.add_argument('--gpu_fraction', help='all mode', type=float,
                         default=0.9)
       group.add_argument('--max_queue', help='all mode', type=int,
-                        default=100)
+                        default=50)
 
       group = self._config_parser.add_group('Simulation Details')
       group.add_argument('--sim_shape', help='all mode', type=str,
@@ -95,6 +101,8 @@ class LatNetController(object):
                         default='./simulation')
       group.add_argument('--sim_save_every', help='eval mode', type=int,
                         default=1)
+      group.add_argument('--extract_plane', help='eval mode', type=str2bool,
+                        default=True)
 
       group = self._config_parser.add_group('Simulation Process Details')
       group.add_argument('--compare', help='compares to sailfish simulation', type=str2bool,

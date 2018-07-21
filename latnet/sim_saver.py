@@ -6,7 +6,7 @@ import psutil as ps
 import os
 import glob
 
-class SimSaver:
+class SimSaver(object):
 
   def __init__(self, config):
     self.save_dir = config.sim_dir
@@ -37,17 +37,17 @@ class SimSaver:
   def save_numpy(self, iteration, vel, rho, cstate):
     file_name = self.iter_to_filename(iteration)
     if self.save_cstate:
-      np.savez(file_name, vel=vel[0], rho=rho[0], cstate=cstate[0])
+      np.savez(file_name, vel=vel, rho=rho, cstate=cstate)
     else:
-      np.savez(file_name, vel=vel[0], rho=rho[0])
+      np.savez(file_name, vel=vel, rho=rho)
     self.latnet_files.append(file_name)
 
   def read_vel_rho(self, iteration, subdomain=None, add_batch=False):
     if self.save_format == 'npy':
       vel, rho, _ = self.load_numpy(iteration)
-    if add_batch:
-      vel = np.expand_dims(vel, axis=0)
-      rho = np.expand_dims(rho, axis=0)
+    if not add_batch:
+      vel = vel[0]
+      rho = rho[0]
     return vel, rho
 
   def load_numpy(self, iteration):

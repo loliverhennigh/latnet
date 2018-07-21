@@ -258,8 +258,13 @@ def downsample(x, sampling="avg"):
   return x
 
 def upsampleing_resize(x):
-  x_shape = tf.shape(x)
-  x = tf.image.resize_nearest_neighbor(x, [2*x_shape[1], 2*x_shape[2]])
+  if len(x.get_shape()) == 4:
+    x_shape = tf.shape(x)
+    x = tf.image.resize_nearest_neighbor(x, [2*x_shape[1], 2*x_shape[2]])
+  else:
+    x = tf.concat([x,x], axis=1)
+    x = tf.concat([x,x], axis=2)
+    x = tf.concat([x,x], axis=3)
   return x
 
 def avg_pool(x):
@@ -279,11 +284,12 @@ def max_pool(x):
   return x
 
 def trim_tensor(x, trim):
-  length_input = len(x.get_shape()) - 2
-  if length_input == 2:
-    x = x[:,trim:-trim, trim:-trim]
-  if length_input == 3:
-    x = x[:,trim:-trim, trim:-trim, trim:-trim]
+  if trim != 0:
+    length_input = len(x.get_shape()) - 2
+    if length_input == 2:
+      x = x[:,trim:-trim, trim:-trim]
+    if length_input == 3:
+      x = x[:,trim:-trim, trim:-trim, trim:-trim]
   return x
 
 def res_block(x, a=None, 

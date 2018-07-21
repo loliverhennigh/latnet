@@ -19,7 +19,7 @@ from sailfish.lb_base import LBForcedSim
 
 import numpy as np
 
-class SailfishSimulation:
+class SailfishSimulation(object):
 
   def __init__(self, config, domain, save_dir=None):
 
@@ -291,7 +291,7 @@ class TrainSailfishSimulation(SailfishSimulation):
     # more configs will probably be added later
     self.data_points = []
 
-  def read_train_data(self, augment=False):
+  def read_data(self, augment=False):
 
     # select datapoint
     point_ind = np.random.randint(0, len(self.data_points))
@@ -373,38 +373,13 @@ class TrainSailfishSimulation(SailfishSimulation):
     # select random pos to grab from data
     rand_pos = [np.random.randint(-input_cshape[0], self.sim_shape[0]/cratio+1),
                 np.random.randint(-input_cshape[1], self.sim_shape[1]/cratio+1)]
-    #rand_pos = [np.random.randint(-1, self.sim_shape[0]/cratio-input_cshape[0]),
-    #            np.random.randint(-1, self.sim_shape[1]/cratio-input_cshape[1])]
     cstate_subdomain = SubDomain(rand_pos, input_cshape)
 
     # get state subdomain and geometry_subdomain
     state_subdomain = state_shape_converter.out_in_subdomain(copy(cstate_subdomain))
 
     # get seq state subdomain
-    #if self.train_autoencoder:
-    #  seq_state_subdomain = seq_state_shape_converter.in_out_subdomain(copy(state_subdomain))
-    #else:
     seq_state_subdomain = seq_state_shape_converter.out_in_subdomain(copy(cstate_subdomain))
 
     # data point and return it
     return DataPoint(ind, seq_length, state_subdomain, seq_state_subdomain)
-
-class DataPoint:
-
-  def __init__(self, ind, seq_length, state_subdomain, seq_state_subdomain):
-    self.ind = ind
-    self.seq_length = seq_length
-    self.state_subdomain = state_subdomain
-    self.seq_state_subdomain = seq_state_subdomain
-
-def flip_boundary_vel(boundary):
-  boundary[...,1] = -boundary[...,1]
-  return boundary
-
-def rotate_boundary_vel(boundary, k):
-  for i in xrange(k):
-    store_boundary = boundary[...,0]
-    boundary[...,0] = -boundary[...,1]
-    boundary[...,1] = boundary[...,0]
-  return boundary
-
