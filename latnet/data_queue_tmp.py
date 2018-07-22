@@ -24,7 +24,7 @@ import threading
 from utils.text_histogram import vector_to_text_hist
 
 class DataQueue(object):
-  def __init__(self, config, base_dir, domains, shape_converters, mapping=None):
+  def __init__(self, config, base_dir, domains, shape_converters):
 
     # base dir where all the xml files are
     self.base_dir = base_dir
@@ -42,16 +42,7 @@ class DataQueue(object):
     self.gpus            = map(int, config.gpus.split(','))
     self.DxQy            = lattice.TYPES[config.DxQy]()
     self.input_cshape    = str2shape(config.input_cshape)
-
-    # shape converter
-    self.shape_converters = shape_converters
-    gpu_str = '_gpu_' + str(self.gpus[0])
-    self.state_shape_converter = self.shape_converters['state' + gpu_str,
-                            'cstate_' + str(self.seq_length-1) + gpu_str]
-    self.seq_state_shape_converter = self.shape_converters['true_state_' + str(self.seq_length-1) + gpu_str, 
-                            'true_cstate_' + str(self.seq_length-1) + gpu_str]
     self.cratio = pow(2, self.nr_downsamples)
-    self.mapping = mapping
 
   def init_sims(self, domains):
     sims = []
@@ -62,28 +53,29 @@ class DataQueue(object):
         save_dir = self.base_dir + '/sim_' + domain.name + '_' + str(i).zfill(4)
         sim = domain(config, save_dir)
         sims.append(sim)
-    return sims
+    self.sims = sims
 
-  def add_rand_dp(self, sims, num_dps):
-    dps_per_sim = int(num_dps/len(sims))
-    for sim in sims:
+  def add_rand_dp(self, num_dps, state_shape_converter, seq_state_converter):
+    dps_per_sim = int(num_dps/len(self.sims))
+    for sim in self.sims:
       sim.add_rand_dps(num_dps=dps_per_sim,
                        seq_length=self.seq_length,
-                       state_shape_converter=self.state_shape_converter, 
-                       seq_state_shape_converter=self.seq_state_shape_converter,
+                       state_shape_converter=state_shape_converter, 
+                       seq_state_shape_converter=seq_state_shape_converter,
                        input_cshape=self.input_cshape,
                        cratio=self.cratio)
 
-  def add_rand_cdp(self, sims, num_cdps, mapping):
-    cdps_per_sim = int(num_dps/len(sims))
-    for sim in sims:
+  def add_rand_cdp(self, num_cdps, cstate_shape_converter, seq_cstate_shape_converter, encode_state, encode_boundary):
+    cdps_per_sim = int(num_dps/len(self.sims))
+    for sim in self.sims:
       sim.add_rand_dps(num_cdps=cdps_per_sim,
                        seq_length=self.seq_length,
-                       state_shape_converter=self.state_shape_converter, 
-                       seq_state_shape_converter=self.seq_state_shape_converter,
+                       state_shape_converter=state_shape_converter, 
+                       seq_state_shape_converter=seq_state_shape_converter,
                        input_cshape=self.input_cshape,
                        cratio=self.cratio,
-                       mapping=mapping)
+                       encode_state=encode_state,
+                       encode_boundary=encode_boundary)
 
   def start_dp_queue(self, doms):
     # queue
@@ -125,15 +117,16 @@ class DataQueue(object):
 
     return index, data_point, feed_dict
 
-  def rand_cdp(self, mapping):
+  def rand_cdp(self, encode_state, encode_boundary):
     index = np.random.randint(0, len(self.sims))
     cdp = self.sims[index].rand_cdp(
                  seq_length=self.seq_length,
-                 state_shape_converter=self.state_shape_converter, 
-                 seq_state_shape_converter=self.seq_state_shape_converter,
+                 state_shape_converter=state_shape_converter, 
+                 seq_state_shape_converter=seq_state_shape_converter,
                  input_cshape=self.input_cshape,
                  cratio=self.cratio,
-                 mapping=mapping)
+                 encode_state=encode_state,
+                 encode_boundary=encode_boundary)
     cstate, cboundary, seq_cstate = self.sims[index].read_cdp(cdp, add_batch=True)
 
     # make feed dict

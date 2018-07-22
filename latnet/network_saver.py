@@ -13,18 +13,6 @@ class NetworkSaver:
     self.network_name = network_name
 
     # a bit messy this way but oh well
-    self.none_save_args = ['mode', 'run_mode', 'latnet_network_dir', 'input_shape',
-                           'input_cshape', 'save_network_freq', 'seq_length',
-                           'batch_size', 'gpus', 'train_iters', 'train_sim_dir',
-                           'gpu_fraction', 'num_simulations', 'max_queue', 'sim_shape',
-                           'num_iters', 'sim_restore_iter', 'sim_dir', 'sim_save_every',
-                           'compare', 'save_format', 'save_cstate', 'checkpoint_from',
-                           'restore_from', 'max_sim_iters', 'restore_geometry', 'scr_scale',
-                           'debug_sailfish', 'every', 'unit_test', 'propagation_enabled',
-                           'time_dependence', 'space_dependence', 'incompressible', 
-                           'relaxation_enabled', 'quiet', 'periodic_x', 'domain_name',
-                           'periodic_y', 'periodic_z', 'start_num_data_points_train', 
-                           'start_num_data_points_test', 'train_autoencoder']
 
     self.checkpoint_path = self._make_checkpoint_path()
     self._make_saver()
@@ -55,10 +43,6 @@ class NetworkSaver:
   def _make_summary_writer(self, graph_def):
     summary_writer = tf.summary.FileWriter(self.checkpoint_path, graph_def=graph_def)
     return summary_writer
-
-  def _make_summary_op(self):
-    summary_op = tf.summary.merge_all()
-    return summary_op
 
   def _list_all_checkpoints(self):
     # get a list off all the checkpoint directorys

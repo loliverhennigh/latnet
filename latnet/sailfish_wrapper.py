@@ -92,7 +92,7 @@ class SailfishWrapper(Domain):
   
           # restore from old dir or make new geometry
           if self.config.restore_geometry:
-            restore_boundary_conditions = np.load(train_sim_dir[:-10] + "flow_geometry.npy")
+            restore_boundary_conditions = np.load(train_sim_dir[:-10] + "boundary.npy")
             where_boundary = restore_boundary_conditions[...,0].astype(np.bool)
             where_velocity = np.logical_or(restore_boundary_conditions[...,1].astype(np.bool), restore_boundary_conditions[...,2].astype(np.bool))
             if len(np.where(where_velocity)[0]) == 0:
@@ -142,7 +142,7 @@ class SailfishWrapper(Domain):
   
           # restore from old dir or make new geometry
           if self.config.restore_geometry:
-            restore_boundary_conditions = np.load(train_sim_dir[:-10] + "flow_geometry.npy")
+            restore_boundary_conditions = np.load(train_sim_dir[:-10] + "boundary.npy")
             where_boundary = restore_boundary_conditions[...,0].astype(np.bool)
             where_velocity = np.logical_or(restore_boundary_conditions[...,1].astype(np.bool), restore_boundary_conditions[...,2].astype(np.bool), restore_boundary_conditions[...,3].astype(np.bool))
             vel_ind = np.where(where_velocity)
@@ -320,7 +320,7 @@ class SailfishWrapper(Domain):
     assert self.is_restorable(), "trying to restart sim without finding proper save"
     self.clean_store_dir()
 
-    last_cpoint, last_iter = self.last_cpoint()
+    last_state, last_iter = self.last_state_filename()
 
     cmd = ('./' + self.domain.script_name 
          + ' --run_mode=generate_data'
@@ -328,7 +328,7 @@ class SailfishWrapper(Domain):
          + ' --max_sim_iters=' + str(self.latnet_iter_to_sailfish_iter(num_iters
                                                                     + last_iter) + 1)
          + ' --restore_geometry=True'
-         + ' --restore_from=' + last_cpoint[:-13])
+         + ' --restore_from=' + last_state[:-13])
     if self.debug_sailfish:
       cmd += ' --mode=visualization'
       cmd += ' --scr_scale=.5'
@@ -344,38 +344,65 @@ class SailfishWrapper(Domain):
     self.mv_store_dir()
  
   def is_restorable(self):
-    cpoints = self.list_cpoints()
-    boundary_file = self.boundary_file()
-    return ((len(cpoints) > 0) and os.path.isfile(boundary_file))
+    state_filenames = self.list_states_filenames()
+    boundary_filename = self.boundary_filename()
+    return ((len(state_filenames) > 0) and os.path.isfile(boundary_filename))
 
-  def list_cpoints(self):
-    cpoints = glob.glob(self.save_dir + "/*.0.cpoint.npz")
-    cpoints.sort()
-    return cpoints
+  def list_state_filenames(self):
+    states = glob.glob(self.save_dir + "/*.0.cpoint.npz")
+    states.sort()
+    return states
 
-  def boundary_file(self):
-    return self.save_dir + "/flow_geometry.npy"
+  def list_cstate_filenames(self):
+    cstates = glob.glob(self.save_dir + "/*.0.comp.npz")
+    cstates.sort()
+    return cstates
 
-  def first_cpoint(self):
-    cpoints = self.list_cpoints()
-    return cpoints[0], self.cpoint_to_iter(cpoints[0])
+  def boundary_filename(self):
+    return self.save_dir + "/boundary.npy"
 
-  def last_cpoint(self):
-    cpoints = self.list_cpoints()
-    return cpoints[-1], self.cpoint_to_iter(cpoints[-1])
+  def cboundary_filename(self):
+    return self.save_dir + "/cboundary.npy"
 
-  def cpoint_to_iter(self, cpoint_name):
-    sailfish_iter = int(cpoint_name.split('.')[-4])
+  def first_state_filename(self):
+    state_filenames = self.list_state_filenames()
+    return state_filenames[0], self.state_filename_to_iter(state_filenames[0])
+
+  def first_cstate_filename(self):
+    cstate_filenames = self.list_cstate_filenames()
+    return cstate_filenames[0], self.cstate_filename_to_iter(cstate_filenames[0])
+
+  def last_state_filename(self):
+    state_filenames = self.list_state_filenames()
+    return state_filenames[-1], self.state_filename_to_iter(state_filenames[-1])
+
+  def last_cstate_filename(self):
+    cstate_filenames = self.list_cstate_filenames()
+    return cstate_filenames[-1], self.cstate_filename_to_iter(cstate_filenames[-1])
+
+  def state_filename_to_iter(self, state_filename):
+    sailfish_iter = int(state_filename.split('.')[-4])
     return self.sailfish_iter_to_latnet_iter(sailfish_iter)
 
-  def iter_to_cpoint(self, iteration):
-    sailfish_iter = self.latnet_iter_to_sailfish_iter(iteration)
-    zpadding = len(self.last_cpoint()[0].split('.')[-4])
-    cpoint = (self.save_dir + '/flow.' 
-             + str(sailfish_iter).zfill(zpadding)
-             + '.0.cpoint.npz')
-    return cpoint
+  def cstate_filename_to_iter(self, state_filename):
+    sailfish_iter = int(cstate_filename.split('.')[-4])
+    return self.sailfish_iter_to_latnet_iter(sailfish_iter)
 
+  def iter_to_state_filename(self, iteration):
+    sailfish_iter = self.latnet_iter_to_sailfish_iter(iteration)
+    zpadding = len(self.last_state_filename()[0].split('.')[-4])
+    state_filename = (self.save_dir + '/flow.' 
+                    + str(sailfish_iter).zfill(zpadding)
+                    + '.0.cpoint.npz')
+    return state_filename
+
+  def iter_to_cstate_filename(self, iteration):
+    sailfish_iter = self.latnet_iter_to_sailfish_iter(iteration)
+    zpadding = len(self.last_state_filename()[0].split('.')[-4])
+    cstate_filename = (self.save_dir + '/flow.' 
+                    + str(sailfish_iter).zfill(zpadding)
+                    + '.0.cpoint.npz')
+    return cstate_filename
 
 class JHTDBWrapper(Domain):
   def __init__(self, config, save_dir):
@@ -395,8 +422,8 @@ class JHTDBWrapper(Domain):
     print(url_end)
     return url_begining + url_end
 
-  def download_datapoint(self, subdomain, iteration, mapping=None):
-    filename = self.make_filename(subdomain, iteration)
+  def download_state(self, iteration, subdomain):
+    filename = self.iter_to_state_filename(iteration, subdomain)
     path_filename = self.save_dir + filename
     if not os.path.isfile(path_filename):
       r = ''
@@ -413,20 +440,21 @@ class JHTDBWrapper(Domain):
       with open(path_filename, 'wb') as f:
         f.write(r.content)
 
-    if mapping is not None:
-      state = self.read_state(iteration, subdomain, add_batch=True, return_padding=True)
-      cstate = mapping(state)[0]
-      np.save(path_filename[:-3] + '.npy', cstate)
-      os.remove(path_filename)
+  def download_boundary(self, subdomain, iteration):
+    pass
 
-  def make_filename(self, subdomain, iteration, filetype='h5'):
-    filename =  "/iteration_" + str(iteration) 
+  def iter_to_state_filename(self, iteration, subdomain):
+    filename =  "/state_iteration_" + str(iteration) 
     filename += "pos_" + str(subdomain.pos[0]) + '_' + str(subdomain.pos[1]) +  '_' + str(subdomain.pos[2]) + '_'
     filename += "size_" + str(subdomain.size[0]) + '_' + str(subdomain.size[1]) + '_' + str(subdomain.size[2])
-    if filetype == 'h5':
-      filename += ".h5"
-    elif filetype == 'npy':
-      filename += ".npy"
+    filename += ".h5"
+    return filename
+
+  def iter_to_cstate_filename(self, iteration, subdomain):
+    filename =  "/cstate_iteration_" + str(iteration) 
+    filename += "pos_" + str(subdomain.pos[0]) + '_' + str(subdomain.pos[1]) +  '_' + str(subdomain.pos[2]) + '_'
+    filename += "size_" + str(subdomain.size[0]) + '_' + str(subdomain.size[1]) + '_' + str(subdomain.size[2])
+    filename += ".npy"
     return filename
 
   def create_state_data_points(self, num_points, seq_length, state_shape_converter, seq_state_shape_converter, input_cshape, cratio):
@@ -449,7 +477,7 @@ class JHTDBWrapper(Domain):
     while True:
       (seq_length, state_shape_converter, seq_state_shape_converter, input_cshape, cratio, mapping) = self.queue.get()
       # make datapoint and add to list
-      self.data_points.append(self.rand_data_point(seq_length, state_shape_converter, seq_state_shape_converter, input_cshape, cratio, mapping))
+      self.data_points.append(self.rand_dp(seq_length, state_shape_converter, seq_state_shape_converter, input_cshape, cratio, mapping))
       self.queue.task_done()
 
 

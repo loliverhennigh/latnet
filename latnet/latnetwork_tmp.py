@@ -14,6 +14,7 @@ from shape_converter import ShapeConverter
 from optimizer import Optimizer
 from shape_converter import SubDomain
 from network_saver import NetworkSaver
+from config import NONSAVE_CONFIGS
 
 class LatNet(object):
   def __init__(self, config):
@@ -24,15 +25,62 @@ class LatNet(object):
     gpus = config.gpus.split(',')
     self.gpus = map(int, gpus)
 
+    # make save and load values options
+    self.checkpoint_path = self._make_checkpoint_path(config)
+
   @classmethod
   def add_options(cls, group):
     pass
 
-  def unroll_global_step(self, name):
-    # global step counter
-    self.add_step_counter(name) 
-    global_step = lambda : self.run(name, feed_dict={})
-    return global_step
+  def _make_checkpoint_path(self, config):
+    # make checkpoint path with all the flags specifing different directories
+ 
+    # run through all params and add them to the base path
+    base_path = self.network_dir + '/' + self.network_name
+    for k, v in self.config.__dict__.items():
+      if k not in NONSAVE_CONFIGS:
+        base_path += '/' + k + '.' + str(v)
+    return base_path
+
+  def _make_saver(self):
+    variables = tf.global_variables()
+    variables_autoencoder = [v for i, v in enumerate(variables) if ("coder" in v.name[:v.name.index(':')]) or ('global' in v.name[:v.name.index(':')])]
+    variables_compression = [v for i, v in enumerate(variables) if "compression_mapping" in v.name[:v.name.index(':')]]
+    self.saver_all = tf.train.Saver(variables, max_to_keep=1)
+    self.saver_autoencoder = tf.train.Saver(variables_autoencoder)
+    self.saver_compression = tf.train.Saver(variables_compression)
+
+  def load_checkpoint(self, maybe_remove_prev=False):
+
+    # make saver
+    self._make_saver()
+
+    # load everything
+    ckpt = tf.train.get_checkpoint_state(self.checkpoint_path)
+    print("looking for checkpoint in " + self.checkpoint_path) 
+    if ckpt is not None:
+      print("trying init autoencoder from " + ckpt.model_checkpoint_path)
+      try:
+        self.saver_autoencoder.restore(self.sess, ckpt.model_checkpoint_path)
+      except:
+        if maybe_remove_prev:
+          tf.gfile.DeleteRecursively(self.checkpoint_path)
+          tf.gfile.MakeDirs(self.checkpoint_path)
+        print("there was a problem using variables for autoencoder in checkpoint, random init will be used instead")
+      print("trying init compression mapping from " + ckpt.model_checkpoint_path)
+      try:
+        self.saver_compression.restore(self.sess, ckpt.model_checkpoint_path)
+      except:
+        if maybe_remove_prev:
+          tf.gfile.DeleteRecursively(self.checkpoint_path)
+          tf.gfile.MakeDirs(self.checkpoint_path)
+        print("there was a problem using variables for compression mapping in checkpoint, random init will be used instead")
+    else:
+      print("using rand init")
+
+  def save_checkpoint(self, global_step):
+    save_path = os.path.join(self.checkpoint_path, 'model.ckpt')
+    self.saver_all.save(sess, save_path, global_step=global_step)  
 
   def run(self, out_names, feed_dict=None, return_dict=False):
     # convert out_names to tensors 
@@ -77,18 +125,31 @@ class LatNet(object):
     sess.run(init)
     return sess
 
+  def unroll_global_step(self, name):
+    # global step counter
+    self.add_step_counter(name) 
+    global_step = lambda : self.run(name, feed_dict={})
+    return global_step
+
+  def unroll_save_summary(self, graph_def):
+    summary_op = tf.summary.merge_all()
+    summary_writer = tf.summary.FileWriter(self.checkpoint_path, graph_def=graph_def)
+    def save_summary(feed_dict, step):
+      summary_str = self.run('summary_op', feed_dict=feed_dict)
+      self.summary_writer.add_summary(summary_str, global_step) 
+    return save_summary
 
 class TrainLatNet(LatNet):
 
   def __init__(self, config):
     super(LatNet, self).__init__(config)
 
-    # shape converter from in_tensor to out_tensor
-    self.train_shape_converters = {}
-
     # needed configs
     self.train_mode = config.train_mode
     self.train_iters = config.train_iters
+
+    # make optimizer
+    self.optimizer = Optimizer(config, name='opt', optimizer_name='adam')
 
   @classmethod
   def add_options(cls, group):
@@ -102,389 +163,268 @@ class TrainLatNet(LatNet):
       boundary_name = 'boundary' + gpu_str
       pred_state_names = ['pred_state' + gpu_str + '_' + str(x) for x in range(self.seq_length)]
       true_state_names = ['true_state' + gpu_str + '_' + str(x) for x in range(self.seq_length)]
+      cstate_names = ['comp_state' + gpu_str + '_' + str(x) for x in range(self.seq_length)]
+
       loss_name = 'l2_loss' + gpu_str
       grad_name = 'gradient' + gpu_str
 
       with tf.device('/gpu:%d' % self.gpus[i]):
         # make input state and boundary
-        self.network_arch.add_lattice(state_name, gpu_id=i)
-        self.network_arch.add_boundary(boundary_name, gpu_id=i)
+        self.add_lattice(state_name, gpu_id=i)
+        self.add_boundary(boundary_name, gpu_id=i)
         for j in xrange(self.seq_length):
-          self.network_arch.add_lattice(true_state_names[j], gpu_id=i)
+          self.add_lattice(true_state_names[j], gpu_id=i)
       
         # unroll network
-        self.network_arch.unroll_full(in_name_state=state_name,
-                                      in_name_boundary=boundary_name,
-                                      out_names=pred_state_names,
-                                      gpu_id=i)
+        self.full_seq_pred(in_name_state=state_name,
+                           in_name_boundary=boundary_name,
+                           out_cstate_names=pred_state_names,
+                           out_names=pred_state_names,
+                           gpu_id=i)
     
         # calc loss
-        self.network_arch.l2_loss(true_name=true_state_names,
-                                  pred_name=pred_state_names,
-                                  loss_name=loss_name,
-                                  normalize=True)
+        self.l2_loss(true_name=true_state_names,
+                     pred_name=pred_state_names,
+                     loss_name=loss_name,
+                     normalize=True)
  
         # calc grad
         if i == 0:
           all_params = tf.trainable_variables()
-        self.network_arch.gradients(params=all_params, out_name=gradient_name)
+        self.gradients(loss_name=loss_name, grad_name=grad_name, params=all_params)
 
     ###### Round up losses and Gradients on gpu:0 ######
     with tf.device('/gpu:%d' % self.gpus[0]):
       # round up losses
       loss_names = ['l2_loss_gpu_' + str(x) for x in xrange(self.seq_length)]
       loss_name = 'l2_loss'
-      self.network_arch.sum_losses(in_names=loss_names, out_name=loss_name)
+      self.sum_losses(in_names=loss_names, out_name=loss_name)
       # round up gradients
       gradient_names = ['gradient_gpu_' + str(x) for x in xrange(self.seq_length)]
       gradient_name = 'gradient'
-      self.network_arch.sum_gradients(in_names=gradient_names, out_name=gradient_name)
+      self.sum_gradients(in_names=gradient_names, out_name=gradient_name)
 
     ###### Train Operation ######
-    self.optimizer = Optimizer(self.config, name='opt', optimizer_name='adam')
-    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-    self.out_tensors['gen_train_op'] = self.gen_optimizer.train_op(gen_params, 
-                                             self.out_tensors['gen_grads' + gpu_str(0)], 
-                                             self.out_tensors['gen_global_step'],
-                                             mom1=self.config.beta1,
-                                             other_update=update_ops)
+    self.out_tensors['train_op'] = self.optimizer.train_op(all_params, 
+                                             self.out_tensors['gradient'], 
+                                             self.out_tensors['global_step'],
+                                             mom1=self.config.beta1)
 
+    # make a train step
     def train_step(feed_dict):
-      self.run('loss', 
-    train_step = lambda x: self.run('cstate_from_state', 
-                             feed_dict={'state':x})
+      loss, _ = self.run(['loss', 'train_op'], feed_dict=feed_dict)
+      return {'loss': loss}
 
-  def train_unroll(self):
-
-    with tf.Graph().as_default():
-
-      ###### Inputs to Graph ######
-      # global step counter
-      self.add_step_counter('gen_global_step') 
-      if self.gan:
-        self.add_step_counter('disc_global_step') 
-
-      for i in xrange(len(self.gpus)):
-        gpu_str = '_gpu_' + str(self.gpus[i])
-        seq_str = lambda x: '_' + str(x) + gpu_str
-        with tf.device('/gpu:%d' % self.gpus[i]):
-          # make input state and boundary
-          self.add_tensor('state' + gpu_str, (1 + self.DxQy.dims) * [None] + [self.DxQy.Q])
-          self.add_tensor('boundary' + gpu_str, (1 + self.DxQy.dims) * [None] + [self.DxQy.boundary_dims])
-          self.add_tensor('boundary_small' + gpu_str, (1 + self.DxQy.dims) * [None] + [self.DxQy.boundary_dims])
-          self.add_tensor('cstate' + gpu_str, (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
-          self.add_tensor('cboundary' + gpu_str, (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
-          self.add_phase() 
-          if i == 0:
-            with tf.device('/cpu:0'):
-              self.lattice_summary(in_name='state' + gpu_str, summary_name='true')
-              self.boundary_summary(in_name='boundary' + gpu_str, summary_name='boundary')
-          # make seq of output states
-          for j in xrange(self.seq_length):
-            self.add_tensor('true_state' + seq_str(j), (1 + self.DxQy.dims) * [None] + [self.DxQy.Q])
-            self.add_tensor('true_comp_cstate' + seq_str(j), (1 + self.DxQy.dims) * [None] + [self.config.filter_size_compression])
-            #self.out_tensors["true_state" + seq_str(j)] = self.out_tensors["true_state" + seq_str(j)]
-            if i == 0:
-              with tf.device('/cpu:0'):
-                self.lattice_summary(in_name='true_state' + seq_str(j), summary_name='true_' + str(j))
-      
-          ###### Unroll Graph ######
-          ### encode ###
-          self._encoder_state(in_name="state" + gpu_str, 
-                              out_name="cstate" + seq_str(0))
-          self._encoder_boundary(in_name="boundary" + gpu_str, 
-                                out_name="cboundary" + gpu_str)
-          if not self.train_autoencoder:
-            self._encoder_state(in_name="state" + gpu_str, 
-                                out_name="cstate_auto")
-            self.rename_tensor(old_name='cstate' + gpu_str,
-                               new_name="cstate" + seq_str(0))
-      
-          ### unroll on the compressed state ###
-          for j in xrange(self.seq_length):
-            # compression mapping
-            self.add_shape_converter("cstate" + seq_str(j))
-            if j == 0:
-              self._compression_mapping(in_cstate_name="cstate" + seq_str(j),
-                                        in_cboundary_name="cboundary" + gpu_str,
-                                        out_name="cstate" + seq_str(j+1), 
-                                        start_apply_boundary=True)
-            if (j < self.seq_length - 1) and (j != 0):
-              self._compression_mapping(in_cstate_name="cstate" + seq_str(j),
-                                        in_cboundary_name="cboundary" + gpu_str,
-                                        out_name="cstate" + seq_str(j+1))
-
-          ### decode all compressed states ###
-          for j in xrange(self.seq_length):
-            self.match_trim_tensor(in_name="cstate" + seq_str(j), 
-                                   match_name="cstate" + seq_str(self.seq_length-1), 
-                                   out_name="cstate" + seq_str(j))
-            self._decoder_state(in_cstate_name="cstate" + seq_str(j), 
-                                in_cboundary_name="cboundary" + gpu_str, 
-                                out_name="pred_state" + seq_str(j),
-                                lattice_size=self.DxQy.Q)
-
-            ### encode seq state  
-            self._encoder_state(in_name="true_state" + seq_str(j),
-                                out_name="true_cstate" + seq_str(j))
-            self._decoder_state(in_cstate_name="true_cstate" + seq_str(j),
-                                in_cboundary_name="cboundary" + gpu_str, 
-                                out_name="true_state_compare" + seq_str(j),
-                                lattice_size=self.DxQy.Q)
-            self.match_trim_tensor(in_name="true_state" + seq_str(j), 
-                                   match_name="true_state_compare" + seq_str(j), 
-                                   out_name="true_state_compare_" + seq_str(j),
-                                   in_out=True)
-
-            if i == 0:
-              with tf.device('/cpu:0'):
-                # make image summary
-                self.lattice_summary(in_name='pred_state' + seq_str(j), summary_name='pred_' + str(j))
-                #self.lattice_summary(in_name='true_state_compare_' + seq_str(j), summary_name='true_compare_' + str(j))
-
- 
-          ### unconditional discriminator of gan ###
-          if self.gan:
-            seq_pred_state_names = []
-            seq_true_state_names = []
-            for j in range(1, self.seq_length):
-              seq_pred_state_names.append("pred_state" + seq_str(j))
-              seq_true_state_names.append("true_state" + seq_str(j))
-            self._discriminator_unconditional(in_seq_state_names=seq_pred_state_names,
-                                              out_layer='D_un_layer_pred' + gpu_str,
-                                              out_class='D_un_class_pred' + gpu_str)
-            self._discriminator_unconditional(in_seq_state_names=seq_true_state_names,
-                                              out_layer='D_un_layer_true' + gpu_str,
-                                              out_class='D_un_class_true' + gpu_str)
-      
-          ### conditional discriminator of gan ###
-          if self.gan:
-            seq_pred_state_names = []
-            seq_true_state_names = []
-            for j in range(1, self.seq_length):
-              seq_pred_state_names.append("pred_state" + seq_str(j))
-              seq_true_state_names.append("true_state" + seq_str(j))
-            self._discriminator_conditional(in_boundary_name='boundary_small' + gpu_str,
-                                            in_state_name='true_state' + seq_str(0),
-                                            in_seq_state_names=seq_pred_state_names,
-                                            out_name='D_con_class_pred' + gpu_str)
-            self._discriminator_conditional(in_boundary_name='boundary_small' + gpu_str,
-                                            in_state_name='true_state' + seq_str(0),
-                                            in_seq_state_names=seq_true_state_names,
-                                            out_name='D_con_class_true' + gpu_str)
-      
-
-          ###### Loss Operation ######
-          num_samples = (self.seq_length * self.config.batch_size * len(self.config.gpus))
-
-          ### L2 loss ###
-          if not self.gan:
-            #self.out_tensors["loss_comp_l2" + gpu_str] = 0.0
-
-            if self.train_autoencoder:
-              self.out_tensors["loss_auto_l2" + gpu_str] = 0.0
-
-              for j in range(0, self.seq_length):
-                # normalize loss to make comparable for diffrent input sizes
-                # TODO remove 100.0 (only in to make comparable to previous code)
-                #l2_factor = 1.0*(256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
-                l2_factor = 1.0*(16*16*16.)/(len(self.gpus)*self.config.batch_size*self.num_lattice_cells('pred_state' + seq_str(j), return_float=True))
-                self.l2_loss(true_name='true_state_compare_' + seq_str(j),
-                             pred_name='pred_state' + seq_str(j),
-                             loss_name='loss_auto_l2' + seq_str(j),
-                             factor=l2_factor/1.0)
-                             #factor=l2_factor/num_samples)
-                #l2_factor = (4*4*4.0)/(len(self.gpus)*self.config.batch_size*self.num_lattice_cells('pred_state' + seq_str(j), return_float=True))
-                #self.l2_loss(true_name='true_cstate' + seq_str(j),
-                #             pred_name='cstate' + seq_str(j),
-                #             loss_name='loss_comp_l2' + seq_str(j),
-                #             factor=l2_factor/1.0)
-                # add up losses
-                self.out_tensors['loss_auto_l2' + gpu_str] += self.out_tensors['loss_auto_l2' + seq_str(j)] 
-                #self.out_tensors['loss_comp_l2' + gpu_str] += self.out_tensors['loss_comp_l2' + seq_str(j)] 
-            else:
-              self.out_tensors["loss_comp_l2" + gpu_str] = 0.0
-
-              for j in range(1, self.seq_length):
-                # normalize loss to make comparable for diffrent input sizes
-                #l2_factor = 1.0*(256.0*256.0)/self.num_lattice_cells('pred_state' + seq_str(j), return_float=True)
-                l2_factor = (4*4*4.0)/(len(self.gpus)*self.config.batch_size*self.num_lattice_cells('cstate' + seq_str(j), return_float=True))
-                self.l2_loss(true_name='true_comp_cstate' + seq_str(j),
-                             pred_name='cstate' + seq_str(j),
-                             loss_name='loss_comp_l2' + seq_str(j),
-                             factor=l2_factor/1.0)
-                # add up losses
-                self.out_tensors['loss_comp_l2' + gpu_str] += self.out_tensors['loss_comp_l2' + seq_str(j)] 
- 
-          ### L1 loss ###
-          if self.gan:
-            self.out_tensors["loss_l1" + gpu_str] = 0.0
-            for j in range(1, self.seq_length):
-              l1_factor = self.config.l1_factor
-              self.l1_loss(true_name='true_state' + seq_str(j),
-                           pred_name='pred_state' + seq_str(j),
-                           loss_name='loss_l1' + seq_str(j),
-                           factor=l1_factor/len(self.gpus))
-              # add up losses
-              self.out_tensors['loss_l1' + gpu_str] += self.out_tensors['loss_l1' + seq_str(j)] 
-          ### Unconditional GAN loss ###
-          if self.gan:
-            # normal gan losses
-            self.gen_loss(class_name='D_un_class_pred' + gpu_str,
-                          loss_name='loss_gen_un_class' + gpu_str,
-                          factor=1.0/len(self.gpus))
-            self.disc_loss(true_class_name='D_un_class_true' + gpu_str,
-                           pred_class_name='D_un_class_pred' + gpu_str,
-                           loss_name='loss_disc_un_class' + gpu_str,
-                           factor=1.0/len(self.gpus))
-            # layer loss as seen in tempoGAN: A Temporally Coherent, Volumetric GAN for
-            # Super-resolution Fluid Flow
-            l2_layer_factor = 1e-5 # from paper TODO make config param
-            self.l2_loss(true_name='D_un_layer_true' + gpu_str,
-                         pred_name='D_un_layer_pred' + gpu_str,
-                         loss_name='loss_layer_l2' + gpu_str,
-                         factor=l2_layer_factor/len(self.gpus))
-
-          ### Conditional GAN loss ###
-          if self.gan:
-            # normal gan losses
-            self.gen_loss(class_name='D_con_class_pred' + gpu_str,
-                          loss_name='loss_gen_con_class' + gpu_str,
-                          factor=1.0/len(self.gpus))
-            self.disc_loss(true_class_name='D_con_class_true' + gpu_str,
-                           pred_class_name='D_con_class_pred' + gpu_str,
-                           loss_name='loss_disc_con_class' + gpu_str,
-                           factor=1.0/len(self.gpus))
-
-          #### add all losses together ###
-          self.out_tensors['loss_gen' + gpu_str] =  0.0
-          if not self.gan:
-            if self.train_autoencoder:
-              self.out_tensors['loss_gen' + gpu_str] += self.out_tensors['loss_auto_l2' + gpu_str]
-            else:
-              self.out_tensors['loss_gen' + gpu_str] += self.out_tensors['loss_comp_l2' + gpu_str]
-          if self.gan:
-            self.out_tensors['loss_gen' + gpu_str] += self.out_tensors['loss_l1' + gpu_str]
-            self.out_tensors['loss_gen' + gpu_str] += self.out_tensors['loss_gen_un_class' + gpu_str]
-            self.out_tensors['loss_gen' + gpu_str] += self.out_tensors['loss_gen_con_class' + gpu_str]
-            self.out_tensors['loss_gen' + gpu_str] += self.out_tensors['loss_layer_l2' + gpu_str]
-            self.out_tensors['loss_disc' + gpu_str] = self.out_tensors['loss_disc_un_class' + gpu_str]
-            self.out_tensors['loss_disc' + gpu_str] += self.out_tensors['loss_disc_con_class' + gpu_str]
- 
-          ###### Grad Operation ######
-          if i == 0:
-            all_params = tf.trainable_variables()
-            gen_params = [v for i, v in enumerate(all_params) if "discriminator" not in v.name[:v.name.index(':')]]
-            disc_params = [v for i, v in enumerate(all_params) if "discriminator" in v.name[:v.name.index(':')]]
-            if not self.train_autoencoder:
-              gen_params = [v for i, v in enumerate(gen_params) if "compression_mapping" in v.name[:v.name.index(':')]]
-          print("trainable variables:")
-          for v in gen_params:
-            print(v.name)
-          self.out_tensors['gen_grads' + gpu_str] = tf.gradients(self.out_tensors['loss_gen' + gpu_str], gen_params)
-          if self.gan:
-            self.out_tensors['disc_grads' + gpu_str] = tf.gradients(self.out_tensors['loss_disc' + gpu_str], disc_params)
-
-      ###### Round up losses and Gradients on gpu:0 ######
-      ### Round up losses ###
-      with tf.device('/gpu:%d' % self.gpus[0]):
-        gpu_str = lambda x: '_gpu_' + str(self.gpus[x])
-        for i in range(1, len(self.gpus)):
-          self.out_tensors['loss_gen' + gpu_str(0)] += self.out_tensors['loss_gen' + gpu_str(i)]
-          if not self.gan:
-            if self.train_autoencoder:
-              self.out_tensors['loss_auto_l2' + gpu_str(0)] += self.out_tensors['loss_auto_l2' + gpu_str(i)]
-            else:
-              self.out_tensors['loss_comp_l2' + gpu_str(0)] += self.out_tensors['loss_comp_l2' + gpu_str(i)]
-          if self.gan:
-            self.out_tensors['loss_l1' + gpu_str(0)] += self.out_tensors['loss_l1' + gpu_str(i)]
-            self.out_tensors['loss_gen_un_class' + gpu_str(0)] += self.out_tensors['loss_gen_un_class' + gpu_str(i)]
-            self.out_tensors['loss_gen_con_class' + gpu_str(0)] += self.out_tensors['loss_gen_con_class' + gpu_str(i)]
-            self.out_tensors['loss_layer_l2' + gpu_str(0)] += self.out_tensors['loss_layer_l2' + gpu_str(i)]
-            self.out_tensors['loss_disc_un_class' + gpu_str(0)] += self.out_tensors['loss_disc_un_class' + gpu_str(i)]
-            self.out_tensors['loss_disc_con_class' + gpu_str(0)] += self.out_tensors['loss_disc_con_class' + gpu_str(i)]
-            self.out_tensors['loss_disc' + gpu_str(0)] += self.out_tensors['loss_disc' + gpu_str(i)]
-      self.rename_tensor(old_name='loss_gen' + gpu_str(0), new_name='loss_gen')
-      if not self.gan:
-        if self.train_autoencoder:
-          self.rename_tensor(old_name='loss_auto_l2' + gpu_str(0), new_name='loss_auto_l2')
-        else:
-          self.rename_tensor(old_name='loss_comp_l2' + gpu_str(0), new_name='loss_comp_l2')
-      if self.gan:
-        self.rename_tensor(old_name='loss_l1' + gpu_str(0), new_name='loss_l1')
-        self.rename_tensor(old_name='loss_gen_un_class' + gpu_str(0), new_name='loss_gen_un_class')
-        self.rename_tensor(old_name='loss_gen_con_class' + gpu_str(0), new_name='loss_gen_con_class')
-        self.rename_tensor(old_name='loss_layer_l2' + gpu_str(0), new_name='loss_layer_l2')
-        self.rename_tensor(old_name='loss_disc_un_class' + gpu_str(0), new_name='loss_disc_un_class')
-        self.rename_tensor(old_name='loss_disc_con_class' + gpu_str(0), new_name='loss_disc_con_class')
-        self.rename_tensor(old_name='loss_disc' + gpu_str(0), new_name='loss_disc')
-
-      ### Round up gradients ###
-      with tf.device('/gpu:%d' % self.gpus[0]):
-        gpu_str = lambda x: '_gpu_' + str(self.gpus[x])
-        for i in range(1, len(self.gpus)):
-          # gradients 
-          for j in range(len(self.out_tensors['gen_grads' + gpu_str(0)])):
-              if self.out_tensors['gen_grads' + gpu_str(0)][j] is not None:
-                self.out_tensors['gen_grads' + gpu_str(0)][j] += self.out_tensors['gen_grads' + gpu_str(i)][j]
-          if self.gan:
-            for j in range(len(self.out_tensors['disc_grads' + gpu_str(0)])):
-              if self.out_tensors['disc_grads' + gpu_str(0)][j] is not None:
-                self.out_tensors['disc_grads' + gpu_str(0)][j] += self.out_tensors['disc_grads' + gpu_str(i)][j]
-
-      ### add loss summary ###
-      tf.summary.scalar('loss_gen', self.out_tensors['loss_gen'])
-      tf.summary.scalar('total_loss', self.out_tensors['loss_gen'])
-      if not self.gan:
-        if self.train_autoencoder: 
-          tf.summary.scalar('loss_auto_l2', self.out_tensors['loss_auto_l2'])
-        else:
-          tf.summary.scalar('loss_comp_l2', self.out_tensors['loss_comp_l2'])
-      if self.gan:
-        tf.summary.scalar('loss_l1', self.out_tensors['loss_l1'])
-        tf.summary.scalar('loss_gen_un_class', self.out_tensors['loss_gen_un_class'])
-        tf.summary.scalar('loss_gen_con_class', self.out_tensors['loss_gen_con_class'])
-        tf.summary.scalar('loss_layer_l2', self.out_tensors['loss_layer_l2'])
-        tf.summary.scalar('loss_disc_un_class', self.out_tensors['loss_disc_un_class'])
-        tf.summary.scalar('loss_disc_con_class', self.out_tensors['loss_disc_con_class'])
-        tf.summary.scalar('loss_disc', self.out_tensors['loss_disc'])
-
-      ###### Train Operation ######
-      self.gen_optimizer = Optimizer(self.config, name='gen', optimizer_name='adam')
-      self.disc_optimizer = Optimizer(self.config, name='disc', optimizer_name='adam')
-      update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-      self.out_tensors['gen_train_op'] = self.gen_optimizer.train_op(gen_params, 
-                                               self.out_tensors['gen_grads' + gpu_str(0)], 
-                                               self.out_tensors['gen_global_step'],
-                                               mom1=self.config.beta1,
-                                               other_update=update_ops)
-      if self.gan:
-        self.out_tensors['disc_train_op'] = self.disc_optimizer.train_op(disc_params, 
-                                                     self.out_tensors['disc_grads' + gpu_str(0)], 
-                                                     self.out_tensors['disc_global_step'],
-                                                     mom1=self.config.beta1,
-                                                     other_update=update_ops)
-  
-      ###### Start Session ######
-      self.sess = self.start_session()
-  
-      ###### Saver Operation ######
-      graph_def = self.sess.graph.as_graph_def(add_shapes=True)
-      self.saver = NetworkSaver(self.config, self.network_name, graph_def)
-      self.saver.load_checkpoint(self.sess)
-
-  def train_shape_converter(self):
+    # make shape converter
     shape_converters = {}
+    shape_converters['state_shape_converter'] = self.shape_converters[(state_name, cstate_name[-1])]
+    shape_converters['seq_state_shape_converter'] = self.shape_converters[(state_name, cstate_name[-1])]
+
+    return train_step, shape_converters
+
+  def unroll_train_comp(self):
     for i in xrange(len(self.gpus)):
+      # make input names and output names
       gpu_str = '_gpu_' + str(self.gpus[i])
-      for j in xrange(self.seq_length):
-        name = ("state" + gpu_str, "pred_state_" + str(j) + gpu_str)
-        shape_converters[name] = self.shape_converters[name]
-        name = ("state" + gpu_str, "cstate_" + str(j) + gpu_str)
-        shape_converters[name] = self.shape_converters[name]
-        name = ("true_state_" + str(j) + gpu_str, "true_cstate_" + str(j) + gpu_str)
-        shape_converters[name] = self.shape_converters[name]
-    return shape_converters
+      cstate_name = 'cstate' + gpu_str
+      cboundary_name = 'cboundary' + gpu_str
+      pred_cstate_names = ['pred_cstate' + gpu_str + '_' + str(x) for x in range(self.seq_length)]
+      true_cstate_names = ['true_cstate' + gpu_str + '_' + str(x) for x in range(self.seq_length)]
+      loss_name = 'l2_loss' + gpu_str
+      grad_name = 'gradient' + gpu_str
+
+      with tf.device('/gpu:%d' % self.gpus[i]):
+        # make input cstate and cboundary
+        self.add_cstate(cstate_name, gpu_id=i)
+        self.add_cboundary(cboundary_name, gpu_id=i)
+        for j in xrange(self.seq_length):
+          self.add_lattice(true_cstate_names[j], gpu_id=i)
+      
+        # unroll network
+        self.comp_seq_pred(in_name_cstate=cstate_name,
+                           in_name_boundary=boundary_name,
+                           out_names=pred_cstate_names,
+                           gpu_id=i)
+    
+        # calc loss
+        self.l2_loss(true_name=true_cstate_names,
+                     pred_name=pred_cstate_names,
+                     loss_name=loss_name,
+                     normalize=True)
+ 
+        # calc grad
+        if i == 0:
+          all_params = tf.trainable_variables()
+          comp_params = [v for i, v in enumerate(gen_params) if "compression_mapping" in v.name[:v.name.index(':')]]
+        self.gradients(loss_name=loss_name, grad_name=grad_name, params=comp_params)
+
+    ###### Round up losses and Gradients on gpu:0 ######
+    with tf.device('/gpu:%d' % self.gpus[0]):
+      # round up losses
+      loss_names = ['l2_loss_gpu_' + str(x) for x in xrange(self.seq_length)]
+      loss_name = 'l2_loss'
+      self.sum_losses(in_names=loss_names, out_name=loss_name)
+      # round up gradients
+      gradient_names = ['gradient_gpu_' + str(x) for x in xrange(self.seq_length)]
+      gradient_name = 'gradient'
+      self.sum_gradients(in_names=gradient_names, out_name=gradient_name)
+
+    ###### Train Operation ######
+    self.out_tensors['train_op'] = self.optimizer.train_op(all_params, 
+                                             self.out_tensors['gradient'], 
+                                             self.out_tensors['global_step'],
+                                             mom1=self.config.beta1)
+
+    # make a train step
+    def train_step(feed_dict):
+      loss, _ = self.run(['loss', 'train_op'], feed_dict=feed_dict)
+      return {'loss': loss}
+
+    # make shape converter
+    shape_converters = {}
+    shape_converters['cstate_shape_converter'] = self.shape_converters[(state_name, cstate_name[-1])]
+    shape_converters['seq_cstate_shape_converter'] = self.shape_converters[(state_name, cstate_name[-1])]
+
+    return train_step, shape_converter
+
+  def make_data_queue(self, config):
+    # add script name to domains TODO This is a little weird and might be taken out later
+    for domain in self.domains:
+      if domain is not None:
+        domain.script_name = self.script_name
+
+    data_queue = DataQueue(self.config, 
+                           self.config.train_sim_dir,
+                           self.domains, 
+                           self.train_shape_converter())
+    return data_queue
+
+  def train(self):
+    # unroll network
+    with tf.Graph().as_default():
+      get_step = self.unroll_global_step()
+      if self.train_mode == "full": 
+        train_step, train_shape_converters = self.unroll_train_full()
+      elif self.train_mode == "compression":
+        encode_state, state_shape_converter = self.unroll_state_encoder()
+        encode_boundary, boundary_shape_converters = self.unroll_boundary_encoder()
+        train_step, train_shape_converter = self.unroll_train_comp()
+      save_sumary = self.unroll_save_summary()
+      self.load_checkpoint() 
+   
+    # get data
+    if self.train_mode == "full":
+      self.data_queue.add_rand_dp(100, 
+                 train_shape_conveters['state_converter'], 
+                 train_shape_conveters['seq_state_converter'])
+    elif self.train_mode == "compression":
+      self.data_queue.add_rand_cdp(100, 
+                 train_shape_conveters['cstate_converter'], 
+                 train_shape_conveters['seq_cstate_converter'], 
+                 encode_state=encode_state, 
+                 encode_boundary=encode_boundary)
+ 
+    while True 
+      step = get_step()
+      if self.train_mode == "full":
+        feed_dict = self.data_queue.dp_minibatch()
+      elif self.train_mode == "compression":
+        feed_dict = self.data_queue.cdp_minibatch()
+
+      # run train op and get loss output
+      output = train_step(feed_dict)
+          
+      # update loss summary
+      self.update_loss_stats(output)
+    
+      # update time summary
+      self.update_time_stats()
+    
+      # print required data and save
+      if step % steps_per_print == 0:
+        self.print_stats(self.loss_stats, self.time_stats, data_queue_train.queue_stats(), step)
+  
+      # save in tensorboard 
+      if step % 100 == 0:
+        save_summary(feed_dict)
+    
+      # save in network
+      if step % self.save_network_freq == 0:
+        self.save_checkpoint(step)
+   
+      # possibly add more data if JHTDB
+      #if step % 100 == 0 and self.dataset == "JHTDB":
+      #  self.data_queue(
+      # possibly get more data
+      #if step % 200 == 0:
+      #  self.active_data_add()
+ 
+  def update_loss_stats(self, output):
+    names = output.keys()
+    names.sort()
+    for name in names:
+      if 'loss' in name:
+        # update loss history
+        if name + '_history' not in self.loss_stats.keys():
+          self.loss_stats[name + '_history'] = []
+        self.loss_stats[name + '_history'].append(output[name])
+        if len(self.loss_stats[name + '_history']) > self.stats_history_length:
+          self.loss_stats[name + '_history'].pop(0)
+        # update loss
+        self.loss_stats[name] = float(output[name])
+        # update ave loss
+        self.loss_stats[name + '_ave'] = float(np.sum(np.array(self.loss_stats[name + '_history']))
+                                         / len(self.loss_stats[name + '_history']))
+        # update var loss
+        self.loss_stats[name + '_std'] = np.sqrt(np.var(np.array(self.loss_stats[name + '_history'])))
+
+  def update_time_stats(self):
+    # stop timer
+    self.toc = time.time()
+    # update total run time
+    self.time_stats['run_time'] = int(time.time() - self.start_time)
+    # update total step time
+    self.time_stats['step_time'] = ((self.toc - self.tic) / 
+                                    (self.config.batch_size * len(self.config.gpus)))
+    # update time history
+    if 'step_time_history' not in self.time_stats.keys():
+      self.time_stats['step_time_history'] = []
+    self.time_stats['step_time_history'].append(self.time_stats['step_time'])
+    if len(self.time_stats['step_time_history']) > self.stats_history_length:
+      self.time_stats['step_time_history'].pop(0)
+    # update time ave
+    self.time_stats['step_time_ave'] = float(np.sum(np.array(self.time_stats['step_time_history']))
+                   / len(self.time_stats['step_time_history']))
+    # start timer
+    self.tic = time.time()
+
+  def print_stats(self, loss_stats, time_stats, queue_stats, step):
+    loss_string = print_dict('LOSS STATS', loss_stats, 'blue')
+    time_string = print_dict('TIME STATS', time_stats, 'magenta')
+    queue_string = print_dict('QUEUE STATS', queue_stats, 'yellow')
+    print_string = loss_string + time_string + queue_string
+    os.system('clear')
+    print("TRAIN INFO - step " + str(step))
+    print(print_string)
+
+class EvalLatNet(LatNet):
+
+  def __init__(self, config):
+    super(LatNet, self).__init__(config)
+
+    # needed configs
+    self.train_mode = config.train_mode
+    self.train_iters = config.train_iters
+
+    # shape converter from in_tensor to out_tensor
+    self.train_shape_converters = {}
+
+    # make optimizer
+    self.optimizer = Optimizer(config, name='opt', optimizer_name='adam')
+
+  @classmethod
+  def add_options(cls, group):
+    pass
 
   def eval_unroll(self):
 
@@ -561,56 +501,4 @@ class TrainLatNet(LatNet):
     return (state_encoder, boundary_encoder, cmapping, cmapping_first, decoder_vel_rho,
             decoder_state, encoder_shape_converter, cmapping_shape_converter, 
             decoder_shape_converter) # TODO This should probably be cleaned up
-
-  def encoder_lambda(self, state):
-    cstate = self.run('cstate_auto', feed_dict={'state_gpu_0': state})
-    return cstate
-
-  def run(self, out_names, feed_dict=None, return_dict=False):
-    # convert out_names to tensors 
-    if type(out_names) is list:
-      out_tensors = [self.network_arch.out_tensors[x] for x in out_names]
-    else:
-      out_tensors = self.network_arch.out_tensors[out_names]
-
-    # convert feed_dict to tensorflow version
-    if feed_dict is not None:
-      tf_feed_dict = {}
-      for name in feed_dict.keys():
-        if type(feed_dict[name]) is tuple:
-          tf_feed_dict[self.network_arch.in_tensors[name]] = feed_dict[name][0]
-          tf_feed_dict[self.network_arch.in_pad_tensors[name]] = feed_dict[name][1]
-        else:
-          tf_feed_dict[self.in_tensors[name]] = feed_dict[name]
-        #print(tf_feed_dict[self.in_tensors[name]].shape)
-    else:
-      tf_feed_dict=None
-
-    # run with tensorflow
-    tf_output = self.sess.run(out_tensors, feed_dict=tf_feed_dict)
-    
-    # possibly convert output to dictionary 
-    if return_dict:
-      output = {}
-      if type(out_names) is list:
-        for i in xrange(len(out_names)):
-          output[out_names[i]] = tf_output[i]
-      else:
-        output[out_names] = tf_output
-    else:
-      output = tf_output
-    return output
-
-  def start_session(self):
-    #gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.9)
-    #sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
-    sess = tf.Session()
-    init = tf.global_variables_initializer()
-    sess.run(init)
-    return sess
-
-
-class TrainLatNet(LatNet):
-
-
 

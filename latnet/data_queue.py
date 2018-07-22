@@ -23,7 +23,7 @@ import threading
 from utils.text_histogram import vector_to_text_hist
 
 class DataQueue:
-  def __init__(self, config, base_dir, domains, shape_converters, max_queue, mapping=None):
+  def __init__(self, config, base_dir, domains):
 
     # base dir where all the xml files are
     self.base_dir = base_dir
@@ -50,7 +50,6 @@ class DataQueue:
     self.seq_state_shape_converter = self.shape_converters['true_state_' + str(self.seq_length-1) + gpu_str, 
                             'true_cstate_' + str(self.seq_length-1) + gpu_str]
     self.cratio = pow(2, self.nr_downsamples)
-    self.mapping = mapping
 
     # make queue
     self.max_queue = max_queue

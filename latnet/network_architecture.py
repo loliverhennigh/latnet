@@ -26,11 +26,12 @@ class NetArch(object):
     self.encoder_boundary             = tf.make_template('encoder_boundary', self._encoder_boundary)
     self.compression_mapping          = tf.make_template('compression_mapping', self._compression_mapping)
     self.decoder_state                = tf.make_template('decoder_state', self._decoder_state)
+    self.full_seq_pred                = tf.make_template('full_seq_pred', self._full_seq_pred)
+    self.comp_seq_pred                = tf.make_template('comp_seq_pred', self._comp_seq_pred)
 
-  def _unroll_full(self, in_name_state, in_name_boundary, out_names):
+  def _full_seq_pred(self, in_name_state, in_name_boundary, out_cstate_names, out_names, gpu_id=0):
 
     # name names compressesion peices in unroll
-    cstate_names = ["comp_" + in_name_state + "_" + str(x) for x in range(len(out_names))]
     if in_name_boundary is not None:
       cboundary_name = "comp_" + in_name_boundary
     else:
@@ -38,7 +39,7 @@ class NetArch(object):
 
     ### encode ###
     self.encoder_state(in_name=in_name_state, 
-                       out_name=cstate_names[0])
+                       out_name=out_cstate_names[0])
     if in_name_boundary is not None:
       self.encoder_boundary(in_name=in_name_boundary, 
                             out_name=cboundary_name)
@@ -46,61 +47,45 @@ class NetArch(object):
     ### unroll on the compressed state ###
     for j in xrange(len(out_names)-1):
       if (j == 0) and (in_name_boundary is not None):
-        self._compression_mapping(in_cstate_name=cstate_names[0],
-                                  in_cboundary_name=cboundary_name,
-                                  out_name=cstate_names[1], 
-                                  start_apply_boundary=True)
+        self.compression_mapping(in_cstate_name=out_cstate_names[0],
+                                 in_cboundary_name=cboundary_name,
+                                 out_name=out_cstate_names[1], 
+                                 start_apply_boundary=True)
       else
-        self._compression_mapping(in_cstate_name=cstate_names[j],
-                                  in_cboundary_name=cboundary_name,
-                                  out_name=cstate_names[j+1])
+        self.compression_mapping(in_cstate_name=out_cstate_names[j],
+                                 in_cboundary_name=cboundary_name,
+                                 out_name=out_cstate_names[j+1])
 
     ### decode all compressed states ###
     for j in xrange(len(out_names)):
-       self.match_trim_tensor(in_name=cstate_names[j], 
-                              match_name=cstate_names[-1], 
-                              out_name=cstate_names[j])
-       self._decoder_state(in_name=cstate_names[j], 
-                           out_name=out_names[j],
-                           lattice_size=self.DxQy.Q)
+       self.match_trim_tensor(in_name=out_cstate_names[j], 
+                              match_name=out_cstate_names[-1], 
+                              out_name=out_cstate_names[j])
+       self.decoder_state(in_name=out_cstate_names[j], 
+                          out_name=out_names[j],
+                          lattice_size=self.DxQy.Q)
+       if gpu_id == 0:
+         self.lattice_summary(self, in_name=out_names[j], summary_name=out_names[j])
 
-  def _unroll_comp(self, in_name_cstate, in_name_cboundary, out_name, seq_length):
+  def _comp_seq_pred(self, in_name_cstate, in_name_cboundary, out_names, seq_length, gpu_id=0):
 
-    # name names for use during unroll
-    cstate_names = ["comp" + in_name_state + "_" + str(x) for x in range(seq_length)]
-    out_names = [out_name + "_" + str(x) for x in range(seq_length)]
-
-    ### encode ###
-    self.encoder_state(in_name=in_name_state, 
-                       out_name=cstate_names[0])
-    if in_name_boundary is not None:
-      cboundary_name = "comp" + in_name_boundary
-      self.encoder_boundary(in_name=in_name_boundary, 
-                            out_name=cboundary_name)
-    else:
-      cboundary_name = None
-      
     ### unroll on the compressed state ###
-    for j in xrange(seq_length-1):
+    for j in xrange(len(out_names)-1):
       if (j == 0) and (in_name_boundary is not None):
-        self._compression_mapping(in_cstate_name=cstate_names[0],
-                                  in_cboundary_name=cboundary_name,
-                                  out_name=cstate_names[1], 
-                                  start_apply_boundary=True)
+        self.compression_mapping(in_cstate_name=cstate_names[0],
+                                 in_cboundary_name=cboundary_name,
+                                 out_name=cstate_names[1], 
+                                 start_apply_boundary=True)
       else
-        self._compression_mapping(in_cstate_name=cstate_names[j],
-                                  in_cboundary_name=cboundary_name,
-                                  out_name=cstate_names[j+1])
+        self.compression_mapping(in_cstate_name=cstate_names[j],
+                                 in_cboundary_name=cboundary_name,
+                                 out_name=cstate_names[j+1])
 
     ### decode all compressed states ###
     for j in xrange(self.seq_length):
        self.match_trim_tensor(in_name=cstate_names[j], 
                               match_name=cstate_names[-1], 
                               out_name=cstate_names[j])
-       self._decoder_state(in_name=cstate_names[j], 
-                           out_name=out_names[j],
-                           lattice_size=self.DxQy.Q)
-
 
   def fc(self, in_name, out_name,
          hidden, weight_name='fc', 
@@ -400,10 +385,22 @@ class NetArch(object):
     self.in_pad_tensors[name] = pad_tensor
     self.out_pad_tensors[name] = pad_tensor
     self.shape_converters[name,name] = ShapeConverter()
-     
-  def add_phase(self): 
-    self.in_tensors['phase'] = tf.placeholder(tf.bool, name='phase')
-    self.out_tensors['phase'] = self.in_tensors['phase']
+  
+  def add_lattice(self, name, gpu_id=0):
+    self.add_tensor(name, (1 + self.DxQy.D) * [None] + [self.DxQy.Q])
+    if gpu_id == 0:
+      self.lattice_summary(name)
+    
+  def add_boundary(self, name, gpu_id=0):
+    self.add_tensor(name, (1 + self.DxQy.D) * [None] + [self.DxQy.boundary_dims])
+    if gpu_id == 0:
+      self.bounndary_summary(name)
+   
+  def add_cstate(self, name):
+    self.add_tensor(name, (1 + self.DxQy.D) * [None] + [self.compression_filter_size])
+   
+  def add_cboundary(self, name):
+    self.add_tensor(name, (1 + self.DxQy.D) * [None] + [self.compression_filter_size])
 
   def rename_tensor(self, old_name, new_name):
     # this may need to be handled with more care
@@ -418,39 +415,63 @@ class NetArch(object):
 
   def lattice_summary(self, in_name, summary_name, 
                       display_norm=True, display_vel=True, display_pressure=True):
-    if display_norm:
-      if self.DxQy.dims == 2:
-        tf.summary.image(summary_name + '_norm', self.DxQy.lattice_to_norm(self.out_tensors[in_name]))
-      elif self.DxQy.dims == 3:
-        tf.summary.image(summary_name + '_norm', self.DxQy.lattice_to_norm(self.out_tensors[in_name])[:,0])
-    if display_pressure:
-      if self.DxQy.dims == 2:
-        tf.summary.image(summary_name + '_rho', self.DxQy.lattice_to_rho(self.out_tensors[in_name]))
-      elif self.DxQy.dims == 3:
-        tf.summary.image(summary_name + '_rho', self.DxQy.lattice_to_rho(self.out_tensors[in_name])[:,0])
-    if display_vel:
-      if self.DxQy.dims == 2:
-        vel = self.DxQy.lattice_to_vel(self.out_tensors[in_name])
-        tf.summary.image(summary_name + '_vel_x', vel[...,0:1])
-        tf.summary.image(summary_name + '_vel_y', vel[...,1:2])
-      elif self.DxQy.dims == 3:
-        vel = self.DxQy.lattice_to_vel(self.out_tensors[in_name])[:,0]
-        tf.summary.image(summary_name + '_vel_x', vel[...,0:1])
-        tf.summary.image(summary_name + '_vel_y', vel[...,1:2])
-
+    with tf.device('/cpu:0'):
+      if display_norm:
+        if self.DxQy.dims == 2:
+          tf.summary.image(summary_name + '_norm', self.DxQy.lattice_to_norm(self.out_tensors[in_name]))
+        elif self.DxQy.dims == 3:
+          tf.summary.image(summary_name + '_norm', self.DxQy.lattice_to_norm(self.out_tensors[in_name])[:,0])
+      if display_pressure:
+        if self.DxQy.dims == 2:
+          tf.summary.image(summary_name + '_rho', self.DxQy.lattice_to_rho(self.out_tensors[in_name]))
+        elif self.DxQy.dims == 3:
+          tf.summary.image(summary_name + '_rho', self.DxQy.lattice_to_rho(self.out_tensors[in_name])[:,0])
+      if display_vel:
+        if self.DxQy.dims == 2:
+          vel = self.DxQy.lattice_to_vel(self.out_tensors[in_name])
+          tf.summary.image(summary_name + '_vel_x', vel[...,0:1])
+          tf.summary.image(summary_name + '_vel_y', vel[...,1:2])
+        elif self.DxQy.dims == 3:
+          vel = self.DxQy.lattice_to_vel(self.out_tensors[in_name])[:,0]
+          tf.summary.image(summary_name + '_vel_x', vel[...,0:1])
+          tf.summary.image(summary_name + '_vel_y', vel[...,1:2])
+  
   def boundary_summary(self, in_name, summary_name):
-    if self.DxQy.dims == 2:
-      tf.summary.image('physical_boundary', self.out_tensors[in_name][...,0:1])
-      tf.summary.image('vel_x_boundary', self.out_tensors[in_name][...,1:2])
-      tf.summary.image('vel_y_boundary', self.out_tensors[in_name][...,2:3])
-      if len(self.out_tensors[in_name].get_shape()) == 5:
-        tf.summary.image('vel_z_boundary', self.out_tensors[in_name][...,3:4])
-      tf.summary.image('density_boundary', self.out_tensors[in_name][...,-1:])
-
-  def l2_loss(self, true_name, pred_name, loss_name, factor=None):
+    with tf.device('/cpu:0'):
+      if self.DxQy.dims == 2:
+        tf.summary.image('physical_boundary', self.out_tensors[in_name][...,0:1])
+        tf.summary.image('vel_x_boundary', self.out_tensors[in_name][...,1:2])
+        tf.summary.image('vel_y_boundary', self.out_tensors[in_name][...,2:3])
+        if len(self.out_tensors[in_name].get_shape()) == 5:
+          tf.summary.image('vel_z_boundary', self.out_tensors[in_name][...,3:4])
+        tf.summary.image('density_boundary', self.out_tensors[in_name][...,-1:])
+ 
+  def gradient(self, loss_name, grad_name, params):
+    self.out_tensors[grad_name] = tf.gradients(self.out_tensors[loss_name], params)
+ 
+  def l2_loss(self, true_name, pred_name, loss_name, normalize=True):
 
     self.out_tensors[loss_name] = tf.nn.l2_loss(tf.stop_gradient(self.out_tensors[ true_name]) 
                                                 - self.out_tensors[pred_name])
-    if factor is not None:
-      self.out_tensors[loss_name] = factor * self.out_tensors[loss_name]
+    if normalize:
+      normalize_loss_factor = tf.cast(tf.reduce_prod(tf.shape(true)), dtype=tf.float32)
+      self.out_tensors[loss_name] = self.out_tensors[loss_name] / normalize_loss_factor
+
+  def sum_losses(self, loss_names, out_name, normalize=True):
+    self.out_tensors[out_name] = 0.0 
+    for n in loss_name
+      self.out_tensors[out_name] += self.out_tensors[n]
+    if normalize:
+      self.out_tensors[out_name] += self.out_tensors[out_name] / float(len(loss_names))
+
+
+  def sum_gradients(self, gradient_names, out_name):
+    for i in range(1, len(gradient_names)):
+      for j in xrange(len(self.out_tensors[gradient_names[i]])):
+        if self.out_tensors[gradient_names[i]][j] is not None:
+          self.out_tensors[gradient_names[0]][j] += self.out_tensors[gradient_names[i]][j]
+    self.out_tensors[out_name] = self.out_tensors[gradient_names[0]]
+
+
+
 
