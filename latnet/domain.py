@@ -17,8 +17,6 @@ class Domain(object):
     self.lb_to_ln = config.lb_to_ln
     self.max_sim_iters = config.max_sim_iters
     self.debug_sailfish = config.debug_sailfish
-    self.train_sim_dir = config.train_sim_dir
-    self.train_autoencoder = config.train_autoencoder
  
     self.DxQy = lattice.TYPES[config.DxQy]()
 
@@ -38,6 +36,22 @@ class Domain(object):
       if self.periodic_z:
         self.padding_type[2] = 'periodic'
 
+  @classmethod
+  def add_options(cls, group):
+    group.add_argument('--lb_to_ln', 
+                   help='ratio of flow simulation steps to neural network steps', 
+                   type=int,
+                   default=60)
+    group.add_argument('--DxQy', 
+                   help='type of flow data', 
+                   type=str,
+                   default='D2Q9')
+    group.add_argument('--visc', 
+                   help='viscocity of fluid', 
+                   type=float,
+                   default=0.1)
+
+ 
 class TrainDomain(Domain):
   def __init__(self, config, save_dir):
     super(TrainDomain, self).__init__(config, save_dir)
@@ -45,6 +59,18 @@ class TrainDomain(Domain):
     # data point for training (both uncompressed and compressed)
     self.data_points = []
     self.cdata_points = []
+
+  @classmethod
+  def add_options(cls, group):
+    group.add_argument('--lb_to_ln', 
+                   help='ratio of flow simulation steps to neural network steps', 
+                   type=int,
+                   default=60)
+    group.add_argument('--DxQy', 
+                   help='type of flow data', 
+                   type=str,
+                   default='D2Q9')
+
 
   def select_rand_dp(self):
     point_ind = np.random.randint(0, len(self.data_points))

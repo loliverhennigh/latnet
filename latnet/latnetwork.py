@@ -24,7 +24,6 @@ class LatNet(object):
     # needed configs
     self.DxQy = lattice.TYPES[config.DxQy]()
     self.network_dir  = config.latnet_network_dir
-    self.seq_length = config.seq_length
     gpus = config.gpus.split(',')
     self.gpus = map(int, gpus)
 
@@ -33,7 +32,18 @@ class LatNet(object):
 
   @classmethod
   def add_options(cls, group):
-    pass
+    group.add_argument('--network_dir', 
+                   help='where to save neural network', 
+                   type=str,
+                   default='./network_checkpoint')
+    group.add_argument('--cstate_depth',
+                   help='depth of compressed state',
+                   type=int,
+                   default=16)
+    group.add_argument('--cboundary_depth',
+                   help='depth of compressed boundary',
+                   type=int,
+                   default=32)
 
   def _make_checkpoint_path(self, config):
     # make checkpoint path with all the flags specifing different directories
@@ -222,7 +232,6 @@ class TrainLatNet(LatNet):
     self.train_iters = config.train_iters
     self.beta1 = config.beta1
     self.batch_size = config.batch_size
-    self.save_network_freq = config.save_network_freq
 
     # make optimizer
     self.optimizer = Optimizer(config, name='opt', optimizer_name='adam')
@@ -230,8 +239,14 @@ class TrainLatNet(LatNet):
     # make data queue
     self.data_queue = self.make_data_queue(config)
 
+    # values for when to print and save data (hard set for now)
+    self.save_network_freq = 100
+    self.save_tensorboard_freq = 100
+    self.stats_print_freq = 20
+    self.add_data_freq = 500
+    self.nr_data_to_add = (len(self.gpus)*self.batch_size*self.add_data_freq)/10 # hard set to adding a data point for every 10 trained on since last add
+
     # make stats data
-    self.steps_per_print = 20
     self.loss_stats = {}
     self.time_stats = {}
     self.start_time = time.time()
@@ -241,7 +256,39 @@ class TrainLatNet(LatNet):
 
   @classmethod
   def add_options(cls, group):
-    pass
+    group.add_argument('--train_mode', 
+                   help='either train of full states or compressed states', 
+                   type=str,
+                   choices=['full', 'compression'],
+                   default='full')
+    group.add_argument('--seq_length', 
+                   help='how many step to unroll when training', 
+                   type=int,
+                   default=5)
+    group.add_argument('--train_cshape', 
+                   help='size of data to train on', 
+                   type=str,
+                   default='16x16')
+    group.add_argument('--batch_size',
+                   help='batch size for training',
+                   type=int,
+                   default=4)
+    group.add_argument('--gan',
+                   help='train with gan loss or not',
+                   type=str2bool,
+                   default=False)
+    group.add_argument('--train_iters',
+                   help='num iters to train network',
+                   type=int,
+                   default=500000)
+    group.add_argument('--gpus',
+                   help='gpus to train on',
+                   type=str,
+                   default='0')
+    group.add_argument('--gpu_fraction',
+                   help='fraction of gpu memory to use',
+                   type=float,
+                   default=0.9)
 
   def unroll_train_full(self):
     for i in xrange(len(self.gpus)):
@@ -435,26 +482,40 @@ class TrainLatNet(LatNet):
       self.update_time_stats()
     
       # print required data and save
-      if step % self.steps_per_print == 0:
+      if step % self.stats_print_freq == 0:
         if self.train_mode == "full":
           self.print_stats(self.loss_stats, self.time_stats, self.data_queue.queue_dp_stats(), step)
         elif self.train_mode == "compression":
           self.print_stats(self.loss_stats, self.time_stats, self.data_queue.queue_cdp_stats(), step)
   
       # save in tensorboard 
-      if step % 100 == 0:
+      if step % self.save_tensorboard_freq == 0:
         save_summary(feed_dict, step)
     
       # save in network
       if step % self.save_network_freq == 0:
         self.save_checkpoint(step)
    
-      # possibly add more data if JHTDB
-      #if step % 100 == 0 and self.dataset == "JHTDB":
-      #  self.data_queue(
-      # possibly get more data
-      #if step % 200 == 0:
-      #  self.active_data_add()
+      # possibly add more data
+      if step % self.add_data_feq == 0:
+        self.active_data_add()
+
+  def active_data_add(self):
+    if self.dataset == "JHTDB":
+      if self.train_mode == "full":
+        self.data_queue.add_rand_dp(self.nr_data_to_add, 
+                   train_shape_converter['state_converter'], 
+                   train_shape_converter['seq_state_converter'])
+      elif self.train_mode == "compression":
+        self.data_queue.add_rand_cdp(self.nr_data_to_add, 
+                   train_shape_converter['state_converter'], 
+                   train_shape_converter['seq_cstate_converter'], 
+                   encode_state=encode_state, 
+                   encode_boundary=encode_boundary)
+    elif self.dataset == "sailfish":
+      loss_data_pair = []
+      if self.train_mode == "full":
+        sim_ind, dp, feed_dict = self.data_queue.rand_dp()
  
   def update_loss_stats(self, output):
     names = output.keys()
@@ -525,7 +586,18 @@ class EvalLatNet(LatNet):
 
   @classmethod
   def add_options(cls, group):
-    pass
+    group.add_argument('--num_iters',
+                   help='number of iterations to run network generated simulation',
+                   type=int,
+                   default=15)
+    group.add_argument('--sim_restore_iter',
+                   help='what iteration to start the simulation (0 if starting simulation from initial conditions)',
+                   type=int,
+                   default=0)
+    group.add_argument('--eval_cshape',
+                   help='shape of compresses state for domain decomposision',
+                   type=str,
+                   default='32x32')
 
   def state_input_generator(subdomain):
     if self.start_state is not None:
@@ -591,7 +663,6 @@ class EvalLatNet(LatNet):
                        self.input_cshape)
       self.sim_saver.save(i, self.cstate)
 
-
   def mapping(self, mapping, shape_converter, input_generator, output_shape, run_output_shape):
     nr_subdomains = [int(math.ceil(x/float(y))) for x, y in zip(output_shape, run_output_shape)]
     output = []
@@ -629,10 +700,6 @@ class EvalLatNet(LatNet):
 
       # append to list of sub outputs
       output.append(sub_output)
-      sub_output = None
-      sub_input = None
-
-      #gc.collect()
 
     # make total output shape
     total_subdomain = SubDomain(len(output_shape)*[0], output_shape)
@@ -649,7 +716,3 @@ class EvalLatNet(LatNet):
     if len(output) == 1:
       output = output[0]
     return output
-
-
-
-

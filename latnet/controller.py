@@ -30,90 +30,24 @@ class LatNetController(object):
             choices=['sailfish', 'JHTDB'], default='JHTDB')
 
       group = self._config_parser.add_group('Network Details')
-      group.add_argument('--latnet_network_dir', help='all mode', type=str,
-                        default='./network_checkpoint')
-      group.add_argument('--compression_depth', help='all mode', type=int,
-                        default=16)
 
       group = self._config_parser.add_group('Network Input Details')
       group.add_argument('--input_shape', help='all mode', type=str,
                          default='256x256')
-      group.add_argument('--input_cshape', help='all mode', type=str,
-                         default='32x32')
-      group.add_argument('--lb_to_ln', help='all mode', type=int,
-                        default=60)
 
       group = self._config_parser.add_group('Network Saver Details')
-      group.add_argument('--save_network_freq', help='all mode', type=int, 
-                        default=100)
 
       group = self._config_parser.add_group('Network Train Details')
-      group.add_argument('--train_mode', help='all mode', type=str, 
-                        default='full')
-      group.add_argument('--seq_length', help='all mode', type=int, 
-                        default=5)
-      group.add_argument('--batch_size', help='all mode', type=int,
-                        default=4)
-      group.add_argument('--gpus', help='all mode', type=str,
-                        default='0')
-      group.add_argument('--optimizer', help='all mode', type=str,
-                        default='adam')
-      group.add_argument('--gan', help='all mode', type=str2bool,
-                        default=False)
-      group.add_argument('--train_autoencoder', help='all mode', type=str2bool,
-                        default=True)
-      group.add_argument('--lr', help='all mode', type=float,
-                        default=0.0004)
-      group.add_argument('--decay_steps', help='all mode', type=int,
-                        default=10000)
-      group.add_argument('--decay_rate', help='all mode', type=float,
-                        default=1.0)
-      group.add_argument('--beta1', help='all mode', type=float,
-                        default=0.95)
-      group.add_argument('--l1_factor', help='all mode', type=float,
-                        default=5.0)
-      group.add_argument('--moving_average', help='all mode', type=str2bool,
-                        default=True)
-      group.add_argument('--train_iters', help='all mode', type=int,
-                        default=500000)
 
       group = self._config_parser.add_group('Data Queue Details')
-      group.add_argument('--train_sim_dir', help='train mode', type=str,
-                        default='./data')
-      group.add_argument('--start_num_data_points_train', help='train mode', type=int,
-                        default=200)
-      group.add_argument('--start_num_data_points_test', help='train mode', type=int,
-                        default=20)
-      group.add_argument('--gpu_fraction', help='all mode', type=float,
-                        default=0.9)
-      group.add_argument('--max_queue', help='all mode', type=int,
-                        default=150)
 
       group = self._config_parser.add_group('Simulation Details')
-      group.add_argument('--sim_shape', help='all mode', type=str,
-                        default='512x512')
-      group.add_argument('--DxQy', help='all mode', type=str,
-            choices=['D2Q9'], default='D2Q9')
-      group.add_argument('--num_iters', help='eval mode', type=int,
-                        default=15)
-      group.add_argument('--sim_restore_iter', help='if 0 then it will not restore', type=int,
-                        default=1)
 
       group = self._config_parser.add_group('Simulation Saver Details')
-      group.add_argument('--sim_dir', help='eval mode', type=str,
-                        default='./simulation')
-      group.add_argument('--sim_save_every', help='eval mode', type=int,
-                        default=1)
-      group.add_argument('--extract_plane', help='eval mode', type=str2bool,
-                        default=True)
 
       group = self._config_parser.add_group('Simulation Process Details')
       group.add_argument('--compare', help='compares to sailfish simulation', type=str2bool,
                         default=True)
-      group.add_argument('--save_format', help='eval mode', type=str,
-                        default='npy')
-      group.add_argument('--save_cstate', help='eval mode', type=str2bool,
-                        default=False)
 
       # TODO this group will be removed when the sailfish configs are integrated
       group = self._config_parser.add_group('Sailfish Helper Details')
@@ -123,8 +57,6 @@ class LatNetController(object):
                         default='')
       group.add_argument('--max_sim_iters', help='all mode', type=int,
                         default=50)
-      group.add_argument('--visc', help='all mode', type=float,
-                        default=0.1)
       group.add_argument('--restore_geometry', help='all mode', type=str2bool,
                         default=False)
       group.add_argument('--scr_scale', help='all mode', type=float,
@@ -135,8 +67,6 @@ class LatNetController(object):
                         default=100)
       group.add_argument('--subgrid', help='all mode', type=str,
                         default='les-smagorinsky')
-      group.add_argument('--domain_name', help='all mode', type=str,
-                        default='channel')
 
       group = self._config_parser.add_group('Network Configs')
       if self._trainer is not None:

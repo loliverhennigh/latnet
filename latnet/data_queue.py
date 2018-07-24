@@ -39,6 +39,21 @@ class DataQueue(object):
     self.start_dp_queue()
     self.start_cdp_queue()
 
+  @classmethod
+  def add_options(cls, group):
+    group.add_argument('--train_data_dir', 
+                   help='where to save train data', 
+                   type=str,
+                   default='./train_data')
+    group.add_argument('--start_num_dps', 
+                   help='num datapoint before starting training', 
+                   type=int,
+                   default=200)
+    group.add_argument('--max_queue', 
+                   help='max datapoints in queue', 
+                   type=int,
+                   default=200)
+
   def init_sims(self, config, domains):
     sims = []
 

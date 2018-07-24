@@ -7,20 +7,46 @@ Function borrowed and modified from https://github.com/openai/pixel-cnn
 import tensorflow as tf
 import numpy as np
 
+from utils.python_utils import *
+
 FLAGS = tf.app.flags.FLAGS
 
 class Optimizer:
 
-  def __init__(self, config, name, optimizer_name):
+  def __init__(self, config, name):
     self.lr = config.lr
     self.decay_steps = config.decay_steps
     self.decay_rate = config.decay_rate
     self.moving_average = config.moving_average
     self.name = name
-    if optimizer_name == "adam":
+    if config.optimizer == "adam":
       self.train_op = self.adam_updates
-    elif optimizer_name == "gradient_descent":
+    elif config.optimizer == "gradient_descent":
       self.train_op = self.gradient_updates
+
+  @classmethod
+  def add_options(cls, group):
+    group.add_argument('--optimizer', 
+                   help='optimizer to use during training', 
+                   type=str,
+                   choices=['adam', 'gradient_descent'],
+                   default='adam')
+    group.add_argument('--lr', 
+                   help='learning rate', 
+                   type=float,
+                   default=0.0004)
+    group.add_argument('--decay_steps', 
+                   help=' decay steps for exponential decay lr', 
+                   type=int,
+                   default=10000)
+    group.add_argument('--decay_rate', 
+                   help=' decay rate for exponential decay lr', 
+                   type=float,
+                   default=1.0)
+    group.add_argument('--moving_average', 
+                   help='moving average of weights', 
+                   type=str2bool,
+                   default=True)
 
   def get_lr(self, global_step):
     learning_rate = tf.train.exponential_decay(self.lr, global_step, 

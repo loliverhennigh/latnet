@@ -18,6 +18,26 @@ class SimSaver(object):
 
     self.latnet_files = []
 
+  @classmethod
+  def add_options(cls, group):
+    group.add_argument('--sim_dir', 
+                   help='where to save network generated simulation', 
+                   type=str,
+                   default='./simulation')
+    group.add_argument('--sim_save_every', 
+                   help='how often to save compressed state of simulation', 
+                   type=int,
+                   default=4)
+    group.add_argument('--save_format', 
+                   help='format to save compressed state', 
+                   type=str,
+                   choices=['npy'],
+                   default='npy')
+    group.add_argument('--train_cshape', 
+                   help='size of data to train on', 
+                   type=str,
+                   default='16x16')
+
   def iter_to_filename(self, iteration, with_format=False):
     file_name = self.save_dir + '/' + str(iteration).zfill(6) + ".cpoint"
     if with_format and (self.save_format == 'npy'):
