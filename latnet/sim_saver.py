@@ -61,6 +61,3 @@ class SimSaver(object):
       cstate = None
     return vel, rho, cstate
 
-    
-
-

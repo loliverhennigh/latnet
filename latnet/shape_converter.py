@@ -1,9 +1,4 @@
 
-import tensorflow as tf
-import numpy as np
-from nn import *
-
-
 class ShapeConverter:
   # This class allows the shape and pos to be converted from one position 
   # in the computational graph to another. For example, suppose you have 
@@ -165,10 +160,4 @@ print(out_in_subdomain.pos)
 print(out_in_subdomain.size)
 #print(s.in_out_subdomain(subdomain))
 """
-
-
-
-
-
-
 

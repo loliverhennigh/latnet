@@ -1,20 +1,13 @@
 #!/usr/bin/env python
 
-import sys
-import os
-import time
-
-import matplotlib.pyplot as plt
-
-# import latnet
-sys.path.append('../../latnet')
-from domain import Domain
-from trainer import Trainer
-from controller import LatNetController
-import utils.binvox_rw as binvox_rw
 import numpy as np
-import cv2
-import glob
+import sys
+
+sys.path.append('../../latnet')
+from domain import TrainSailfishDomain
+from latnetwork import TrainLatNet
+from archs.standard_arch import StandardArch
+from controller import LatNetController
 
 def draw_circle(boundary, hx, hy, vertex, radius):
   where_circle = (hx == vertex[0]) & (hy == vertex[1])
@@ -53,7 +46,7 @@ def make_boundary(hx, hy, shape):
     draw_circle(boundary, hx, hy, circles[i][0], circles[i][1])
   return boundary
 
-class ChannelDomain(Domain):
+class ChannelDomain(TrainSailfishDomain):
   name = "channel"
   vel = (0.05, 0.0)
   sim_shape = [256, 256]
@@ -87,7 +80,7 @@ class ChannelDomain(Domain):
   def __init__(self, *args, **kwargs):
     super(ChannelDomain, self).__init__(*args, **kwargs)
 
-class EmptyTrainer(Trainer):
+class EmptyTrainer(TrainLatNet, StandardArch):
   domains = [ChannelDomain]
   network = None
 

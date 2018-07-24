@@ -8,7 +8,6 @@ from data_queue import DataQueue
 from config import LatNetConfigParser
 from domain import Domain
 from sim_saver import SimSaver
-from sailfish_simulation import SailfishSimulation
 from utils.python_utils import *
 
 import matplotlib.pyplot as plt
@@ -33,6 +32,8 @@ class LatNetController(object):
       group = self._config_parser.add_group('Network Details')
       group.add_argument('--latnet_network_dir', help='all mode', type=str,
                         default='./network_checkpoint')
+      group.add_argument('--compression_depth', help='all mode', type=int,
+                        default=16)
 
       group = self._config_parser.add_group('Network Input Details')
       group.add_argument('--input_shape', help='all mode', type=str,
@@ -47,6 +48,8 @@ class LatNetController(object):
                         default=100)
 
       group = self._config_parser.add_group('Network Train Details')
+      group.add_argument('--train_mode', help='all mode', type=str, 
+                        default='full')
       group.add_argument('--seq_length', help='all mode', type=int, 
                         default=5)
       group.add_argument('--batch_size', help='all mode', type=int,
@@ -84,7 +87,7 @@ class LatNetController(object):
       group.add_argument('--gpu_fraction', help='all mode', type=float,
                         default=0.9)
       group.add_argument('--max_queue', help='all mode', type=int,
-                        default=50)
+                        default=150)
 
       group = self._config_parser.add_group('Simulation Details')
       group.add_argument('--sim_shape', help='all mode', type=str,
@@ -138,14 +141,14 @@ class LatNetController(object):
       group = self._config_parser.add_group('Network Configs')
       if self._trainer is not None:
         # add network specific configs
-        if self._trainer.network:
-          for base in self._trainer.network.mro():
+        if self._trainer:
+          for base in self._trainer.mro():
             if 'add_options' in base.__dict__:
               base.add_options(group)
       elif self._simulation is not None:
         # add network specific configs
-        if self._simulation.network is not None:
-          for base in self._simulation.network.mro():
+        if self._simulation is not None:
+          for base in self._simulation.mro():
             if 'add_options' in base.__dict__:
               base.add_options(group)
 
@@ -171,30 +174,26 @@ class LatNetController(object):
         self.eval(self.config)
 
     def train(self, config):
-
-      # train
       self.trainer = self._trainer(self.config)
-      self.trainer.init_network()
-      self.trainer.make_data_queue()
       self.trainer.train()
 
     def generate_data(self, config):
-
+      print("generating data")
       if self._trainer is not None:
         for domain in self._trainer.domains:
           if config.domain_name == domain.name:
-            sailfish_ctrl = SailfishSimulation(config, domain).create_sailfish_simulation()
-            sailfish_ctrl.run()
-            break
+            if domain.wrapper_name == 'sailfish':
+              sailfish_ctrl = domain(config, config.train_sim_dir).create_sailfish_simulation(config)
+              sailfish_ctrl.run()
+              break
       elif self._simulation is not None:
-        if config.domain_name == self._simulation.domain.name:
-          sailfish_ctrl = SailfishSimulation(config, self._simulation.domain).create_sailfish_simulation()
+        if self._simulation.domain.wrapper_name == 'sailfish':
+          sailfish_ctrl = self._simulation.domain(config, config.train_sim_dir).create_sailfish_simulation(config)
           sailfish_ctrl.run()
 
     def eval(self, config):
-
       self.simulation = self._simulation(self.config)
-      self.simulation.run()
+      self.simulation.eval()
 
 
 

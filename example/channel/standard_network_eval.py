@@ -1,28 +1,20 @@
 #!/usr/bin/env python
 
-import sys
-import os
-import time
 
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import sys
 
-# import domains
 from channel import ChannelDomain
 
-# import latnet
 sys.path.append('../../latnet')
-from simulation import Simulation
+from latnetwork import EvalLatNet
+from archs.standard_arch import StandardArch
 from controller import LatNetController
-from network_architectures.standard_network import StandardNetwork
-import numpy as np
-import cv2
-import glob
 
-class LDCSimulation(Simulation):
+class StandardEval(EvalLatNet, StandardArch):
   script_name = __file__
-  network = StandardNetwork
   domain = ChannelDomain
   #domain.sim_shape = [512, 512]
   domain.sim_shape = [256, 256]
@@ -35,12 +27,12 @@ class LDCSimulation(Simulation):
         'run_mode': 'eval',
         'visc': 0.01,
         'lb_to_ln': 128,
-        'input_cshape': '32x32',
+        'input_cshape': '16x16',
         'input_shape': '256x256',
         'sim_save_every': 1,
-        'max_sim_iters': 1600})
+        'max_sim_iters': 16})
 
 if __name__ == '__main__':
-  sim = LatNetController(simulation=LDCSimulation)
+  sim = LatNetController(simulation=StandardEval)
   sim.run()
 

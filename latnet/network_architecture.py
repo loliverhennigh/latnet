@@ -1,18 +1,23 @@
 
 import tensorflow as tf
 import numpy as np
+from copy import copy
 
 import lattice
+from shape_converter import ShapeConverter, SubDomain
 import nn as nn
 
 class NetArch(object):
 
-  def __init__(self, configs):
+  def __init__(self, config):
+    super(NetArch, self).__init__()
+
     # in and out tensors
     self.in_tensors = {}
     self.out_tensors = {}
     self.in_pad_tensors = {}
     self.out_pad_tensors = {}
+    self.shape_converters = {}
 
     # get DxQy
     self.DxQy = lattice.TYPES[config.DxQy]()
@@ -29,32 +34,34 @@ class NetArch(object):
     self.full_seq_pred                = tf.make_template('full_seq_pred', self._full_seq_pred)
     self.comp_seq_pred                = tf.make_template('comp_seq_pred', self._comp_seq_pred)
 
-  def _full_seq_pred(self, in_name_state, in_name_boundary, out_cstate_names, out_names, gpu_id=0):
+  def _full_seq_pred(self, in_state_name, in_boundary_name, out_cstate_names, out_names, gpu_id=0):
 
     # name names compressesion peices in unroll
-    if in_name_boundary is not None:
-      cboundary_name = "comp_" + in_name_boundary
+    if in_boundary_name is not None:
+      cboundary_name = "comp_" + in_boundary_name
     else:
       cboundary_name = None
 
     ### encode ###
-    self.encoder_state(in_name=in_name_state, 
+    self.encoder_state(in_name=in_state_name, 
                        out_name=out_cstate_names[0])
-    if in_name_boundary is not None:
-      self.encoder_boundary(in_name=in_name_boundary, 
+    if in_boundary_name is not None:
+      self.encoder_boundary(in_name=in_boundary_name, 
                             out_name=cboundary_name)
       
     ### unroll on the compressed state ###
     for j in xrange(len(out_names)-1):
-      if (j == 0) and (in_name_boundary is not None):
+      self.add_shape_converter(out_cstate_names[j])
+      if (j == 0) and (in_boundary_name is not None):
         self.compression_mapping(in_cstate_name=out_cstate_names[0],
                                  in_cboundary_name=cboundary_name,
                                  out_name=out_cstate_names[1], 
                                  start_apply_boundary=True)
-      else
+      else:
         self.compression_mapping(in_cstate_name=out_cstate_names[j],
                                  in_cboundary_name=cboundary_name,
                                  out_name=out_cstate_names[j+1])
+    self.add_shape_converter(out_cstate_names[len(out_names)-1])
 
     ### decode all compressed states ###
     for j in xrange(len(out_names)):
@@ -64,28 +71,31 @@ class NetArch(object):
        self.decoder_state(in_name=out_cstate_names[j], 
                           out_name=out_names[j],
                           lattice_size=self.DxQy.Q)
-       if gpu_id == 0:
-         self.lattice_summary(self, in_name=out_names[j], summary_name=out_names[j])
+       #if gpu_id == 0:
+       #  self.lattice_summary(in_name=out_names[j], summary_name=out_names[j])
 
-  def _comp_seq_pred(self, in_name_cstate, in_name_cboundary, out_names, seq_length, gpu_id=0):
+  def _comp_seq_pred(self, in_cstate_name, in_cboundary_name, out_names, gpu_id=0):
 
     ### unroll on the compressed state ###
     for j in xrange(len(out_names)-1):
-      if (j == 0) and (in_name_boundary is not None):
-        self.compression_mapping(in_cstate_name=cstate_names[0],
-                                 in_cboundary_name=cboundary_name,
-                                 out_name=cstate_names[1], 
+      self.add_shape_converter(out_names[j])
+      if (j == 0) and (in_cboundary_name is not None):
+        self.compression_mapping(in_cstate_name=in_cstate_name,
+                                 in_cboundary_name=in_cboundary_name,
+                                 out_name=out_names[1], 
                                  start_apply_boundary=True)
-      else
-        self.compression_mapping(in_cstate_name=cstate_names[j],
-                                 in_cboundary_name=cboundary_name,
-                                 out_name=cstate_names[j+1])
+      else:
+        self.compression_mapping(in_cstate_name=out_names[j],
+                                 in_cboundary_name=in_cboundary_name,
+                                 out_name=out_names[j+1])
+    self.add_shape_converter(out_names[-1])
 
     ### decode all compressed states ###
-    for j in xrange(self.seq_length):
-       self.match_trim_tensor(in_name=cstate_names[j], 
-                              match_name=cstate_names[-1], 
-                              out_name=cstate_names[j])
+    for j in xrange(1, len(out_names)):
+       self.match_trim_tensor(in_name=out_names[j], 
+                              match_name=out_names[-1], 
+                              out_name=out_names[j])
+
 
   def fc(self, in_name, out_name,
          hidden, weight_name='fc', 
@@ -116,7 +126,6 @@ class NetArch(object):
     self.out_tensors[out_name] =  nn.conv_layer(self.out_tensors[in_name],
                                               kernel_size, stride, filter_size, 
                                               name=weight_name, nonlinearity=nonlinearity,
-                                              phase=self.out_tensors['phase'],
                                               normalize=normalize)
 
     # remove edges or pool of pad tensor
@@ -199,7 +208,6 @@ class NetArch(object):
                                             keep_p=keep_p, stride=stride, 
                                             gated=gated, name=weight_name, 
                                             begin_nonlinearity=begin_nonlinearity, 
-                                            phase=self.out_tensors['phase'],
                                             normalize=normalize)
 
     # remove edges or pool of pad tensor
@@ -335,7 +343,6 @@ class NetArch(object):
     if factor is not None:
       self.out_tensors[loss_name] = factor * self.out_tensors[loss_name]
 
-  def l2_loss(self, true_name, pred_name, loss_name, factor=None):
 
     self.out_tensors[loss_name] = tf.nn.l2_loss(tf.stop_gradient(self.out_tensors[ true_name]) 
                                                 - self.out_tensors[pred_name])
@@ -387,20 +394,20 @@ class NetArch(object):
     self.shape_converters[name,name] = ShapeConverter()
   
   def add_lattice(self, name, gpu_id=0):
-    self.add_tensor(name, (1 + self.DxQy.D) * [None] + [self.DxQy.Q])
+    self.add_tensor(name, (1 + self.DxQy.dims) * [None] + [self.DxQy.Q])
     if gpu_id == 0:
-      self.lattice_summary(name)
+      self.lattice_summary(in_name=name, summary_name=name)
     
   def add_boundary(self, name, gpu_id=0):
-    self.add_tensor(name, (1 + self.DxQy.D) * [None] + [self.DxQy.boundary_dims])
+    self.add_tensor(name, (1 + self.DxQy.dims) * [None] + [self.DxQy.boundary_dims])
     if gpu_id == 0:
-      self.bounndary_summary(name)
+      self.boundary_summary(in_name=name, summary_name=name)
    
   def add_cstate(self, name):
-    self.add_tensor(name, (1 + self.DxQy.D) * [None] + [self.compression_filter_size])
+    self.add_tensor(name, (1 + self.DxQy.dims) * [None] + [self.compression_depth])
    
   def add_cboundary(self, name):
-    self.add_tensor(name, (1 + self.DxQy.D) * [None] + [self.compression_filter_size])
+    self.add_tensor(name, (1 + self.DxQy.dims) * [None] + [self.compression_depth])
 
   def rename_tensor(self, old_name, new_name):
     # this may need to be handled with more care
@@ -446,24 +453,28 @@ class NetArch(object):
           tf.summary.image('vel_z_boundary', self.out_tensors[in_name][...,3:4])
         tf.summary.image('density_boundary', self.out_tensors[in_name][...,-1:])
  
-  def gradient(self, loss_name, grad_name, params):
+  def gradients(self, loss_name, grad_name, params):
     self.out_tensors[grad_name] = tf.gradients(self.out_tensors[loss_name], params)
  
   def l2_loss(self, true_name, pred_name, loss_name, normalize=True):
 
-    self.out_tensors[loss_name] = tf.nn.l2_loss(tf.stop_gradient(self.out_tensors[ true_name]) 
-                                                - self.out_tensors[pred_name])
+    if not (type(true_name) is list):
+      true_name = [true_name]
+      pred_name = [pred_name]
+    self.out_tensors[loss_name] = 0.0 
+    for i in xrange(len(true_name)):
+      self.out_tensors[loss_name] += tf.nn.l2_loss(tf.stop_gradient(self.out_tensors[ true_name[i]]) 
+                                                  - self.out_tensors[pred_name[i]])
     if normalize:
-      normalize_loss_factor = tf.cast(tf.reduce_prod(tf.shape(true)), dtype=tf.float32)
+      normalize_loss_factor = float(len(true_name)) * tf.cast(tf.reduce_prod(tf.shape(self.out_tensors[true_name[0]])), dtype=tf.float32)
       self.out_tensors[loss_name] = self.out_tensors[loss_name] / normalize_loss_factor
 
   def sum_losses(self, loss_names, out_name, normalize=True):
     self.out_tensors[out_name] = 0.0 
-    for n in loss_name
+    for n in loss_names:
       self.out_tensors[out_name] += self.out_tensors[n]
     if normalize:
       self.out_tensors[out_name] += self.out_tensors[out_name] / float(len(loss_names))
-
 
   def sum_gradients(self, gradient_names, out_name):
     for i in range(1, len(gradient_names)):
