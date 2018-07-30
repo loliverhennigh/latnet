@@ -15,7 +15,7 @@ class StandardSailfishArch(NetArch):
   network_name = "standard_network"
 
   def __init__(self, config):
-    super(StandardSailfishArchArch, self).__init__(config)
+    super(StandardSailfishArch, self).__init__(config)
 
     self.nr_residual_compression = config.nr_residual_compression
     self.nr_residual_encoder = config.nr_residual_encoder
@@ -135,8 +135,8 @@ class StandardSailfishArch(NetArch):
                          mask_name=in_cboundary_name + "_mask",
                          out_name=out_name)
     else:
-    self.rename_tensor(old_name=in_cstate_name,
-                       new_name=out_name)
+      self.rename_tensor(old_name=in_cstate_name,
+                         new_name=out_name)
 
     # satart with a 1x1 residual block
     self.res_block(in_name=out_name, out_name=out_name, 
@@ -168,7 +168,7 @@ class StandardSailfishArch(NetArch):
     # final conv to correct filter size 
     self.conv(in_name=out_name, out_name=out_name,
             kernel_size=1, stride=1,
-            filter_size=self.compression_depth,
+            filter_size=self.cstate_depth,
             weight_name="fc_last")
   
     # trim cboundary

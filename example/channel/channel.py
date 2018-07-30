@@ -4,7 +4,7 @@ import numpy as np
 import sys
 
 sys.path.append('../../latnet')
-from domain import TrainSailfishDomain
+from domain import SailfishDomain, TrainSailfishDomain
 from latnetwork import TrainLatNet
 from archs.standard_arch import StandardArch
 from controller import LatNetController
@@ -46,11 +46,12 @@ def make_boundary(hx, hy, shape):
     draw_circle(boundary, hx, hy, circles[i][0], circles[i][1])
   return boundary
 
-class ChannelDomain(TrainSailfishDomain):
+class ChannelDomain(SailfishDomain):
   name = "channel"
   vel = (0.05, 0.0)
   sim_shape = [256, 256]
   num_simulations = 5
+  max_sim_iters = 100
   periodic_x = False
   periodic_y = False
   force = (0.0, 0.0)
@@ -80,8 +81,13 @@ class ChannelDomain(TrainSailfishDomain):
   def __init__(self, *args, **kwargs):
     super(ChannelDomain, self).__init__(*args, **kwargs)
 
+class TrainChannelDomain(ChannelDomain, TrainSailfishDomain):
+
+  def __init__(self, *args, **kwargs):
+    super(TrainChannelDomain, self).__init__(*args, **kwargs)
+
 class EmptyTrainer(TrainLatNet, StandardArch):
-  domains = [ChannelDomain]
+  domains = [TrainChannelDomain]
   network = None
 
   @classmethod
@@ -91,8 +97,7 @@ class EmptyTrainer(TrainLatNet, StandardArch):
         'domain_name': "channel",
         'run_mode': 'generate_data',
         'mode': 'visualization',
-        'lb_to_ln': 128,
-        'max_sim_iters': 40000})
+        'lb_to_ln': 128})
 
 if __name__ == '__main__':
   sim = LatNetController(trainer=EmptyTrainer)

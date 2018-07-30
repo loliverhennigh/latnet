@@ -8,6 +8,8 @@ from data_queue import DataQueue
 from config import LatNetConfigParser
 from domain import Domain
 from sim_saver import SimSaver
+from optimizer import Optimizer
+from data_queue import DataQueue
 from utils.python_utils import *
 
 import matplotlib.pyplot as plt
@@ -29,26 +31,6 @@ class LatNetController(object):
       group.add_argument('--dataset', help='all modes', type=str,
             choices=['sailfish', 'JHTDB'], default='JHTDB')
 
-      group = self._config_parser.add_group('Network Details')
-
-      group = self._config_parser.add_group('Network Input Details')
-      group.add_argument('--input_shape', help='all mode', type=str,
-                         default='256x256')
-
-      group = self._config_parser.add_group('Network Saver Details')
-
-      group = self._config_parser.add_group('Network Train Details')
-
-      group = self._config_parser.add_group('Data Queue Details')
-
-      group = self._config_parser.add_group('Simulation Details')
-
-      group = self._config_parser.add_group('Simulation Saver Details')
-
-      group = self._config_parser.add_group('Simulation Process Details')
-      group.add_argument('--compare', help='compares to sailfish simulation', type=str2bool,
-                        default=True)
-
       # TODO this group will be removed when the sailfish configs are integrated
       group = self._config_parser.add_group('Sailfish Helper Details')
       group.add_argument('--checkpoint_from', help='all mode', type=int,
@@ -68,19 +50,40 @@ class LatNetController(object):
       group.add_argument('--subgrid', help='all mode', type=str,
                         default='les-smagorinsky')
 
-      group = self._config_parser.add_group('Network Configs')
+      group = self._config_parser.add_group('Domain Configs')
+      for base in Domain.mro():
+        if 'add_options' in base.__dict__:
+          base.add_options(group)
+      group = self._config_parser.add_group('Data Queue Configs')
+      for base in DataQueue.mro():
+        if 'add_options' in base.__dict__:
+          base.add_options(group)
+      # add optimizer specific configs
+      group = self._config_parser.add_group('Optimizer Configs')
+      for base in Optimizer.mro():
+        if 'add_options' in base.__dict__:
+          base.add_options(group)
+
       if self._trainer is not None:
         # add network specific configs
+        group = self._config_parser.add_group('Network Configs')
         if self._trainer:
           for base in self._trainer.mro():
             if 'add_options' in base.__dict__:
               base.add_options(group)
+
       elif self._simulation is not None:
         # add network specific configs
+        group = self._config_parser.add_group('Network Generated Simulation Configs')
         if self._simulation is not None:
           for base in self._simulation.mro():
             if 'add_options' in base.__dict__:
               base.add_options(group)
+        # add network specific configs
+        group = self._config_parser.add_group('Network Generated Simulation Saver Configs')
+        for base in SimSaver.mro():
+          if 'add_options' in base.__dict__:
+            base.add_options(group)
 
       # update default configs based on simulation-specific class and network.
       defaults = {}
@@ -102,6 +105,8 @@ class LatNetController(object):
         self.generate_data(self.config)
       elif self.config.run_mode == "eval":
         self.eval(self.config)
+      elif self.config.run_mode == "decode":
+        self.decode(self.config)
 
     def train(self, config):
       self.trainer = self._trainer(self.config)
@@ -113,17 +118,22 @@ class LatNetController(object):
         for domain in self._trainer.domains:
           if config.domain_name == domain.name:
             if domain.wrapper_name == 'sailfish':
-              sailfish_ctrl = domain(config, config.train_sim_dir).create_sailfish_simulation(config)
+              sailfish_ctrl = domain(config, config.train_data_dir).create_sailfish_simulation(config)
               sailfish_ctrl.run()
               break
       elif self._simulation is not None:
         if self._simulation.domain.wrapper_name == 'sailfish':
-          sailfish_ctrl = self._simulation.domain(config, config.train_sim_dir).create_sailfish_simulation(config)
+          sailfish_ctrl = self._simulation.domain(config, config.train_data_dir).create_sailfish_simulation(config)
           sailfish_ctrl.run()
 
     def eval(self, config):
       self.simulation = self._simulation(self.config)
       self.simulation.eval()
+
+    def decode(self, config):
+      self.simulation = self._simulation(self.config)
+      self.simulation.decode()
+
 
 
 

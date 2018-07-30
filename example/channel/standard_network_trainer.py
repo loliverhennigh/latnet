@@ -6,28 +6,26 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import sys
 
-from channel import ChannelDomain
+from channel import TrainChannelDomain
 
 sys.path.append('../../latnet')
 from latnetwork import TrainLatNet
-from archs.standard_arch import StandardArch
+from archs.standard_sailfish_arch import StandardSailfishArch
 from controller import LatNetController
 
-class StandardTrainer(TrainLatNet, StandardArch):
+class StandardTrainer(TrainLatNet, StandardSailfishArch):
   script_name = __file__
-  domains = [ChannelDomain]
+  domains = [TrainChannelDomain]
 
   @classmethod
   def update_defaults(cls, defaults):
     defaults.update({
-        'train_sim_dir': './train_data',
-        'latnet_network_dir': './network_save',
         'dataset': 'sailfish',
         'visc': 0.01,
         'lb_to_ln': 128,
-        'seq_length': 3,
-        'input_cshape': '16x16',
-        'max_sim_iters': 100})
+        'seq_length': 5,
+        'filter_size': 17,
+        'train_cshape': '32x32'})
 
   def __init__(self, config):
     super(StandardTrainer, self).__init__(config)

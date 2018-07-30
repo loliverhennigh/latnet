@@ -10,7 +10,7 @@ class LatNetConfig(argparse.Namespace):
 
 class LatNetConfigParser(object):
     def __init__(self):
-        self._parser = argparse.ArgumentParser(description=desc)
+        self._parser = argparse.ArgumentParser()
         self.config = LatNetConfig()
 
     def add_group(self, name):
@@ -37,7 +37,9 @@ NONSAVE_CONFIGS = ['mode', 'run_mode', 'latnet_network_dir', 'input_shape',
                            'time_dependence', 'space_dependence', 'incompressible', 
                            'relaxation_enabled', 'quiet', 'periodic_x', 'domain_name',
                            'periodic_y', 'periodic_z', 'start_num_data_points_train', 
-                           'start_num_data_points_test', 'train_autoencoder']
+                           'start_num_data_points_test', 'train_autoencoder', 'train_mode',
+                           'network_dir', 'network_checkpoint', 'train_data_dir', 'train_data',
+                           'start_num_dps', 'train_cshape', 'eval_cshape']
 
 
 

@@ -12,10 +12,10 @@ from utils.python_utils import *
 from utils.numpy_utils import *
 
 class DataQueue(object):
-  def __init__(self, config, base_dir, domains):
+  def __init__(self, config, domains):
 
     # base dir where all the xml files are
-    self.base_dir = base_dir
+    self.base_dir = config.train_data_dir
 
     # values for queue stats
     self.waiting_time = 0.0
@@ -29,7 +29,7 @@ class DataQueue(object):
     self.nr_downsamples  = config.nr_downsamples
     self.gpus            = map(int, config.gpus.split(','))
     self.DxQy            = lattice.TYPES[config.DxQy]()
-    self.input_cshape    = str2shape(config.input_cshape)
+    self.train_cshape    = str2shape(config.train_cshape)
     self.cratio = pow(2, self.nr_downsamples)
 
     # initalize domains
@@ -65,6 +65,35 @@ class DataQueue(object):
         sims.append(sim)
     self.sims = sims
 
+  def load_dp(self, num_dps, state_converter, seq_state_converter):
+    dps_per_sim = int(num_dps/len(self.sims))
+    for sim in self.sims:
+      try:
+        print("loaded")
+        sim.load_dp()
+      except:
+        sim.add_rand_dps(num_dps=dps_per_sim,
+                        seq_length=self.seq_length,
+                        state_shape_converter=state_converter, 
+                        seq_state_shape_converter=seq_state_converter,
+                        train_cshape=self.train_cshape,
+                        cratio=self.cratio)
+ 
+  def load_cdp(self, num_cdps, state_converter, seq_cstate_converter, encode_state, encode_boundary):
+    cdps_per_sim = int(num_cdps/len(self.sims))
+    for sim in self.sims:
+      try:
+        sim.load_cdp()
+      except:
+        sim.add_rand_cdps(num_cdps=cdps_per_sim,
+                        seq_length=self.seq_length,
+                        state_shape_converter=state_converter, 
+                        seq_cstate_shape_converter=seq_cstate_converter,
+                        train_cshape=self.train_cshape,
+                        cratio=self.cratio,
+                        encode_state=encode_state,
+                        encode_boundary=encode_boundary)
+
   def add_rand_dp(self, num_dps, state_converter, seq_state_converter):
     dps_per_sim = int(num_dps/len(self.sims))
     for sim in self.sims:
@@ -72,7 +101,7 @@ class DataQueue(object):
                        seq_length=self.seq_length,
                        state_shape_converter=state_converter, 
                        seq_state_shape_converter=seq_state_converter,
-                       input_cshape=self.input_cshape,
+                       train_cshape=self.train_cshape,
                        cratio=self.cratio)
 
   def add_rand_cdp(self, num_cdps, state_converter, seq_cstate_converter, encode_state, encode_boundary):
@@ -82,7 +111,7 @@ class DataQueue(object):
                         seq_length=self.seq_length,
                         state_shape_converter=state_converter, 
                         seq_cstate_shape_converter=seq_cstate_converter,
-                        input_cshape=self.input_cshape,
+                        train_cshape=self.train_cshape,
                         cratio=self.cratio,
                         encode_state=encode_state,
                         encode_boundary=encode_boundary)
@@ -105,13 +134,13 @@ class DataQueue(object):
       thr.daemon = True
       thr.start()
 
-  def rand_dp(self):
+  def rand_dp(self, state_shape_converter, seq_state_shape_converter):
     index = np.random.randint(0, len(self.sims))
-    dp = self.sims[index].rand_dp(
+    dp = self.sims[index].generate_rand_dp(
                  seq_length=self.seq_length,
-                 state_shape_converter=self.state_shape_converter, 
-                 seq_state_shape_converter=self.seq_state_shape_converter,
-                 input_cshape=self.input_cshape,
+                 state_shape_converter=state_shape_converter, 
+                 seq_state_shape_converter=seq_state_shape_converter,
+                 train_cshape=self.train_cshape,
                  cratio=self.cratio)
     state, boundary, seq_state = self.sims[index].read_dp(dp, add_batch=True)
 
@@ -123,15 +152,15 @@ class DataQueue(object):
     for j in xrange(self.seq_length):
       feed_dict['true_state' + gpu_str + '_' + str(j)] = seq_state[j]
 
-    return index, data_point, feed_dict
+    return index, dp, feed_dict
 
-  def rand_cdp(self, encode_state, encode_boundary):
+  def rand_cdp(self, state_shape_converter, seq_cstate_shape_converter, encode_state, encode_boundary):
     index = np.random.randint(0, len(self.sims))
-    cdp = self.sims[index].rand_cdp(
+    cdp = self.sims[index].generate_rand_cdp(
                  seq_length=self.seq_length,
                  state_shape_converter=state_shape_converter, 
-                 seq_state_shape_converter=seq_state_shape_converter,
-                 input_cshape=self.input_cshape,
+                 seq_state_shape_converter=seq_cstate_shape_converter,
+                 train_cshape=self.train_cshape,
                  cratio=self.cratio,
                  encode_state=encode_state,
                  encode_boundary=encode_boundary)
@@ -145,13 +174,19 @@ class DataQueue(object):
     for j in xrange(self.seq_length):
       feed_dict['true_cstate' + gpu_str + '_' + str(j)] = seq_cstate[j]
 
-    return index, data_point, feed_dict
+    return index, cdp, feed_dict
 
-  def add_dp(self, sim_index, dp):
-    self.sims[sim_index].add_dp(dp)
+  def add_dps(self, sim_indexes, dps):
+    for ind, dp in zip(sim_indexes, dps):
+      self.sims[ind].add_dp(dp)
+    for sim in self.sims:
+      sim.save_dps()
  
-  def add_cdp(self, sim_index, cdp):
-    self.sims[sim_index].add_cdp(cdp)
+  def add_cdps(self, sim_indexes, cdps):
+    for ind, cdp in zip(sim_indexes, cdps):
+      self.sims[ind].add_cdp(cdp)
+    for sim in self.sims:
+      sim.save_cdps()
 
   def dp_minibatch(self):
     # queue up data if needed
@@ -255,7 +290,8 @@ class DataQueue(object):
       for i in xrange(len(self.gpus)):
         gpu_str = '_gpu_' + str(self.gpus[i])
         feed_dict['state' + gpu_str]    = np_stack_list(batch_state[i*self.batch_size:(i+1)*self.batch_size])
-        feed_dict['boundary' + gpu_str] = np_stack_list(batch_boundary[i*self.batch_size:(i+1)*self.batch_size])
+        if batch_boundary[0] is not None:
+          feed_dict['boundary' + gpu_str] = np_stack_list(batch_boundary[i*self.batch_size:(i+1)*self.batch_size])
         for j in xrange(self.seq_length):
           batch_seq_state_tmp = [x[j] for x in batch_seq_state]
           feed_dict['true_state' + gpu_str + '_' + str(j)] = np_stack_list(batch_seq_state_tmp[i*self.batch_size:(i+1)*self.batch_size])
@@ -285,7 +321,8 @@ class DataQueue(object):
       for i in xrange(len(self.gpus)):
         gpu_str = '_gpu_' + str(self.gpus[i])
         feed_dict['cstate' + gpu_str]    = np_stack_list(batch_cstate[i*self.batch_size:(i+1)*self.batch_size])
-        feed_dict['cboundary' + gpu_str] = np_stack_list(batch_cboundary[i*self.batch_size:(i+1)*self.batch_size])
+        if batch_cboundary[0] is not None:
+          feed_dict['cboundary' + gpu_str] = np_stack_list(batch_cboundary[i*self.batch_size:(i+1)*self.batch_size])
         for j in xrange(self.seq_length):
           batch_seq_cstate_tmp = [x[j] for x in batch_seq_cstate]
           feed_dict['true_cstate' + gpu_str + '_' + str(j)] = np_stack_list(batch_seq_cstate_tmp[i*self.batch_size:(i+1)*self.batch_size])

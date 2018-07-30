@@ -8,14 +8,14 @@ sys.path.append('../')
 from network_architecture import NetArch
 from nn import *
 
-class StandardArch(NetArch):
+class StandardJHTDBArch(NetArch):
   # This network is from the paper "Lat-Net: Compressing Lattice Boltzmann 
   # Flow Simulations using Deep Neural Networks"
   # network name for saving
   network_name = "standard_network"
 
   def __init__(self, config):
-    super(StandardArch, self).__init__(config)
+    super(StandardJHTDBArch, self).__init__(config)
 
     self.nr_residual_compression = config.nr_residual_compression
     self.nr_residual_encoder = config.nr_residual_encoder
@@ -25,15 +25,15 @@ class StandardArch(NetArch):
     self.filter_size = config.filter_size
     self.upsampling = config.upsampling
     self.filter_size_compression = config.filter_size_compression
-    self.compression_depth = config.compression_depth
+    self.cstate_depth = config.cstate_depth
 
   # network self.config
   @classmethod
   def add_options(cls, group):
     group.add_argument('--nr_residual_compression', help='network config', type=int,
-                           default=4)
-    group.add_argument('--nr_residual_encoder', help='network config', type=int,
                            default=2)
+    group.add_argument('--nr_residual_encoder', help='network config', type=int,
+                           default=1)
     group.add_argument('--nr_downsamples', help='network config', type=int,
                            default=2)
     group.add_argument('--nonlinearity', help='network config', type=str,
@@ -75,7 +75,7 @@ class StandardArch(NetArch):
   
   
     self.res_block(in_name=in_name, out_name=out_name,
-                   filter_size=self.compression_depth,
+                   filter_size=self.cstate_depth,
                    nonlinearity=nonlinearity, 
                    stride=1, 
                    gated=self.gated, 
@@ -126,7 +126,7 @@ class StandardArch(NetArch):
     # final conv to correct filter size 
     self.conv(in_name=out_name, out_name=out_name,
             kernel_size=1, stride=1,
-            filter_size=self.compression_depth,
+            filter_size=self.cstate_depth,
             weight_name="fc_last")
   
     self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 

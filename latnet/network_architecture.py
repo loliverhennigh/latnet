@@ -19,7 +19,10 @@ class NetArch(object):
     self.out_pad_tensors = {}
     self.shape_converters = {}
 
-    # get DxQy
+    # get configs
+    self.run_mode = config.run_mode
+    if config.run_mode == "train":
+      self.train_mode = config.train_mode
     self.DxQy = lattice.TYPES[config.DxQy]()
 
     # make templates for peices of network
@@ -31,8 +34,11 @@ class NetArch(object):
     self.encoder_boundary             = tf.make_template('encoder_boundary', self._encoder_boundary)
     self.compression_mapping          = tf.make_template('compression_mapping', self._compression_mapping)
     self.decoder_state                = tf.make_template('decoder_state', self._decoder_state)
-    self.full_seq_pred                = tf.make_template('full_seq_pred', self._full_seq_pred)
-    self.comp_seq_pred                = tf.make_template('comp_seq_pred', self._comp_seq_pred)
+    if self.run_mode == "train":
+      if self.train_mode == "full":
+        self.full_seq_pred                = tf.make_template('unroll', self._full_seq_pred, create_scope_now_=True)
+      elif self.train_mode == "compression":
+        self.comp_seq_pred                = tf.make_template('unroll', self._comp_seq_pred, create_scope_now_=True)
 
   def _full_seq_pred(self, in_state_name, in_boundary_name, out_cstate_names, out_names, gpu_id=0):
 
@@ -404,10 +410,10 @@ class NetArch(object):
       self.boundary_summary(in_name=name, summary_name=name)
    
   def add_cstate(self, name):
-    self.add_tensor(name, (1 + self.DxQy.dims) * [None] + [self.compression_depth])
+    self.add_tensor(name, (1 + self.DxQy.dims) * [None] + [self.cstate_depth])
    
   def add_cboundary(self, name):
-    self.add_tensor(name, (1 + self.DxQy.dims) * [None] + [self.compression_depth])
+    self.add_tensor(name, (1 + self.DxQy.dims) * [None] + [self.cboundary_depth])
 
   def rename_tensor(self, old_name, new_name):
     # this may need to be handled with more care
@@ -466,8 +472,10 @@ class NetArch(object):
       self.out_tensors[loss_name] += tf.nn.l2_loss(tf.stop_gradient(self.out_tensors[ true_name[i]]) 
                                                   - self.out_tensors[pred_name[i]])
     if normalize:
-      normalize_loss_factor = float(len(true_name)) * tf.cast(tf.reduce_prod(tf.shape(self.out_tensors[true_name[0]])), dtype=tf.float32)
+      #normalize_loss_factor = float(len(true_name)) * tf.cast(tf.reduce_prod(tf.shape(self.out_tensors[true_name[0]])), dtype=tf.float32)
+      normalize_loss_factor = float(len(true_name) * self.batch_size)
       self.out_tensors[loss_name] = self.out_tensors[loss_name] / normalize_loss_factor
+
 
   def sum_losses(self, loss_names, out_name, normalize=True):
     self.out_tensors[out_name] = 0.0 
@@ -475,6 +483,8 @@ class NetArch(object):
       self.out_tensors[out_name] += self.out_tensors[n]
     if normalize:
       self.out_tensors[out_name] += self.out_tensors[out_name] / float(len(loss_names))
+    with tf.device('/cpu:0'):
+      tf.summary.scalar(out_name, self.out_tensors[out_name])
 
   def sum_gradients(self, gradient_names, out_name):
     for i in range(1, len(gradient_names)):

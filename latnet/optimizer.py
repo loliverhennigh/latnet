@@ -11,7 +11,7 @@ from utils.python_utils import *
 
 FLAGS = tf.app.flags.FLAGS
 
-class Optimizer:
+class Optimizer(object):
 
   def __init__(self, config, name):
     self.lr = config.lr
@@ -79,7 +79,7 @@ class Optimizer:
 
     return tf.group(*updates)
 
-  def adam_updates(self, params, gradients, global_step, mom1=0.5, mom2=0.999, other_update=None):
+  def adam_updates(self, params, gradients, global_step, mom1=0.9, mom2=0.999, other_update=None):
     ''' Adam optimizer '''
     updates = []
 

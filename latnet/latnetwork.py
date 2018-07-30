@@ -6,6 +6,9 @@ import os
 from termcolor import colored, cprint
 import tensorflow as tf
 import numpy as np
+from tqdm import *
+import math
+import itertools
 
 import lattice
 import nn as nn
@@ -16,16 +19,20 @@ from optimizer import Optimizer
 from shape_converter import SubDomain
 from sim_saver import SimSaver
 from config import NONSAVE_CONFIGS
-from utils.python_utils import print_dict
+from utils.python_utils import *
+from utils.numpy_utils import mobius_extract_2, stack_grid
 
 class LatNet(object):
   def __init__(self, config):
     super(LatNet, self).__init__(config)
     # needed configs
+    self.run_mode = config.run_mode
+    if config.run_mode == "train":
+      self.train_mode = config.train_mode
     self.DxQy = lattice.TYPES[config.DxQy]()
-    self.network_dir  = config.latnet_network_dir
-    gpus = config.gpus.split(',')
-    self.gpus = map(int, gpus)
+    self.network_dir  = config.network_dir
+    #gpus = config.gpus.split(',')
+    #self.gpus = map(int, gpus)
 
     # make save and load values options
     self.checkpoint_path = self._make_checkpoint_path(config)
@@ -50,47 +57,83 @@ class LatNet(object):
  
     # run through all params and add them to the base path
     base_path = self.network_dir + '/' + self.network_name
-    for k, v in config.__dict__.items():
+    dic = config.__dict__
+    keys = dic.keys()
+    keys.sort()
+    for k in keys:
       if k not in NONSAVE_CONFIGS:
-        base_path += '/' + k + '.' + str(v)
+        base_path += '/' + k + '.' + str(dic[k])
+
+    if self.run_mode == "train":
+      if self.train_mode == "full":
+        base_path += '/full_train'
     return base_path
 
   def _make_saver(self):
     variables = tf.global_variables()
     variables_autoencoder = [v for i, v in enumerate(variables) if ("coder" in v.name[:v.name.index(':')]) or ('global' in v.name[:v.name.index(':')])]
     variables_compression = [v for i, v in enumerate(variables) if "compression_mapping" in v.name[:v.name.index(':')]]
+    #for i, v in enumerate(variables_autoencoder):
+    #  print(v.name)
+    #for i, v in enumerate(variables_compression):
+    #  print(v.name)
+    
     self.saver_all = tf.train.Saver(variables, max_to_keep=1)
     self.saver_autoencoder = tf.train.Saver(variables_autoencoder)
-    self.saver_compression = tf.train.Saver(variables_compression)
+    #self.saver_compression = tf.train.Saver(variables_compression)
 
   def load_checkpoint(self, maybe_remove_prev=False):
 
     # make saver
     self._make_saver()
 
-    # load everything
-    ckpt = tf.train.get_checkpoint_state(self.checkpoint_path)
-    print("looking for checkpoint in " + self.checkpoint_path) 
-    if ckpt is not None:
-      print("trying init autoencoder from " + ckpt.model_checkpoint_path)
-      try:
-        self.saver_autoencoder.restore(self.sess, ckpt.model_checkpoint_path)
-      except:
-        if maybe_remove_prev:
-          tf.gfile.DeleteRecursively(self.checkpoint_path)
-          tf.gfile.MakeDirs(self.checkpoint_path)
-        print("there was a problem using variables for autoencoder in checkpoint, random init will be used instead")
-      print("trying init compression mapping from " + ckpt.model_checkpoint_path)
-      try:
-        self.saver_compression.restore(self.sess, ckpt.model_checkpoint_path)
-      except:
-        if maybe_remove_prev:
-          tf.gfile.DeleteRecursively(self.checkpoint_path)
-          tf.gfile.MakeDirs(self.checkpoint_path)
-        print("there was a problem using variables for compression mapping in checkpoint, random init will be used instead")
-    else:
-      print("using rand init")
+    # load if training everything
+    if self.run_mode == "train":
+      if self.train_mode == "full":
+        ckpt = tf.train.get_checkpoint_state(self.checkpoint_path)
+        if ckpt is not None:
+          print("looking for checkpoint in " + self.checkpoint_path) 
+          try:
+            self.saver_all.restore(self.sess, ckpt.model_checkpoint_path)
+          except:
+            print("there was a problem loading variables, random init will be used instead")
+  
+      elif self.train_mode == "compression":
+        full_train_ckpt = tf.train.get_checkpoint_state(self.checkpoint_path + '/full_train')
+        if full_train_ckpt is not None:
+          print("trying init full train from " + full_train_ckpt.model_checkpoint_path)
+          self.saver_autoencoder.restore(self.sess, full_train_ckpt.model_checkpoint_path)
+          try:
+            self.saver_autoencoder.restore(self.sess, full_train_ckpt.model_checkpoint_path)
+          except:
+            print("there was a problem using variables from full train. Try training with --train_mode=full before training compression mapping.")
+            exit()
+        else:
+          print("there was a problem using variables from full train. Try training with --train_mode=full before training compression mapping.")
+          exit()
+  
+        ckpt = tf.train.get_checkpoint_state(self.checkpoint_path)
+        if ckpt is not None:
+          print("trying init compression train from " + ckpt.model_checkpoint_path)
+          try:
+            self.saver_all.restore(self.sess, ckpt.model_checkpoint_path)
+          except:
+            print("there was a problem using variables from compression train. using init from full train instead.")
 
+    if self.run_mode in ["eval", 'decode']:
+      print("looking for checkpoint in " + self.checkpoint_path) 
+      ckpt = tf.train.get_checkpoint_state(self.checkpoint_path)
+      if ckpt is None:
+        print("now looking for checkpoint in " + self.checkpoint_path + '/full_train')
+        ckpt =  tf.train.get_checkpoint_state(self.checkpoint_path + '/full_train')
+      if ckpt is not None:
+        try:
+          self.saver_all.restore(self.sess, ckpt.model_checkpoint_path)
+        except:
+          print("there was a problem loading variables, random init will be used instead")
+      else:
+        print("no checkpoint found, using rand init") 
+ 
   def save_checkpoint(self, global_step):
     save_path = os.path.join(self.checkpoint_path, 'model.ckpt')
     self.saver_all.save(self.sess, save_path, global_step=int(global_step))
@@ -156,8 +199,9 @@ class LatNet(object):
     state_name = 'state'
     cstate_name = 'cstate'
     self.add_lattice(state_name, gpu_id=1)
-    self.encoder_state(in_name=state_name,
-                       out_name=cstate_name)
+    with tf.variable_scope('unroll') as scope:
+      self.encoder_state(in_name=state_name,
+                         out_name=cstate_name)
     def encode_state(feed_dict):
       cstate = self.run(cstate_name, feed_dict=feed_dict)
       return cstate
@@ -172,8 +216,9 @@ class LatNet(object):
     boundary_name = 'boundary'
     cboundary_name = 'cboundary'
     self.add_boundary(boundary_name, gpu_id=1)
-    self.encoder_boundary(in_name=boundary_name,
-                       out_name=cboundary_name)
+    with tf.variable_scope('unroll') as scope:
+      self.encoder_boundary(in_name=boundary_name,
+                         out_name=cboundary_name)
     def encode_boundary(feed_dict):
       cboundary = self.run(cboundary_name, feed_dict=feed_dict)
       return cboundary
@@ -190,9 +235,10 @@ class LatNet(object):
     out_name = 'cstate_1'
     self.add_cstate(cstate_name)
     self.add_cboundary(cboundary_name)
-    self.compression_mapping(in_cstate_name=cstate_name,
-                             in_cboundary_name=cboundary_name,
-                             out_name=out_name)
+    with tf.variable_scope('unroll') as scope:
+      self.compression_mapping(in_cstate_name=cstate_name,
+                               in_cboundary_name=cboundary_name,
+                               out_name=out_name)
 
     def compression_mapping(feed_dict):
       feed_dict[cstate_name] = feed_dict.pop('cstate')
@@ -209,8 +255,9 @@ class LatNet(object):
     cstate_name = 'cstate_2'
     state_name = 'state_2'
     self.add_cstate(cstate_name)
-    self.decoder_state(in_name=cstate_name,
-                       out_name=state_name)
+    with tf.variable_scope('unroll') as scope:
+      self.decoder_state(in_name=cstate_name,
+                         out_name=state_name)
 
     def decode_state(feed_dict):
       feed_dict[cstate_name] = feed_dict.pop('cstate')
@@ -230,11 +277,14 @@ class TrainLatNet(LatNet):
     # needed configs
     self.train_mode = config.train_mode
     self.train_iters = config.train_iters
-    self.beta1 = config.beta1
     self.batch_size = config.batch_size
+    self.seq_length = config.seq_length
+    self.dataset = config.dataset
+    gpus = config.gpus.split(',')
+    self.gpus = map(int, gpus)
 
     # make optimizer
-    self.optimizer = Optimizer(config, name='opt', optimizer_name='adam')
+    self.optimizer = Optimizer(config, name='opt')
 
     # make data queue
     self.data_queue = self.make_data_queue(config)
@@ -243,8 +293,8 @@ class TrainLatNet(LatNet):
     self.save_network_freq = 100
     self.save_tensorboard_freq = 100
     self.stats_print_freq = 20
-    self.add_data_freq = 500
-    self.nr_data_to_add = (len(self.gpus)*self.batch_size*self.add_data_freq)/10 # hard set to adding a data point for every 10 trained on since last add
+    self.add_data_freq = 250
+    self.nr_data_to_add = (len(self.gpus)*self.batch_size*self.add_data_freq)/50 # hard set to adding a data point for every 10 trained on since last add
 
     # make stats data
     self.loss_stats = {}
@@ -273,10 +323,6 @@ class TrainLatNet(LatNet):
                    help='batch size for training',
                    type=int,
                    default=4)
-    group.add_argument('--gan',
-                   help='train with gan loss or not',
-                   type=str2bool,
-                   default=False)
     group.add_argument('--train_iters',
                    help='num iters to train network',
                    type=int,
@@ -346,8 +392,7 @@ class TrainLatNet(LatNet):
     ###### Train Operation ######
     self.out_tensors['train_op'] = self.optimizer.train_op(all_params, 
                                              self.out_tensors['gradient'], 
-                                             self.out_tensors['global_step'],
-                                             mom1=self.beta1)
+                                             self.out_tensors['global_step'])
 
     # make a train step
     def train_step(feed_dict):
@@ -412,8 +457,7 @@ class TrainLatNet(LatNet):
     ###### Train Operation ######
     self.out_tensors['train_op'] = self.optimizer.train_op(comp_params, 
                                              self.out_tensors['gradient'], 
-                                             self.out_tensors['global_step'],
-                                             mom1=self.beta1)
+                                             self.out_tensors['global_step'])
 
     # make a train step
     def train_step(feed_dict):
@@ -433,7 +477,6 @@ class TrainLatNet(LatNet):
         domain.script_name = self.script_name
 
     data_queue = DataQueue(config, 
-                           config.train_sim_dir,
                            self.domains)
     return data_queue
 
@@ -455,11 +498,11 @@ class TrainLatNet(LatNet):
    
     # get data
     if self.train_mode == "full":
-      self.data_queue.add_rand_dp(100, 
+      self.data_queue.load_dp(100, 
                  train_shape_converter['state_converter'], 
                  train_shape_converter['seq_state_converter'])
     elif self.train_mode == "compression":
-      self.data_queue.add_rand_cdp(100, 
+      self.data_queue.load_cdp(100, 
                  train_shape_converter['state_converter'], 
                  train_shape_converter['seq_cstate_converter'], 
                  encode_state=encode_state, 
@@ -497,25 +540,59 @@ class TrainLatNet(LatNet):
         self.save_checkpoint(step)
    
       # possibly add more data
-      if step % self.add_data_feq == 0:
-        self.active_data_add()
+      if step % self.add_data_freq == 0:
+        if self.train_mode == "full":
+          self.active_dp_add(train_shape_converter['state_converter'], 
+                              train_shape_converter['seq_state_converter'])
+        elif self.train_mode == "compression":
+          self.active_cdp_add(train_shape_converter['state_converter'], 
+                              train_shape_converter['seq_cstate_converter'], 
+                              encode_state=encode_state, 
+                              encode_boundary=encode_boundary)
 
-  def active_data_add(self):
-    if self.dataset == "JHTDB":
-      if self.train_mode == "full":
-        self.data_queue.add_rand_dp(self.nr_data_to_add, 
-                   train_shape_converter['state_converter'], 
-                   train_shape_converter['seq_state_converter'])
-      elif self.train_mode == "compression":
-        self.data_queue.add_rand_cdp(self.nr_data_to_add, 
-                   train_shape_converter['state_converter'], 
-                   train_shape_converter['seq_cstate_converter'], 
-                   encode_state=encode_state, 
-                   encode_boundary=encode_boundary)
-    elif self.dataset == "sailfish":
+  def active_dp_add(self, state_converter, seq_state_converter):
+    if self.dataset == "jhtdb":
+      self.data_queue.add_rand_dp(self.nr_data_to_add, 
+                                  state_converter, 
+                                  seq_state_converter)
+    elif self.dataset == "sailfish": #TODO fix this into new code base
       loss_data_pair = []
-      if self.train_mode == "full":
-        sim_ind, dp, feed_dict = self.data_queue.rand_dp()
+      ratio_add = 5
+      for i in tqdm(xrange(self.nr_data_to_add*ratio_add)):
+        sim_ind, dp, feed_dict = self.data_queue.rand_dp(
+                                         state_converter, 
+                                         seq_state_converter)
+        loss_names = ['l2_loss']
+        loss_output = self.run(loss_names, feed_dict=feed_dict, return_dict=True)
+        loss_data_pair.append((loss_output['l2_loss'], sim_ind, dp))
+      loss_data_pair.sort()
+      sim_list = [x[1] for x in loss_data_pair[-self.nr_data_to_add:]] 
+      dp_list  = [x[2] for x in loss_data_pair[-self.nr_data_to_add:]] 
+      self.data_queue.add_dps(sim_list, dp_list)
+
+  def active_cdp_add(self, state_converter, seq_cstate_converter, encode_state, encode_boundary):
+    if self.dataset == "JHTDB":
+      self.data_queue.add_rand_cdp(self.nr_data_to_add, 
+                                   state_converter, 
+                                   seq_cstate_converter, 
+                                   encode_state=encode_state, 
+                                   encode_boundary=encode_boundary)
+    elif self.dataset == "sailfish": #TODO fix this into new code base
+      loss_data_pair = []
+      ratio_add = 5
+      for i in tqdm(xrange(self.nr_data_to_add*ratio_add)):
+        sim_ind, cdp, feed_dict = self.data_queue.rand_cdp(
+                                         state_converter, 
+                                         seq_cstate_converter,
+                                         encode_state,
+                                         encode_boundary)
+        loss_names = ['l2_loss']
+        loss_output = self.run(loss_names, feed_dict=feed_dict, return_dict=True)
+        loss_data_pair.append((loss_output['l2_loss'], sim_ind, cdp))
+      loss_data_pair.sort()
+      sim_list = [x[1] for x in loss_data_pair[-self.nr_data_to_add:]] 
+      cdp_list  = [x[2] for x in loss_data_pair[-self.nr_data_to_add:]] 
+      self.data_queue.add_cdps(sim_list, cdp_list)
  
   def update_loss_stats(self, output):
     names = output.keys()
@@ -529,9 +606,9 @@ class TrainLatNet(LatNet):
         if len(self.loss_stats[name + '_history']) > self.stats_history_length:
           self.loss_stats[name + '_history'].pop(0)
         # update loss
-        self.loss_stats[name] = float(output[name])
+        self.loss_stats[name] = output[name]
         # update ave loss
-        self.loss_stats[name + '_ave'] = float(np.sum(np.array(self.loss_stats[name + '_history']))
+        self.loss_stats[name + '_ave'] = (np.sum(np.array(self.loss_stats[name + '_history']))
                                          / len(self.loss_stats[name + '_history']))
         # update var loss
         self.loss_stats[name + '_std'] = np.sqrt(np.var(np.array(self.loss_stats[name + '_history'])))
@@ -574,13 +651,16 @@ class EvalLatNet(LatNet):
     self.dataset = config.dataset
     self.sim_shape = self.domain.sim_shape
     self.sim_cshape = [x/pow(2,config.nr_downsamples) for x in self.sim_shape]
+    self.eval_cshape = str2shape(config.eval_cshape)
+    self.num_iters = config.num_iters
+    self.sim_save_every = config.sim_save_every
 
     # initialize sim saver
     self.sim_saver = SimSaver(config)
 
     # initialize simulations
     self.domain.script_name = self.script_name
-    self.sim = self.domain(config, self.sim_dir)
+    self.sim = self.domain(config, self.sim_dir + '/' + self.domain.wrapper_name)
     if self.domain.wrapper_name == 'sailfish':
       self.sim.generate_data(1)
 
@@ -598,14 +678,18 @@ class EvalLatNet(LatNet):
                    help='shape of compresses state for domain decomposision',
                    type=str,
                    default='32x32')
+    group.add_argument('--sim_save_every',
+                   help=' save cstate every sim_save_every iters',
+                   type=int,
+                   default=4)
 
-  def state_input_generator(subdomain):
+  def state_input_generator(self, subdomain):
     if self.start_state is not None:
-      start_state, pad_start_state = numpy_utils.mobius_extract_2(self.start_state, 
-                                                                  subdomain, 
-                                                                  has_batch=True, 
-                                                                  padding_type=self.padding_type,
-                                                                  return_padding=True)
+      start_state, pad_start_state = mobius_extract_2(self.start_state, 
+                                                      subdomain, 
+                                                      has_batch=True, 
+                                                      padding_type=self.sim.padding_type,
+                                                      return_padding=True)
     else:
       vel = self._domain.velocity_initial_conditions(0,0,None)
       feq = self.DxQy.vel_to_feq(vel).reshape([1] + self.DxQy.dims*[1] + [self.DxQy.Q])
@@ -615,60 +699,71 @@ class EvalLatNet(LatNet):
 
   def boundary_input_generator(self, subdomain):
     if self.start_boundary is not None:
-      input_boundary, pad_input_boundary = numpy_utils.mobius_extract_2(self.start_boundary, 
-                                                                      subdomain,
-                                                                      has_batch=True, 
-                                                                      padding_type=self.padding_type,
-                                                                      return_padding=True)
+      input_boundary, pad_input_boundary = mobius_extract_2(self.start_boundary, 
+                                                            subdomain,
+                                                            has_batch=True, 
+                                                            padding_type=self.sim.padding_type,
+                                                            return_padding=True)
     else:
       input_boundary = self.input_boundary(subdomain)
       pad_input_boundary = np.zeros(subdomain.size + [1])
     return {'boundary': [input_boundary, pad_input_boundary]}
 
-  def cstate_input_generator(self, subdomain):
-      sub_cstate =    numpy_utils.mobius_extract_2(self.cstate, cstate_subdomain, 
-                                                 has_batch=True, 
-                                                 padding_type=self.padding_type,
-                                                 return_padding=True)
-      sub_cboundary = numpy_utils.mobius_extract_2(self.cboundary, cboundary_subdomain, 
-                                                 has_batch=True, 
-                                                 padding_type=self.padding_type,
-                                                 return_padding=True)
+  def cstate_cboundary_input_generator(self, subdomain):
+      sub_cstate =    mobius_extract_2(self.cstate,
+                                       subdomain, 
+                                       has_batch=True, 
+                                       padding_type=self.sim.padding_type,
+                                       return_padding=True)
+      sub_cboundary = mobius_extract_2(self.cboundary,
+                                       subdomain, 
+                                       has_batch=True, 
+                                       padding_type=self.sim.padding_type,
+                                       return_padding=True)
       return {'cstate': sub_cstate, 'cboundary': sub_cboundary}
 
   def eval(self):
     # unroll network
     with tf.Graph().as_default():
       encode_state, state_shape_converter = self.unroll_state_encoder()
-      encode_boundary, boundary_shape_converters = self.unroll_boundary_encoder()
-      compression_mapping, cstate_shape_converters = self.unroll_compression_mapping()
+      encode_boundary, boundary_shape_converter = self.unroll_boundary_encoder()
+      compression_mapping, cstate_shape_converter = self.unroll_compression_mapping()
+      state_shape_converter = state_shape_converter['state_converter']
+      boundary_shape_converter = boundary_shape_converter['boundary_converter']
+      cstate_shape_converter = cstate_shape_converter['cstate_converter']
       self.start_session()
       self.load_checkpoint() 
    
     # get start state and boundary of simulation
-    self.start_state = self.sim.read_state(1, subdomain=None, add_batch=True, return_padding=True)
-    self.cstate = self.mapping(encode_state, state_shape_converter, 
-                         self.state_input_generator, self.sim_shape,
-                         self.input_cshape)
+    print("Computing compressed state") 
+    self.start_state = self.sim.read_state(1, subdomain=None, add_batch=True, return_padding=False)
+    self.cstate = self.mapping(mapping=encode_state,
+                               shape_converter=state_shape_converter, 
+                               input_generator=self.state_input_generator,
+                               output_shape=self.sim_cshape,
+                               run_output_shape=self.eval_cshape)
     self.start_state = None
-    self.start_boundary = self.sim.read_boundary(subdomain=None, add_batch=True, return_padding=True)
+    print("Computing compressed boundary") 
+    self.start_boundary = self.sim.read_boundary(subdomain=None, add_batch=True, return_padding=False)
     self.cboundary = self.mapping(encode_boundary, boundary_shape_converter, 
-                         self.boundary_input_generator, self.sim_shape,
-                         self.input_cshape)
+                         self.boundary_input_generator, self.sim_cshape,
+                         self.eval_cshape)
     self.start_boundary = None
- 
-    for i in xrange(self.num_iters):
+
+    print("Running compressed simulation") 
+    for i in tqdm(xrange(self.num_iters)):
       self.cstate = self.mapping(compression_mapping, cstate_shape_converter, 
-                       self.cstate_input_generator, self.sim_shape,
-                       self.input_cshape)
-      self.sim_saver.save(i, self.cstate)
+                       self.cstate_cboundary_input_generator, self.sim_cshape,
+                       self.eval_cshape)
+      if i % self.sim_save_every:
+        self.sim_saver.save(i, self.cstate)
 
   def mapping(self, mapping, shape_converter, input_generator, output_shape, run_output_shape):
     nr_subdomains = [int(math.ceil(x/float(y))) for x, y in zip(output_shape, run_output_shape)]
     output = []
     iter_list = [xrange(x) for x in nr_subdomains]
     for ijk in itertools.product(*iter_list):
-      print(str(ijk) + " out of " + str(nr_subdomains))
+      #print(str(ijk) + " out of " + str(nr_subdomains))
       # make input and output subdomains
       if not(type(shape_converter) is list):
         shape_converter = [shape_converter]
@@ -695,8 +790,9 @@ class EvalLatNet(LatNet):
         sub_output = [sub_output]
 
       for i in xrange(len(sub_output)):
-        sub_output[i] = numpy_utils.mobius_extract_2(sub_output[i], output_subdomain, 
-                                                     has_batch=True)
+        sub_output[i] = mobius_extract_2(sub_output[i], 
+                                         output_subdomain, 
+                                         has_batch=True)
 
       # append to list of sub outputs
       output.append(sub_output)
@@ -710,9 +806,84 @@ class EvalLatNet(LatNet):
     # stack back together to form one output
     output = llist2list(output)
     for i in xrange(len(output)):
-      output[i] = numpy_utils.stack_grid(output[i], nr_subdomains, has_batch=True)
-      output[i] = numpy_utils.mobius_extract_2(output[i], total_subdomain, 
-                                               has_batch=True)
+      output[i] = stack_grid(output[i],
+                             nr_subdomains,
+                             has_batch=True)
+      output[i] = mobius_extract_2(output[i],
+                                   total_subdomain, 
+                                   has_batch=True)
     if len(output) == 1:
       output = output[0]
     return output
+
+class DecodeLatNet(EvalLatNet):
+
+  def __init__(self, config):
+    super(DecodeLatNet, self).__init__(config)
+    # needed configs
+    self.compare = config.compare
+
+    # restart simulations
+    """
+    if self.compare:
+      self.sim = self.domain(config, self.sim_dir + '/' + self.domain.wrapper_name)
+      if self.domain.wrapper_name == 'sailfish':
+        self.sim.generate_data(1)
+    """
+
+  @classmethod
+  def add_options(cls, group):
+    group.add_argument('--compare',
+                   help='generate true data to compare too',
+                   type=str2bool,
+                   default=True)
+
+  def state_subdomain_to_state(self, subdomain, shape_converter, cstate, decode_mapping):
+    cstate_subdomain = shape_converter.out_in_subdomain(copy(subdomain))
+    sub_cstate = mobius_extract_2(cstate,
+                                  cstate_subdomain, 
+                                  has_batch=True, 
+                                  padding_type=self.sim.padding_type,
+                                  return_padding=True)
+    sub_cstate = {'cstate': sub_cstate}
+    sub_state = decode_mapping(sub_cstate)
+    #print(sub_state.keys())
+    return sub_state
+
+  def decode(self):
+    # unroll network
+    with tf.Graph().as_default():
+      decode_mapping, decode_shape_converter = self.unroll_decode_state()
+      self.start_session()
+      self.load_checkpoint() 
+   
+    print("Decompressing ") 
+    for i in tqdm(xrange(self.num_iters)):
+      if i % self.sim_save_every:
+        cstate = self.sim_saver.load(i)
+        for subdomain in self.decode_subdomains:
+          sub_state = self.state_subdomain_to_state(subdomain,
+                                 decode_shape_converter['state_converter'],
+                                 cstate, decode_mapping)
+          self.sub_state_computation(sub_state, subdomain, i)
+
+  def sub_state_computation(self, sub_state, subdomain, iteration):
+    print("wrong")
+    pass
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

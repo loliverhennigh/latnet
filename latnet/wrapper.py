@@ -10,6 +10,8 @@ import glob
 import psutil as ps
 import time
 import matplotlib.pyplot as plt
+import requests
+
 
 import lattice
 import utils.numpy_utils as numpy_utils
@@ -72,7 +74,7 @@ class SailfishWrapper(object):
     density_boundary_conditions = self.density_boundary_conditions
 
     make_geometry_input = self.make_geometry_input    
-    train_sim_dir = config.train_sim_dir
+    train_data_dir = config.train_data_dir
 
     if hasattr(self, 'force'):
       dom_force = self.force
@@ -91,7 +93,7 @@ class SailfishWrapper(object):
   
           # restore from old dir or make new geometry
           if config.restore_geometry:
-            restore_boundary_conditions = np.load(train_sim_dir[:-10] + "boundary.npy")
+            restore_boundary_conditions = np.load(train_data_dir[:-10] + "boundary.npy")
             where_boundary = restore_boundary_conditions[...,0].astype(np.bool)
             where_velocity = np.logical_or(restore_boundary_conditions[...,1].astype(np.bool), restore_boundary_conditions[...,2].astype(np.bool))
             if len(np.where(where_velocity)[0]) == 0:
@@ -120,7 +122,7 @@ class SailfishWrapper(object):
   
           # save geometry
           save_geometry = make_geometry_input(where_boundary, velocity, where_velocity, density, where_density)
-          np.save(train_sim_dir[:-10] + "boundary.npy", save_geometry)
+          np.save(train_data_dir[:-10] + "boundary.npy", save_geometry)
   
         def initial_conditions(self, sim, hx, hy):
           # set start density
@@ -141,7 +143,7 @@ class SailfishWrapper(object):
   
           # restore from old dir or make new geometry
           if config.restore_geometry:
-            restore_boundary_conditions = np.load(train_sim_dir[:-10] + "boundary.npy")
+            restore_boundary_conditions = np.load(train_data_dir[:-10] + "boundary.npy")
             where_boundary = restore_boundary_conditions[...,0].astype(np.bool)
             where_velocity = np.logical_or(restore_boundary_conditions[...,1].astype(np.bool), restore_boundary_conditions[...,2].astype(np.bool), restore_boundary_conditions[...,3].astype(np.bool))
             vel_ind = np.where(where_velocity)
@@ -166,7 +168,7 @@ class SailfishWrapper(object):
   
           # save geometry
           save_geometry = make_geometry_input(where_boundary, velocity, where_velocity, density, where_density)
-          np.save(train_sim_dir[:-10] + "boundary.npy", save_geometry)
+          np.save(train_data_dir[:-10] + "boundary.npy", save_geometry)
   
         def initial_conditions(self, sim, hx, hy):
           # set start density
@@ -185,8 +187,8 @@ class SailfishWrapper(object):
 
     # update defaults
     shape = self.sim_shape
-    train_sim_dir = self.train_sim_dir
-    max_iters = self.max_sim_iters
+    train_data_dir = config.train_data_dir
+    max_iters = config.max_sim_iters
     lb_to_ln = self.lb_to_ln
     visc = config.visc
     periodic_x = self.periodic_x
@@ -204,7 +206,7 @@ class SailfishWrapper(object):
       def add_options(cls, group, dim):
         group.add_argument('--domain_name', help='all modes', type=str,
                               default='')
-        group.add_argument('--train_sim_dir', help='all modes', type=str,
+        group.add_argument('--train_data_dir', help='all modes', type=str,
                               default='')
         group.add_argument('--sim_dir', help='all modes', type=str,
                               default='')
@@ -240,7 +242,7 @@ class SailfishWrapper(object):
           defaults.update({
             'output_format': 'npy',
             'max_iters': max_iters,
-            'checkpoint_file': train_sim_dir,
+            'checkpoint_file': train_data_dir,
             'checkpoint_every': lb_to_ln
           })
 
@@ -278,6 +280,7 @@ class SailfishWrapper(object):
     self.rm_files(store_files)
   
   def mv_store_dir(self):
+    print("moving files from " + self.save_dir + "/store/*")
     store_files = glob.glob(self.save_dir + "/store/*")
     for f in store_files:
       p = ps.subprocess.Popen(["mv", f, self.save_dir + "/"])
@@ -301,7 +304,7 @@ class SailfishWrapper(object):
            + ' --run_mode=generate_data'
            + ' --domain_name=' + self.name
            + ' --max_sim_iters=' + str(self.lb_to_ln*num_iters + 1)
-           + ' --train_sim_dir=' + self.save_dir + '/store/flow')
+           + ' --train_data_dir=' + self.save_dir + '/store/flow')
     else:
       cmd = ('./' + self.script_name 
            + ' --domain_name=' + self.name
@@ -332,7 +335,7 @@ class SailfishWrapper(object):
       cmd += ' --mode=visualization'
       cmd += ' --scr_scale=.5'
     else:
-      cmd += ' --train_sim_dir=' + self.save_dir + '/store/flow'
+      cmd += ' --train_data_dir=' + self.save_dir + '/store/flow'
     print(cmd)
     p = ps.subprocess.Popen(cmd.split(' '), 
                             env=dict(os.environ, CUDA_VISIBLE_DEVICES='1'))
@@ -405,17 +408,21 @@ class SailfishWrapper(object):
 
 class JHTDBWrapper(object):
   def __init__(self, config, save_dir):
+    #super(JHTDBWrapper, self).__init__(config, save_dir)
     self.config = config
     self.save_dir = save_dir
     self.DxQy = lattice.TYPES[config.DxQy]()
     self.wrapper_name = 'JHTDB'
+   
+    if not os.path.exists(self.save_dir):
+      os.makedirs(self.save_dir)
 
   def add_options(cls, group, dim):
     pass
 
   def make_url(self, subdomain, iteration):
     url_begining = "http://dsp033.pha.jhu.edu/jhtdb/getcutout/com.gmail.loliverhennigh101-4da6ce46/isotropic1024coarse/p,u/" 
-    url_end =  str(iteration * self.step_ratio) + ",1/"
+    url_end =  str(iteration * self.lb_to_ln) + ",1/"
     url_end += str(subdomain.pos[0]) + ","
     url_end += str(subdomain.size[0]) + "/"
     url_end += str(subdomain.pos[1]) + ","
@@ -423,6 +430,7 @@ class JHTDBWrapper(object):
     url_end += str(subdomain.pos[2]) + ","
     url_end += str(subdomain.size[2]) + "/hdf5/"
     print(url_end)
+    print(url_begining + url_end)
     return url_begining + url_end
 
   def download_state(self, iteration, subdomain):
@@ -436,7 +444,7 @@ class JHTDBWrapper(object):
           #print(r)
         except:
           print("having trouble getting data, will sleep and try again")
-          time.sleep(2)
+          time.sleep(0.2)
         if type(r) is not str:
           if r.status_code == 500:
             r = ''
