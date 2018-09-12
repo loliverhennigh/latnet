@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import *
 import time
-from Queue import Queue
+from queue import Queue
 import threading
 
 import lattice
@@ -59,7 +59,7 @@ class DataQueue(object):
 
     # generate base dataset and start queues
     for domain in domains:
-      for i in tqdm(xrange(domain.num_simulations)):
+      for i in tqdm(range(domain.num_simulations)):
         save_dir = self.base_dir + '/sim_' + domain.name + '_' + str(i).zfill(4)
         sim = domain(config, save_dir)
         sims.append(sim)
@@ -149,7 +149,7 @@ class DataQueue(object):
     gpu_str = '_gpu_' + str(self.gpus[0])
     feed_dict['state' + gpu_str] = state
     feed_dict['boundary' + gpu_str] = boundary
-    for j in xrange(self.seq_length):
+    for j in range(self.seq_length):
       feed_dict['true_state' + gpu_str + '_' + str(j)] = seq_state[j]
 
     return index, dp, feed_dict
@@ -171,7 +171,7 @@ class DataQueue(object):
     gpu_str = '_gpu_' + str(self.gpus[0])
     feed_dict['cstate' + gpu_str] = cstate
     feed_dict['cboundary' + gpu_str] = cboundary 
-    for j in xrange(self.seq_length):
+    for j in range(self.seq_length):
       feed_dict['true_cstate' + gpu_str + '_' + str(j)] = seq_cstate[j]
 
     return index, cdp, feed_dict
@@ -190,7 +190,7 @@ class DataQueue(object):
 
   def dp_minibatch(self):
     # queue up data if needed
-    for i in xrange((self.max_queue/(len(self.gpus) * self.batch_size)) - (len(self.queue_dp_batches) + self.queue_dp.qsize())):
+    for i in range((self.max_queue/(len(self.gpus) * self.batch_size)) - (len(self.queue_dp_batches) + self.queue_dp.qsize())):
       self.queue_dp.put(None)
     while len(self.queue_dp_batches) <= 2: # added times two to make sure enough
       self.waiting_time += 1.0
@@ -201,7 +201,7 @@ class DataQueue(object):
 
   def cdp_minibatch(self):
     # queue up data if needed
-    for i in xrange((self.max_queue/(len(self.gpus) * self.batch_size)) - (len(self.queue_cdp_batches) + self.queue_cdp.qsize())):
+    for i in range((self.max_queue/(len(self.gpus) * self.batch_size)) - (len(self.queue_cdp_batches) + self.queue_cdp.qsize())):
       self.queue_cdp.put(None)
     while len(self.queue_cdp_batches) <= 2: # added times two to make sure enough
       self.waiting_time += 1.0
@@ -212,28 +212,28 @@ class DataQueue(object):
 
   def num_dps(self):
     num_points = 0
-    for i in xrange(len(self.sims)):
+    for i in range(len(self.sims)):
       num_points += len(self.sims[i].data_points)
     return num_points
 
   def num_cdps(self):
     num_points = 0
-    for i in xrange(len(self.sims)):
+    for i in range(len(self.sims)):
       num_points += len(self.sims[i].cdata_points)
     return num_points
 
   def dp_ind_histogram(self):
     inds = []
-    for i in xrange(len(self.sims)):
-      for j in xrange(len(self.sims[i].data_points)):
+    for i in range(len(self.sims)):
+      for j in range(len(self.sims[i].data_points)):
         inds.append(self.sims[i].data_points[j].ind)
     inds = np.array(inds)
     return vector_to_text_hist(inds, bins=10)
 
   def cdp_ind_histogram(self):
     inds = []
-    for i in xrange(len(self.sims)):
-      for j in xrange(len(self.sims[i].cdata_points)):
+    for i in range(len(self.sims)):
+      for j in range(len(self.sims[i].cdata_points)):
         inds.append(self.sims[i].cdata_points[j].ind)
     inds = np.array(inds)
     return vector_to_text_hist(inds, bins=10)
@@ -276,7 +276,7 @@ class DataQueue(object):
       batch_state = []
       batch_boundary = []
       batch_seq_state = []
-      for i in xrange(self.batch_size*len(self.gpus)):
+      for i in range(self.batch_size*len(self.gpus)):
         # get data
         state, boundary, seq_state = sim.read_rand_dp()
 
@@ -287,12 +287,12 @@ class DataQueue(object):
 
       # make feed dict
       feed_dict = {}
-      for i in xrange(len(self.gpus)):
+      for i in range(len(self.gpus)):
         gpu_str = '_gpu_' + str(self.gpus[i])
         feed_dict['state' + gpu_str]    = np_stack_list(batch_state[i*self.batch_size:(i+1)*self.batch_size])
         if batch_boundary[0] is not None:
           feed_dict['boundary' + gpu_str] = np_stack_list(batch_boundary[i*self.batch_size:(i+1)*self.batch_size])
-        for j in xrange(self.seq_length):
+        for j in range(self.seq_length):
           batch_seq_state_tmp = [x[j] for x in batch_seq_state]
           feed_dict['true_state' + gpu_str + '_' + str(j)] = np_stack_list(batch_seq_state_tmp[i*self.batch_size:(i+1)*self.batch_size])
 
@@ -307,7 +307,7 @@ class DataQueue(object):
       batch_cstate = []
       batch_cboundary = []
       batch_seq_cstate = []
-      for i in xrange(self.batch_size*len(self.gpus)):
+      for i in range(self.batch_size*len(self.gpus)):
         # get data
         cstate, cboundary, seq_cstate = sim.read_rand_cdp()
 
@@ -318,12 +318,12 @@ class DataQueue(object):
 
       # make feed dict
       feed_dict = {}
-      for i in xrange(len(self.gpus)):
+      for i in range(len(self.gpus)):
         gpu_str = '_gpu_' + str(self.gpus[i])
         feed_dict['cstate' + gpu_str]    = np_stack_list(batch_cstate[i*self.batch_size:(i+1)*self.batch_size])
         if batch_cboundary[0] is not None:
           feed_dict['cboundary' + gpu_str] = np_stack_list(batch_cboundary[i*self.batch_size:(i+1)*self.batch_size])
-        for j in xrange(self.seq_length):
+        for j in range(self.seq_length):
           batch_seq_cstate_tmp = [x[j] for x in batch_seq_cstate]
           feed_dict['true_cstate' + gpu_str + '_' + str(j)] = np_stack_list(batch_seq_cstate_tmp[i*self.batch_size:(i+1)*self.batch_size])
 

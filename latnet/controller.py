@@ -29,7 +29,7 @@ class LatNetController(object):
       group.add_argument('--run_mode', help='all modes', type=str,
             choices=['generate_data', 'train', 'eval'], default='train')
       group.add_argument('--dataset', help='all modes', type=str,
-            choices=['sailfish', 'JHTDB'], default='JHTDB')
+            choices=['sailfish', 'JHTDB', 'spectralDNS'], default='JHTDB')
 
       # TODO this group will be removed when the sailfish configs are integrated
       group = self._config_parser.add_group('Sailfish Helper Details')

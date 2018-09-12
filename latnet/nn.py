@@ -284,11 +284,13 @@ def max_pool(x):
   return x
 
 def trim_tensor(x, trim):
+  trim = int(trim)
   if trim != 0:
     length_input = len(x.get_shape()) - 2
     if length_input == 2:
       x = x[:,trim:-trim, trim:-trim]
     if length_input == 3:
+      print(trim)
       x = x[:,trim:-trim, trim:-trim, trim:-trim]
   return x
 

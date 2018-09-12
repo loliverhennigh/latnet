@@ -56,7 +56,7 @@ class NetArch(object):
                             out_name=cboundary_name)
       
     ### unroll on the compressed state ###
-    for j in xrange(len(out_names)-1):
+    for j in range(len(out_names)-1):
       self.add_shape_converter(out_cstate_names[j])
       if (j == 0) and (in_boundary_name is not None):
         self.compression_mapping(in_cstate_name=out_cstate_names[0],
@@ -70,7 +70,7 @@ class NetArch(object):
     self.add_shape_converter(out_cstate_names[len(out_names)-1])
 
     ### decode all compressed states ###
-    for j in xrange(len(out_names)):
+    for j in range(len(out_names)):
        self.match_trim_tensor(in_name=out_cstate_names[j], 
                               match_name=out_cstate_names[-1], 
                               out_name=out_cstate_names[j])
@@ -83,7 +83,7 @@ class NetArch(object):
   def _comp_seq_pred(self, in_cstate_name, in_cboundary_name, out_names, gpu_id=0):
 
     ### unroll on the compressed state ###
-    for j in xrange(len(out_names)-1):
+    for j in range(len(out_names)-1):
       self.add_shape_converter(out_names[j])
       if (j == 0) and (in_cboundary_name is not None):
         self.compression_mapping(in_cstate_name=in_cstate_name,
@@ -97,7 +97,7 @@ class NetArch(object):
     self.add_shape_converter(out_names[-1])
 
     ### decode all compressed states ###
-    for j in xrange(1, len(out_names)):
+    for j in range(1, len(out_names)):
        self.match_trim_tensor(in_name=out_names[j], 
                               match_name=out_names[-1], 
                               out_name=out_names[j])
@@ -118,7 +118,7 @@ class NetArch(object):
     self.out_tensors[out_name] =  nn.simple_conv_2d(self.out_tensors[in_name], k=kernel)
 
     # add conv to the shape converter
-    for name in self.shape_converters.keys():
+    for name in list(self.shape_converters.keys()):
       if name[1] == in_name:
         self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
         self.shape_converters[name[0], out_name].add_conv(3, 1)
@@ -141,7 +141,7 @@ class NetArch(object):
     self.out_tensors[out_name] = nn.apply_pad(self.out_tensors[out_name], self.out_pad_tensors[out_name])
 
     # add conv to the shape converter
-    for name in self.shape_converters.keys():
+    for name in list(self.shape_converters.keys()):
       if name[1] == in_name:
         self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
         self.shape_converters[name[0], out_name].add_conv(kernel_size, stride)
@@ -162,7 +162,7 @@ class NetArch(object):
     self.out_tensors[out_name] = nn.apply_pad(self.out_tensors[out_name], self.out_pad_tensors[out_name])
 
     # add conv to the shape converter
-    for name in self.shape_converters.keys():
+    for name in list(self.shape_converters.keys()):
       if name[1] == in_name:
         self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
         self.shape_converters[name[0], out_name].add_trans_conv(kernel_size, stride)
@@ -176,7 +176,7 @@ class NetArch(object):
     self.out_pad_tensors[out_name] = nn.mimic_trans_conv_pad(self.out_pad_tensors[in_name], 1, 2)
 
     # add conv to the shape converter
-    for name in self.shape_converters.keys():
+    for name in list(self.shape_converters.keys()):
       if name[1] == in_name:
         self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
         self.shape_converters[name[0], out_name].add_trans_conv(0, 2)
@@ -190,7 +190,7 @@ class NetArch(object):
     self.out_pad_tensors[out_name] = nn.mimic_conv_pad(self.out_pad_tensors[in_name], 1, 2)
 
     # add conv to the shape converter
-    for name in self.shape_converters.keys():
+    for name in list(self.shape_converters.keys()):
       if name[1] == in_name:
         self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
         self.shape_converters[name[0], out_name].add_conv(1, 2)
@@ -223,7 +223,7 @@ class NetArch(object):
     self.out_tensors[out_name] = nn.apply_pad(self.out_tensors[out_name], self.out_pad_tensors[out_name])
 
     # add res block to the shape converter
-    for name in self.shape_converters.keys():
+    for name in list(self.shape_converters.keys()):
       if name[1] == in_name:
         self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
         self.shape_converters[name[0], out_name].add_res_block(kernel_size, stride)
@@ -252,7 +252,7 @@ class NetArch(object):
     self.out_tensors[out_name] = nn.apply_pad(self.out_tensors[out_name], self.out_pad_tensors[out_name])
 
     # add res block to the shape converter
-    for name in self.shape_converters.keys():
+    for name in list(self.shape_converters.keys()):
       if name[1] == in_name:
         self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
         self.shape_converters[name[0], out_name].add_res_block(kernel_size, 1)
@@ -267,13 +267,13 @@ class NetArch(object):
       axis = len(self.out_tensors[in_name].get_shape())-1
     splited_tensors  = tf.split(self.out_tensors[in_name],
                                 num_split, axis)
-    for i in xrange(len(out_names)):
+    for i in range(len(out_names)):
       self.out_tensors[out_names[i]] = splited_tensors[i]
 
     # add to shape converters
-    for name in self.shape_converters.keys():
+    for name in list(self.shape_converters.keys()):
       if name[1] == in_name:
-        for i in xrange(len(out_names)):
+        for i in range(len(out_names)):
           self.shape_converters[name[0], out_names[i]] = copy(self.shape_converters[name])
 
   def concat_tensors(self, in_names, out_name, axis=-1):
@@ -282,7 +282,7 @@ class NetArch(object):
                                            axis=axis)
 
     # add to shape converters
-    for name in self.shape_converters.keys():
+    for name in list(self.shape_converters.keys()):
       if name[1] in in_names:
         self.shape_converters[name[0], out_name] = copy(self.shape_converters[name])
 
@@ -468,7 +468,7 @@ class NetArch(object):
       true_name = [true_name]
       pred_name = [pred_name]
     self.out_tensors[loss_name] = 0.0 
-    for i in xrange(len(true_name)):
+    for i in range(len(true_name)):
       self.out_tensors[loss_name] += tf.nn.l2_loss(tf.stop_gradient(self.out_tensors[ true_name[i]]) 
                                                   - self.out_tensors[pred_name[i]])
     if normalize:
@@ -488,7 +488,7 @@ class NetArch(object):
 
   def sum_gradients(self, gradient_names, out_name):
     for i in range(1, len(gradient_names)):
-      for j in xrange(len(self.out_tensors[gradient_names[i]])):
+      for j in range(len(self.out_tensors[gradient_names[i]])):
         if self.out_tensors[gradient_names[i]][j] is not None:
           self.out_tensors[gradient_names[0]][j] += self.out_tensors[gradient_names[i]][j]
     self.out_tensors[out_name] = self.out_tensors[gradient_names[0]]

@@ -58,7 +58,7 @@ class LatNet(object):
     # run through all params and add them to the base path
     base_path = self.network_dir + '/' + self.network_name
     dic = config.__dict__
-    keys = dic.keys()
+    keys = list(dic.keys())
     keys.sort()
     for k in keys:
       if k not in NONSAVE_CONFIGS:
@@ -164,7 +164,7 @@ class LatNet(object):
     if return_dict:
       output = {}
       if type(out_names) is list:
-        for i in xrange(len(out_names)):
+        for i in range(len(out_names)):
           output[out_names[i]] = tf_output[i]
       else:
         output[out_names] = tf_output
@@ -281,7 +281,7 @@ class TrainLatNet(LatNet):
     self.seq_length = config.seq_length
     self.dataset = config.dataset
     gpus = config.gpus.split(',')
-    self.gpus = map(int, gpus)
+    self.gpus = list(map(int, gpus))
 
     # make optimizer
     self.optimizer = Optimizer(config, name='opt')
@@ -337,7 +337,7 @@ class TrainLatNet(LatNet):
                    default=0.9)
 
   def unroll_train_full(self):
-    for i in xrange(len(self.gpus)):
+    for i in range(len(self.gpus)):
       # make input names and output names
       gpu_str = '_gpu_' + str(self.gpus[i])
       state_name = 'state' + gpu_str
@@ -353,7 +353,7 @@ class TrainLatNet(LatNet):
         # make input state and boundary
         self.add_lattice(state_name, gpu_id=i)
         self.add_boundary(boundary_name, gpu_id=i)
-        for j in xrange(self.seq_length):
+        for j in range(self.seq_length):
           self.add_lattice(true_state_names[j], gpu_id=i)
       
         # unroll network
@@ -381,11 +381,11 @@ class TrainLatNet(LatNet):
     ###### Round up losses and Gradients on gpu:0 ######
     with tf.device('/gpu:%d' % self.gpus[0]):
       # round up losses
-      loss_names = ['l2_loss_gpu_' + str(x) for x in xrange(len(self.gpus))]
+      loss_names = ['l2_loss_gpu_' + str(x) for x in range(len(self.gpus))]
       loss_name = 'l2_loss'
       self.sum_losses(loss_names=loss_names, out_name=loss_name)
       # round up gradients
-      gradient_names = ['gradient_gpu_' + str(x) for x in xrange(len(self.gpus))]
+      gradient_names = ['gradient_gpu_' + str(x) for x in range(len(self.gpus))]
       gradient_name = 'gradient'
       self.sum_gradients(gradient_names=gradient_names, out_name=gradient_name)
 
@@ -407,7 +407,7 @@ class TrainLatNet(LatNet):
     return train_step, shape_converters
 
   def unroll_train_comp(self):
-    for i in xrange(len(self.gpus)):
+    for i in range(len(self.gpus)):
       # make input names and output names
       gpu_str = '_gpu_' + str(self.gpus[i])
       cstate_name = 'cstate' + gpu_str
@@ -421,7 +421,7 @@ class TrainLatNet(LatNet):
         # make input cstate and cboundary
         self.add_cstate(cstate_name)
         self.add_cboundary(cboundary_name)
-        for j in xrange(self.seq_length):
+        for j in range(self.seq_length):
           self.add_cstate(true_cstate_names[j])
       
         # unroll network
@@ -446,11 +446,11 @@ class TrainLatNet(LatNet):
     ###### Round up losses and Gradients on gpu:0 ######
     with tf.device('/gpu:%d' % self.gpus[0]):
       # round up losses
-      loss_names = ['l2_loss_gpu_' + str(x) for x in xrange(len(self.gpus))]
+      loss_names = ['l2_loss_gpu_' + str(x) for x in range(len(self.gpus))]
       loss_name = 'l2_loss'
       self.sum_losses(loss_names=loss_names, out_name=loss_name)
       # round up gradients
-      gradient_names = ['gradient_gpu_' + str(x) for x in xrange(len(self.gpus))]
+      gradient_names = ['gradient_gpu_' + str(x) for x in range(len(self.gpus))]
       gradient_name = 'gradient'
       self.sum_gradients(gradient_names=gradient_names, out_name=gradient_name)
 
@@ -558,7 +558,7 @@ class TrainLatNet(LatNet):
     elif self.dataset == "sailfish": #TODO fix this into new code base
       loss_data_pair = []
       ratio_add = 5
-      for i in tqdm(xrange(self.nr_data_to_add*ratio_add)):
+      for i in tqdm(range(self.nr_data_to_add*ratio_add)):
         sim_ind, dp, feed_dict = self.data_queue.rand_dp(
                                          state_converter, 
                                          seq_state_converter)
@@ -580,7 +580,7 @@ class TrainLatNet(LatNet):
     elif self.dataset == "sailfish": #TODO fix this into new code base
       loss_data_pair = []
       ratio_add = 5
-      for i in tqdm(xrange(self.nr_data_to_add*ratio_add)):
+      for i in tqdm(range(self.nr_data_to_add*ratio_add)):
         sim_ind, cdp, feed_dict = self.data_queue.rand_cdp(
                                          state_converter, 
                                          seq_cstate_converter,
@@ -595,7 +595,7 @@ class TrainLatNet(LatNet):
       self.data_queue.add_cdps(sim_list, cdp_list)
  
   def update_loss_stats(self, output):
-    names = output.keys()
+    names = list(output.keys())
     names.sort()
     for name in names:
       if 'loss' in name:
@@ -751,7 +751,7 @@ class EvalLatNet(LatNet):
     self.start_boundary = None
 
     print("Running compressed simulation") 
-    for i in tqdm(xrange(self.num_iters)):
+    for i in tqdm(range(self.num_iters)):
       self.cstate = self.mapping(compression_mapping, cstate_shape_converter, 
                        self.cstate_cboundary_input_generator, self.sim_cshape,
                        self.eval_cshape)
@@ -761,7 +761,7 @@ class EvalLatNet(LatNet):
   def mapping(self, mapping, shape_converter, input_generator, output_shape, run_output_shape):
     nr_subdomains = [int(math.ceil(x/float(y))) for x, y in zip(output_shape, run_output_shape)]
     output = []
-    iter_list = [xrange(x) for x in nr_subdomains]
+    iter_list = [range(x) for x in nr_subdomains]
     for ijk in itertools.product(*iter_list):
       #print(str(ijk) + " out of " + str(nr_subdomains))
       # make input and output subdomains
@@ -784,12 +784,12 @@ class EvalLatNet(LatNet):
       # perform mapping function and extract out if needed
       if not (type(sub_input) is list):
         sub_input = [sub_input]
-      for j in xrange(1):
+      for j in range(1):
         sub_output = mapping(*sub_input)
       if not (type(sub_output) is list):
         sub_output = [sub_output]
 
-      for i in xrange(len(sub_output)):
+      for i in range(len(sub_output)):
         sub_output[i] = mobius_extract_2(sub_output[i], 
                                          output_subdomain, 
                                          has_batch=True)
@@ -805,7 +805,7 @@ class EvalLatNet(LatNet):
 
     # stack back together to form one output
     output = llist2list(output)
-    for i in xrange(len(output)):
+    for i in range(len(output)):
       output[i] = stack_grid(output[i],
                              nr_subdomains,
                              has_batch=True)
@@ -858,7 +858,7 @@ class DecodeLatNet(EvalLatNet):
       self.load_checkpoint() 
    
     print("Decompressing ") 
-    for i in tqdm(xrange(self.num_iters)):
+    for i in tqdm(range(self.num_iters)):
       if i % self.sim_save_every:
         cstate = self.sim_saver.load(i)
         for subdomain in self.decode_subdomains:

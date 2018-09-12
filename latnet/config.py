@@ -1,5 +1,5 @@
 
-import ConfigParser as configparser
+import configparser as configparser
 import argparse
 import os
 import re

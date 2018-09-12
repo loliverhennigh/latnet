@@ -3,12 +3,12 @@ import numpy as np
 import os
 import sys
 from copy import copy
-from Queue import Queue
+from queue import Queue
 from tqdm import *
 from threading import Thread
 import h5py
 
-from wrapper import SailfishWrapper, JHTDBWrapper
+from wrapper import SailfishWrapper, JHTDBWrapper, SpectralDNSWrapper
 import lattice
 from shape_converter import SubDomain
 import utils.numpy_utils as numpy_utils
@@ -154,8 +154,6 @@ class TrainDomain(Domain):
         d.load_string(p)
         self.cdata_points.append(d)
 
-
-
 class SailfishDomain(Domain, SailfishWrapper):
   wrapper_name = 'sailfish'
   def __init__(self, config, save_dir):
@@ -261,6 +259,87 @@ class SailfishDomain(Domain, SailfishWrapper):
       return (cboundary, pad_cboundary)
     else:
       return cboundary
+
+  def read_vel_rho(self, iteration, subdomain=None, add_batch=False):
+    state = self.read_state(iteration, subdomain, add_batch=add_batch)
+    vel = self.DxQy.lattice_to_vel(state)
+    rho = self.DxQy.lattice_to_rho(state)
+    return vel, rho
+
+  def generate_data(self, num_iters):
+    self.new_sim(num_iters)
+
+class SpectralDNSDomain(Domain, SpectralDNSWrapper):
+  wrapper_name = 'spectralDNS'
+  def __init__(self, config, save_dir):
+    super(SpectralDNSDomain, self).__init__(config, save_dir)
+
+  @classmethod
+  def add_options(cls, group, dim):
+    pass
+
+  @classmethod
+  def update_defaults(cls, defaults):
+    pass
+
+  def read_state(self, iteration, subdomain=None, add_batch=False, return_padding=True):
+    # load flow file
+    state_steam = h5py.File(self.h5filename)
+    spectral_iteration = self.latnet_iter_to_spectral_iter(iteration)
+    key_vel_u    = np.array(state_stream['3D']['U'][str(spectral_iteration)])
+    key_vel_v    = np.array(state_stream['3D']['V'][str(spectral_iteration)])
+    key_vel_w    = np.array(state_stream['3D']['W'][str(spectral_iteration)])
+    key_pressure = np.array(state_stream['3D']['P'][str(spectral_iteration)])
+    key_pressure = np.expand_dims(key_pressure, axis=0)
+    state = np.concatenate([key_vel_u, key_vel_v, key_vel_w, key_pressure], axis=0)
+    state = state.astype(np.float32)
+    state = np.swapaxes(state, 0, 1)
+    state = np.swapaxes(state, 1, 2)
+    
+    if subdomain is not None:
+      state, pad_state = numpy_utils.mobius_extract(state, subdomain,
+                                            padding_type=self.padding_type,
+                                            return_padding=True)
+    elif return_padding:
+      pad_state = np.zeros_like(state[...,0:1])
+
+    if add_batch:
+      state = np.expand_dims(state, axis=0)
+      if return_padding:
+        pad_state = np.expand_dims(pad_state, axis=0)
+
+    if return_padding:
+      return (state, pad_state)
+    else:
+      return state
+
+  def read_boundary(self, subdomain=None, add_batch=False, return_padding=True):
+    return None
+
+  def read_cstate(self, iteration, subdomain=None, add_batch=False, return_padding=True):
+    # load flow file
+    cstate_file = self.iter_to_cstate_filename(iteration)
+    cstate = np.load(cstate_file)
+
+    if subdomain is not None:
+      cstate, pad_cstate = numpy_utils.mobius_extract(cstate, subdomain,
+                                                padding_type=self.padding_type,
+                                                return_padding=True)
+    elif return_padding:
+      pad_cstate = np.zeros_like(cstate[...,0:1])
+
+    if add_batch:
+      cstate = np.expand_dims(cstate, axis=0)
+      if return_padding:
+        pad_cstate = np.expand_dims(pad_cstate, axis=0)
+
+    if return_padding:
+      return (cstate, pad_cstate)
+    else:
+      return cstate
+
+  def read_cboundary(self, subdomain=None, add_batch=False, return_padding=True):
+    return None
 
   def read_vel_rho(self, iteration, subdomain=None, add_batch=False):
     state = self.read_state(iteration, subdomain, add_batch=add_batch)
@@ -406,6 +485,78 @@ class TrainSailfishDomain(SailfishDomain, TrainDomain):
       self.cdata_points.append(self.generate_rand_cdp(seq_length, state_shape_converter, seq_cstate_shape_converter, train_cshape, cratio, encode_state, encode_boundary))
     self.save_cdps()
 
+class TrainSpectralDNSDomain(SpectralDNSDomain, TrainDomain):
+  def __init__(self, config, save_dir):
+    super(SpectralDNSDomain, self).__init__(config, save_dir)
+
+    # check if need to generate data and do so
+    if self.need_to_generate() and (not (config.run_mode == 'generate_data')):
+      self.generate_train_data()
+
+  def need_to_generate(self):
+    # check if need to generate train data or not
+    if not os.path.isfile(self.h5filename):
+      need = True 
+    return need 
+
+  def generate_train_data(self):
+    self.new_sim()
+
+  def generate_rand_dp(self, seq_length, state_shape_converter, seq_state_shape_converter, train_cshape, cratio):
+    # select random index
+    state_iters = self.list_state_iters()
+    ind = np.random.randint(0, len(state_iters) - seq_length)
+
+    # select random pos to grab from data
+    rand_pos = [np.random.randint(-train_cshape[0], self.sim_shape[0]/cratio+1),
+                np.random.randint(-train_cshape[1], self.sim_shape[1]/cratio+1)]
+    cstate_subdomain = SubDomain(rand_pos, train_cshape)
+
+    # get state subdomain and geometry_subdomain
+    state_subdomain = state_shape_converter.out_in_subdomain(copy(cstate_subdomain))
+
+    # get seq state subdomain
+    seq_state_subdomain = seq_state_shape_converter.in_out_subdomain(copy(state_subdomain))
+
+    # data point and return it
+    return DataPoint(ind, seq_length, state_subdomain, seq_state_subdomain)
+
+  def generate_rand_cdp(self, seq_length, state_shape_converter, seq_state_shape_converter, train_cshape, cratio, encode_state, encode_boundary):
+    # select random index
+    state_iters = self.list_state_iters()
+    ind = np.random.randint(0, len(state_iters) - seq_length)
+
+    # select random pos to grab from data
+    rand_pos = [np.random.randint(-train_cshape[0], self.sim_shape[0]/cratio+1),
+                np.random.randint(-train_cshape[1], self.sim_shape[1]/cratio+1)]
+    cstate_subdomain = SubDomain(rand_pos, train_cshape)
+
+    # get state subdomain and geometry_subdomain
+    in_cstate_subdomain = seq_state_shape_converter.out_in_subdomain(copy(cstate_subdomain))
+
+    # generate cstate files if needed
+    for i in xrange(seq_length):
+      if not os.path.isfile(self.iter_to_cstate_filename(ind + i)):
+        encode_cstate_subdomain = SubDomain(self.DxQy.dims*[0], [x/cratio for x in self.sim_shape])
+        encode_state_subdomain = state_shape_converter.out_in_subdomain(copy(encode_cstate_subdomain))
+        state = self.read_state(ind+i, subdomain=encode_state_subdomain, add_batch=True, return_padding=True)
+        cstate = encode_state({'state':state})[0]
+        np.save(self.iter_to_cstate_filename(ind + i), cstate)
+      
+    # data point and return it
+    return DataPoint(ind, seq_length, in_cstate_subdomain, cstate_subdomain)
+
+  def add_rand_dps(self, num_dps, seq_length, state_shape_converter, seq_state_shape_converter, train_cshape, cratio):
+    for i in xrange(num_dps):
+      # make datapoint and add to list
+      self.data_points.append(self.generate_rand_dp(seq_length, state_shape_converter, seq_state_shape_converter, train_cshape, cratio))
+    self.save_dps()
+
+  def add_rand_cdps(self, num_cdps, seq_length, state_shape_converter, seq_cstate_shape_converter, train_cshape, cratio, encode_state, encode_boundary):
+    for i in xrange(num_cdps):
+      # make datapoint and add to list
+      self.cdata_points.append(self.generate_rand_cdp(seq_length, state_shape_converter, seq_cstate_shape_converter, train_cshape, cratio, encode_state, encode_boundary))
+    self.save_cdps()
 
 class TrainJHTDBDomain(JHTDBDomain, TrainDomain):
   def __init__(self, config, save_dir):

@@ -54,7 +54,7 @@ class StandardJHTDBArch(NetArch):
     nonlinearity = set_nonlinearity(self.nonlinearity)
   
     # encoding peice
-    for i in xrange(self.nr_downsamples):
+    for i in range(self.nr_downsamples):
       filter_size = self.filter_size*(pow(2,i))
       self.res_block(in_name=in_name, out_name=out_name,
                      filter_size=filter_size,
@@ -65,7 +65,7 @@ class StandardJHTDBArch(NetArch):
                      weight_name="down_sample_res_" + str(i))
       in_name=out_name
   
-      for j in xrange(self.nr_residual_encoder - 1):
+      for j in range(self.nr_residual_encoder - 1):
         self.res_block(in_name=in_name, out_name=out_name,
                        filter_size=filter_size,
                        nonlinearity=nonlinearity, 
@@ -106,7 +106,7 @@ class StandardJHTDBArch(NetArch):
                    weight_name="first_res")
 
     # apply residual blocks
-    for i in xrange(self.nr_residual_compression):
+    for i in range(self.nr_residual_compression):
       self.res_block(in_name=out_name, out_name=out_name, 
                      filter_size=self.filter_size_compression, 
                      nonlinearity=nonlinearity, 
@@ -144,13 +144,13 @@ class StandardJHTDBArch(NetArch):
                        new_name=out_name)
     
 
-    for i in xrange(self.nr_downsamples-1):
+    for i in range(self.nr_downsamples-1):
       filter_size = int(self.filter_size*pow(2,self.nr_downsamples-i-2))
       self.trans_conv(in_name=out_name, out_name=out_name,
                       kernel_size=4, stride=2, 
                       filter_size=filter_size,
                       weight_name="up_conv_" + str(i))
-      for j in xrange(self.nr_residual_encoder):
+      for j in range(self.nr_residual_encoder):
         self.res_block(in_name=out_name, out_name=out_name, 
                        filter_size=filter_size,
                        nonlinearity=nonlinearity,
@@ -174,7 +174,7 @@ class StandardJHTDBArch(NetArch):
                                 + in_seq_state_names, 
                         out_name=out_name, axis=-1) # concat on feature
     filter_size=self.filter_size
-    for i in xrange(self.nr_residual_compression):
+    for i in range(self.nr_residual_compression):
       begin_nonlinearity = True
       if i == 0:
         begin_nonlinearity = False
@@ -207,7 +207,7 @@ class StandardJHTDBArch(NetArch):
   
     self.concat_tensors(in_names=in_seq_state_names, out_name=out_class, axis=0) # concat on batch
     filter_size=self.filter_size
-    for i in xrange(self.nr_residual_compression):
+    for i in range(self.nr_residual_compression):
       begin_nonlinearity = True
       if i == 0:
         begin_nonlinearity = False
