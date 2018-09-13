@@ -290,7 +290,6 @@ def trim_tensor(x, trim):
     if length_input == 2:
       x = x[:,trim:-trim, trim:-trim]
     if length_input == 3:
-      print(trim)
       x = x[:,trim:-trim, trim:-trim, trim:-trim]
   return x
 

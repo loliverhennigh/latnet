@@ -11,7 +11,7 @@ import psutil as ps
 import time
 import matplotlib.pyplot as plt
 import requests
-
+import h5py
 
 import lattice
 import utils.numpy_utils as numpy_utils
@@ -414,7 +414,7 @@ class SpectralDNSWrapper(object):
     self.DxQy = lattice.TYPES[config.DxQy]()
 
     self.script_name = 'Isotropic.py'
-    self.h5filename = self.save_dir + 'isotropic_flow.h5'
+    self.h5filename = self.save_dir + '/isotropic_flow.h5'
     self.dt = 0.002
     self.T = 10
     self.cutoff_time = 2
@@ -454,11 +454,12 @@ class SpectralDNSWrapper(object):
     #self.clean_dir()
 
     cmd = ('python ' + self.script_name 
-         + ' NS'
+         + ' --h5filename=' + str(self.h5filename[:-3])
          + ' --dt=' + str(self.dt)
          + ' --T=' + str(self.T)
          + ' --write_result=' + str(self.lb_to_ln)
-         + ' --N=' + str(self.sim_shape))
+         + ' --N ' + str(self.sim_shape[0]) + ' ' + str(self.sim_shape[1]) + ' ' + str(self.sim_shape[2])
+         + ' NS')
     print(cmd)
     p = ps.subprocess.Popen(cmd.split(' '))
     p.communicate()
@@ -472,7 +473,7 @@ class SpectralDNSWrapper(object):
     return cstate_filename
 
   def list_state_iters(self):
-    state_steam = h5py.File(self.h5filename)
+    state_stream = h5py.File(self.h5filename)
     iters = list(state_stream['3D']['U'].keys())
     usable_iters = [int(x) for x in iters if int(x) > self.cutoff_iteration]
     return usable_iters

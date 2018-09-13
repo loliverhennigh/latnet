@@ -3,7 +3,7 @@ from termcolor import colored, cprint
 
 def str2shape(string):
   shape = string.split('x')
-  return map(int, shape)
+  return list(map(int, shape))
 
 def str2bool(v):
     if v.lower() in ('yes', 'true', 't', 'y', '1'):

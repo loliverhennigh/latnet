@@ -422,7 +422,7 @@ class NetArch(object):
       self.out_pad_tensors[new_name] = self.out_pad_tensors[old_name]
     
     # add to shape converter
-    for name in self.shape_converters.keys():
+    for name in list(self.shape_converters.keys()):
       if name[1] == old_name:
         self.shape_converters[name[0], new_name] = copy(self.shape_converters[name])
 

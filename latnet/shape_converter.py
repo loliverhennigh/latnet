@@ -17,7 +17,7 @@ class ShapeConverter:
     def in_out_helper(subdomain):
       if stride == 1:
         # remove edges from padding
-        edge_padding = kernel_size/2
+        edge_padding = int(kernel_size/2)
         subdomain.remove_edges(edge_padding)
 
       elif stride == 2:
@@ -25,7 +25,7 @@ class ShapeConverter:
         subdomain.remove_make_size_even()
 
         # remove edges
-        edge_padding = (kernel_size-1)/2
+        edge_padding = int((kernel_size-1)/2)
         subdomain.remove_edges(edge_padding)
 
         # downsample
@@ -36,7 +36,7 @@ class ShapeConverter:
     def out_in_helper(subdomain):
       if stride == 1:
         # add edges from padding
-        edge_padding = kernel_size/2
+        edge_padding = int(kernel_size/2)
         subdomain.add_edges(edge_padding)
 
       elif stride == 2:
@@ -44,7 +44,7 @@ class ShapeConverter:
         subdomain.upsample()
 
         # add edges
-        edge_padding = (kernel_size-1)/2
+        edge_padding = int((kernel_size-1)/2)
         subdomain.add_edges(edge_padding)
 
       return subdomain
@@ -64,7 +64,7 @@ class ShapeConverter:
         subdomain.upsample()
 
         # add edges
-        edge_padding = (kernel_size-1)/2
+        edge_padding = int((kernel_size-1)/2)
         subdomain.remove_edges(edge_padding)
 
       return subdomain
@@ -78,7 +78,7 @@ class ShapeConverter:
         subdomain.downsample()
 
         # remove edges
-        edge_padding = (kernel_size-1)/2
+        edge_padding = int((kernel_size-1)/2)
         subdomain.add_edges(edge_padding)
 
       return subdomain
@@ -133,8 +133,8 @@ class SubDomain:
     self.size = [x - y for x, y in zip(self.size, odd_edge)]
 
   def downsample(self):
-    self.pos  = [x/2 for x in self.pos ]
-    self.size = [x/2 for x in self.size]
+    self.pos  = [int(x/2) for x in self.pos ]
+    self.size = [int(x/2) for x in self.size]
 
   def upsample(self):
     self.pos  = [x*2 for x in self.pos ]

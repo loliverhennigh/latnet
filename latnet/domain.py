@@ -93,7 +93,7 @@ class TrainDomain(Domain):
 
     # read seq states
     seq_state = []
-    for i in xrange(dp.seq_length):
+    for i in range(dp.seq_length):
       seq_state.append(self.read_state(dp.ind + i, dp.seq_state_subdomain, add_batch))
 
     return state, boundary, seq_state
@@ -107,7 +107,7 @@ class TrainDomain(Domain):
 
     # read seq cstates
     seq_cstate = []
-    for i in xrange(cdp.seq_length):
+    for i in range(cdp.seq_length):
       seq_cstate.append(self.read_cstate(cdp.ind + i, cdp.seq_state_subdomain, add_batch))
 
     return cstate, cboundary, seq_cstate
@@ -284,20 +284,17 @@ class SpectralDNSDomain(Domain, SpectralDNSWrapper):
 
   def read_state(self, iteration, subdomain=None, add_batch=False, return_padding=True):
     # load flow file
-    state_steam = h5py.File(self.h5filename)
+    state_stream = h5py.File(self.h5filename)
     spectral_iteration = self.latnet_iter_to_spectral_iter(iteration)
     key_vel_u    = np.array(state_stream['3D']['U'][str(spectral_iteration)])
     key_vel_v    = np.array(state_stream['3D']['V'][str(spectral_iteration)])
     key_vel_w    = np.array(state_stream['3D']['W'][str(spectral_iteration)])
     key_pressure = np.array(state_stream['3D']['P'][str(spectral_iteration)])
-    key_pressure = np.expand_dims(key_pressure, axis=0)
-    state = np.concatenate([key_vel_u, key_vel_v, key_vel_w, key_pressure], axis=0)
+    state = np.stack([key_vel_u, key_vel_v, key_vel_w, key_pressure], axis=-1)
     state = state.astype(np.float32)
-    state = np.swapaxes(state, 0, 1)
-    state = np.swapaxes(state, 1, 2)
     
     if subdomain is not None:
-      state, pad_state = numpy_utils.mobius_extract(state, subdomain,
+      state, pad_state = numpy_utils.mobius_extract_2(state, subdomain,
                                             padding_type=self.padding_type,
                                             return_padding=True)
     elif return_padding:
@@ -322,7 +319,7 @@ class SpectralDNSDomain(Domain, SpectralDNSWrapper):
     cstate = np.load(cstate_file)
 
     if subdomain is not None:
-      cstate, pad_cstate = numpy_utils.mobius_extract(cstate, subdomain,
+      cstate, pad_cstate = numpy_utils.mobius_extract_2(cstate, subdomain,
                                                 padding_type=self.padding_type,
                                                 return_padding=True)
     elif return_padding:
@@ -456,7 +453,7 @@ class TrainSailfishDomain(SailfishDomain, TrainDomain):
     in_cstate_subdomain = seq_state_shape_converter.out_in_subdomain(copy(cstate_subdomain))
 
     # generate cstate files if needed
-    for i in xrange(seq_length):
+    for i in range(seq_length):
       if not os.path.isfile(self.iter_to_cstate_filename(ind + i)):
         encode_cstate_subdomain = SubDomain(self.DxQy.dims*[0], [x/cratio for x in self.sim_shape])
         encode_state_subdomain = state_shape_converter.out_in_subdomain(copy(encode_cstate_subdomain))
@@ -474,13 +471,13 @@ class TrainSailfishDomain(SailfishDomain, TrainDomain):
     return DataPoint(ind, seq_length, in_cstate_subdomain, cstate_subdomain)
 
   def add_rand_dps(self, num_dps, seq_length, state_shape_converter, seq_state_shape_converter, train_cshape, cratio):
-    for i in xrange(num_dps):
+    for i in range(num_dps):
       # make datapoint and add to list
       self.data_points.append(self.generate_rand_dp(seq_length, state_shape_converter, seq_state_shape_converter, train_cshape, cratio))
     self.save_dps()
 
   def add_rand_cdps(self, num_cdps, seq_length, state_shape_converter, seq_cstate_shape_converter, train_cshape, cratio, encode_state, encode_boundary):
-    for i in xrange(num_cdps):
+    for i in range(num_cdps):
       # make datapoint and add to list
       self.cdata_points.append(self.generate_rand_cdp(seq_length, state_shape_converter, seq_cstate_shape_converter, train_cshape, cratio, encode_state, encode_boundary))
     self.save_cdps()
@@ -495,8 +492,9 @@ class TrainSpectralDNSDomain(SpectralDNSDomain, TrainDomain):
 
   def need_to_generate(self):
     # check if need to generate train data or not
-    if not os.path.isfile(self.h5filename):
-      need = True 
+    need = True
+    if os.path.isfile(self.h5filename):
+      need = False
     return need 
 
   def generate_train_data(self):
@@ -509,7 +507,8 @@ class TrainSpectralDNSDomain(SpectralDNSDomain, TrainDomain):
 
     # select random pos to grab from data
     rand_pos = [np.random.randint(-train_cshape[0], self.sim_shape[0]/cratio+1),
-                np.random.randint(-train_cshape[1], self.sim_shape[1]/cratio+1)]
+                np.random.randint(-train_cshape[1], self.sim_shape[1]/cratio+1),
+                np.random.randint(-train_cshape[2], self.sim_shape[2]/cratio+1)]
     cstate_subdomain = SubDomain(rand_pos, train_cshape)
 
     # get state subdomain and geometry_subdomain
@@ -528,14 +527,15 @@ class TrainSpectralDNSDomain(SpectralDNSDomain, TrainDomain):
 
     # select random pos to grab from data
     rand_pos = [np.random.randint(-train_cshape[0], self.sim_shape[0]/cratio+1),
-                np.random.randint(-train_cshape[1], self.sim_shape[1]/cratio+1)]
+                np.random.randint(-train_cshape[1], self.sim_shape[1]/cratio+1),
+                np.random.randint(-train_cshape[2], self.sim_shape[2]/cratio+1)]
     cstate_subdomain = SubDomain(rand_pos, train_cshape)
 
     # get state subdomain and geometry_subdomain
     in_cstate_subdomain = seq_state_shape_converter.out_in_subdomain(copy(cstate_subdomain))
 
     # generate cstate files if needed
-    for i in xrange(seq_length):
+    for i in range(seq_length):
       if not os.path.isfile(self.iter_to_cstate_filename(ind + i)):
         encode_cstate_subdomain = SubDomain(self.DxQy.dims*[0], [x/cratio for x in self.sim_shape])
         encode_state_subdomain = state_shape_converter.out_in_subdomain(copy(encode_cstate_subdomain))
@@ -547,13 +547,13 @@ class TrainSpectralDNSDomain(SpectralDNSDomain, TrainDomain):
     return DataPoint(ind, seq_length, in_cstate_subdomain, cstate_subdomain)
 
   def add_rand_dps(self, num_dps, seq_length, state_shape_converter, seq_state_shape_converter, train_cshape, cratio):
-    for i in xrange(num_dps):
+    for i in range(num_dps):
       # make datapoint and add to list
       self.data_points.append(self.generate_rand_dp(seq_length, state_shape_converter, seq_state_shape_converter, train_cshape, cratio))
     self.save_dps()
 
   def add_rand_cdps(self, num_cdps, seq_length, state_shape_converter, seq_cstate_shape_converter, train_cshape, cratio, encode_state, encode_boundary):
-    for i in xrange(num_cdps):
+    for i in range(num_cdps):
       # make datapoint and add to list
       self.cdata_points.append(self.generate_rand_cdp(seq_length, state_shape_converter, seq_cstate_shape_converter, train_cshape, cratio, encode_state, encode_boundary))
     self.save_cdps()
@@ -564,7 +564,7 @@ class TrainJHTDBDomain(JHTDBDomain, TrainDomain):
 
     self.dp_queue = Queue(20)
     self.cdp_queue = Queue(20)
-    for i in xrange(10):
+    for i in range(10):
       t = Thread(target=self.download_dp_worker)
       t.daemon = True
       t.start()
@@ -589,7 +589,7 @@ class TrainJHTDBDomain(JHTDBDomain, TrainDomain):
   def add_rand_dps(self, num_dps, seq_length, state_shape_converter, seq_state_shape_converter, train_cshape, cratio):
     self.save_dps()
     self.dp_queue.join()
-    for i in tqdm(xrange(num_dps)):
+    for i in tqdm(range(num_dps)):
       self.dp_queue.put((seq_length, state_shape_converter, seq_state_shape_converter, train_cshape, cratio))
     if len(self.data_points) == 0:
       self.dp_queue.join()
@@ -598,7 +598,7 @@ class TrainJHTDBDomain(JHTDBDomain, TrainDomain):
   def add_rand_cdps(self, num_cdps, seq_length, state_shape_converter, seq_state_shape_converter, train_cshape, cratio, encode_state, encode_boundary):
     self.save_cdps()
     self.cdp_queue.join()
-    for i in tqdm(xrange(num_cdps)):
+    for i in tqdm(range(num_cdps)):
       self.cdp_queue.put((seq_length, state_shape_converter, seq_state_shape_converter, train_cshape, cratio, encode_state, encode_boundary))
     if len(self.cdata_points) == 0:
       self.cdp_queue.join()
@@ -622,7 +622,7 @@ class TrainJHTDBDomain(JHTDBDomain, TrainDomain):
 
     # download data
     self.download_state(ind, state_subdomain)
-    for i in xrange(seq_length):
+    for i in range(seq_length):
       self.download_state(ind+i, seq_state_subdomain)
 
     # data point and return it
@@ -646,7 +646,7 @@ class TrainJHTDBDomain(JHTDBDomain, TrainDomain):
     cstate = encode_state({'state':state})[0]
     np.save(self.iter_to_cstate_filename(ind + i, state_subdomain), cstate)
     os.remove(self.iter_to_state_filename(ind + i, state_subdomain))
-    for i in xrange(seq_length):
+    for i in range(seq_length):
       self.download_state(seq_state_subdomain, ind + i)
       state = self.read_state(ind + i, seq_state_subdomain, add_batch=True, return_padding=True)
       cstate = encode_state({'state':state})[0]

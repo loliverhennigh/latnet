@@ -20,7 +20,10 @@ def mobius_extract(dat, subdomain, padding_type=['periodic', 'periodic'], has_ba
   if has_batch:
     padding_x = [[0,0]] + padding_x
   if padding_type[0] == 'periodic':
+    print(padding_x)
+    print(dat.shape)
     dat = np.pad(dat, padding_x, 'wrap')
+    print(dat.shape)
     padding_tensor = np.pad(padding_tensor, padding_x, 'wrap')
   elif padding_type[0] == 'zero':
     dat = np.pad(dat, padding_x, 'constant')
@@ -28,6 +31,7 @@ def mobius_extract(dat, subdomain, padding_type=['periodic', 'periodic'], has_ba
   new_pos_x = subdomain.pos[0] + pad_bottom_x
   dat = dat[..., new_pos_x:new_pos_x + subdomain.size[0], :, :]
   padding_tensor = padding_tensor[..., new_pos_x:new_pos_x + subdomain.size[0], :, :]
+  print(dat.shape)
   
   # pad y
   pad_bottom_y = abs(min(subdomain.pos[1], 0))
@@ -91,7 +95,7 @@ def mobius_extract_2(dat, subdomain, padding_type=['periodic', 'periodic', 'peri
   axis_y = 1
   if has_batch:
     axis_y = 2
-  for i in xrange(len(dat)):
+  for i in range(len(dat)):
     dat[i] = pad(dat[i], subdomain.pos[1], subdomain.size[1], axis_y)
     padding_tensor[i] = pad(padding_tensor[i], subdomain.pos[1], subdomain.size[1], axis_y)
 
@@ -100,15 +104,15 @@ def mobius_extract_2(dat, subdomain, padding_type=['periodic', 'periodic', 'peri
     axis_z = 2
     if has_batch:
       axis_z = 3
-    for i in xrange(len(dat)):
-      for j in xrange(len(dat[i])):
+    for i in range(len(dat)):
+      for j in range(len(dat[i])):
         dat[i][j] = pad(dat[i][j], subdomain.pos[2], subdomain.size[2], axis_z)
         padding_tensor[i][j] = pad(padding_tensor[i][j], subdomain.pos[2], subdomain.size[2], axis_z)
 
   # concat all elements up
   if len(subdomain.pos) == 3:
-    for i in xrange(len(dat)):
-      for j in xrange(len(dat[i])):
+    for i in range(len(dat)):
+      for j in range(len(dat[i])):
         dat[i][j] = concatenate_bot_mid_top(dat[i][j][0], 
                                             dat[i][j][1], 
                                             dat[i][j][2], 
@@ -120,7 +124,7 @@ def mobius_extract_2(dat, subdomain, padding_type=['periodic', 'periodic', 'peri
                                             axis=axis_z,
                                             pad_type=padding_type[2],
                                             zero_value=1.0)
-  for i in xrange(len(dat)):
+  for i in range(len(dat)):
     dat[i] = concatenate_bot_mid_top(dat[i][0], 
                                      dat[i][1], 
                                      dat[i][2], 
@@ -144,6 +148,9 @@ def mobius_extract_2(dat, subdomain, padding_type=['periodic', 'periodic', 'peri
                                 pad_type=padding_type[0],
                                 zero_value=1.0)
 
+  print(subdomain.size)
+  print(dat.shape)
+
   if return_padding:
     return dat, padding_tensor
   else:
@@ -165,7 +172,7 @@ def pad(dat, pos, size, axis):
     exit()
   if pad_bottom > 0:
     index = []
-    for i in xrange(len(dat.shape)):
+    for i in range(len(dat.shape)):
       if i == axis:
         index.append(slice(dat.shape[i]-pad_bottom, dat.shape[i]))
       else:
@@ -175,7 +182,7 @@ def pad(dat, pos, size, axis):
     dat_bottom = None
   if pad_top > 0:
     index = []
-    for i in xrange(len(dat.shape)):
+    for i in range(len(dat.shape)):
       if i == axis:
         index.append(slice(0, pad_top))
       else:
@@ -184,7 +191,7 @@ def pad(dat, pos, size, axis):
   else:
     dat_top = None
   index = []
-  for i in xrange(len(dat.shape)):
+  for i in range(len(dat.shape)):
     if i == axis:
       index.append(slice(max(pos, 0), pos+size))
     else:
@@ -216,7 +223,7 @@ def stack_grid(dat, shape, has_batch=False):
       axis=1
     # converts a list of numpy arrays to a single array acording to shape
     dat = [dat[i:i+shape[1]] for i in range(0, len(dat), shape[1])]
-    for i in xrange(shape[0]):
+    for i in range(shape[0]):
       dat[i] = np.concatenate(dat[i], axis=axis) 
     dat = np.concatenate(dat, axis=axis-1)
   elif len(shape) == 3:
@@ -225,10 +232,10 @@ def stack_grid(dat, shape, has_batch=False):
     else:
       axis=2
     dat = [dat[i:i+shape[2]] for i in range(0, len(dat), shape[2])]
-    for i in xrange(shape[0] * shape[1]):
+    for i in range(shape[0] * shape[1]):
       dat[i] = np.concatenate(dat[i], axis=axis) 
     dat = [dat[i:i+shape[1]] for i in range(0, len(dat), shape[1])]
-    for i in xrange(shape[0]):
+    for i in range(shape[0]):
       dat[i] = np.concatenate(dat[i], axis=axis-1) 
     dat = np.concatenate(dat, axis=axis-2)
   return dat
@@ -248,23 +255,23 @@ def energy_spectrum(vel, has_batch=False):
   Ew = np.zeros(kmax)
 
   P = np.power(np.abs(np.fft.fftshift(np.fft.fftn(vel[...,0]))), 2.0)
-  for i in xrange(1, nx[0]+1):
-    for j in xrange(1, nx[1]+1):
-      for k in xrange(1, nx[2]+1):
+  for i in range(1, nx[0]+1):
+    for j in range(1, nx[1]+1):
+      for k in range(1, nx[2]+1):
         km = int(round(np.sqrt((i - nxc[0])**2 + (j - nxc[1])**2 + (k - nxc[2])**2)))
         Eu[km] = Eu[km] + P[i-1,j-1,k-1]
 
   P = np.power(np.abs(np.fft.fftshift(np.fft.fftn(vel[...,1]))), 2.0)
-  for i in xrange(1, nx[0]+1):
-    for j in xrange(1, nx[1]+1):
-      for k in xrange(1, nx[2]+1):
+  for i in range(1, nx[0]+1):
+    for j in range(1, nx[1]+1):
+      for k in range(1, nx[2]+1):
         km = int(round(np.sqrt((i - nxc[0])**2 + (j - nxc[1])**2 + (k - nxc[2])**2)))
         Ev[km] = Ev[km] + P[i-1,j-1,k-1]
 
   P = np.power(np.abs(np.fft.fftshift(np.fft.fftn(vel[...,2]))), 2.0)
-  for i in xrange(1, nx[0]+1):
-    for j in xrange(1, nx[1]+1):
-      for k in xrange(1, nx[2]+1):
+  for i in range(1, nx[0]+1):
+    for j in range(1, nx[1]+1):
+      for k in range(1, nx[2]+1):
         km = int(round(np.sqrt((i - nxc[0])**2 + (j - nxc[1])**2 + (k - nxc[2])**2)))
         Ew[km] = Ew[km] + P[i-1,j-1,k-1]
 
@@ -275,7 +282,7 @@ def energy_spectrum(vel, has_batch=False):
 def np_stack_list(dat, axis=0):
   num_elements = len(dat[0])
   dat_tmp = []
-  for i in xrange(num_elements):
+  for i in range(num_elements):
     dat_tmp.append(np.stack([x[i] for x in dat], axis=axis))
   return dat_tmp
 
@@ -283,9 +290,9 @@ def np_stack_llist(dat, axis=0):
   num_elements_1 = len(dat[0])
   num_elements_2 = len(dat[0][0])
   dat_tmp = []
-  for i in xrange(num_elements_1):
+  for i in range(num_elements_1):
     dat_ttmp = []
-    for j in xrange(num_elements_2):
+    for j in range(num_elements_2):
       dat_ttmp.append(np.stack([x[i][j] for x in dat], axis=axis))
     dat_tmp.append(dat_ttmp)
   return dat_tmp
@@ -295,7 +302,7 @@ def flip_boundary_vel(boundary):
   return boundary
 
 def rotate_boundary_vel(boundary, k):
-  for i in xrange(k):
+  for i in range(k):
     store_boundary = boundary[...,0]
     boundary[...,0] = -boundary[...,1]
     boundary[...,1] = boundary[...,0]
@@ -307,8 +314,8 @@ def rotate_boundary_vel(boundary, k):
 """
 # short test
 dat = []
-for i in xrange(3):
-  for j in xrange(2):
+for i in range(3):
+  for j in range(2):
     dat.append(np.zeros((1,10,10,1)) + 2*i + j)
 dat = stack_grid(dat, [3,2], True)
 plt.imshow(dat[0,:,:,0])

@@ -27,7 +27,7 @@ class DataQueue(object):
     self.batch_size      = config.batch_size
     self.seq_length      = config.seq_length
     self.nr_downsamples  = config.nr_downsamples
-    self.gpus            = map(int, config.gpus.split(','))
+    self.gpus            = list(map(int, config.gpus.split(',')))
     self.DxQy            = lattice.TYPES[config.DxQy]()
     self.train_cshape    = str2shape(config.train_cshape)
     self.cratio = pow(2, self.nr_downsamples)
@@ -190,7 +190,7 @@ class DataQueue(object):
 
   def dp_minibatch(self):
     # queue up data if needed
-    for i in range((self.max_queue/(len(self.gpus) * self.batch_size)) - (len(self.queue_dp_batches) + self.queue_dp.qsize())):
+    for i in range(int((self.max_queue/(len(self.gpus) * self.batch_size)) - (len(self.queue_dp_batches) + self.queue_dp.qsize()))):
       self.queue_dp.put(None)
     while len(self.queue_dp_batches) <= 2: # added times two to make sure enough
       self.waiting_time += 1.0
