@@ -20,11 +20,7 @@ import cv2
 import glob
 
 class FakeDomain(Domain):
-  #sim_shape = [128, 128, 128]
-  #sim_shape = [200, 200, 200]
-  #sim_shape = [256,256,256]
-  #sim_shape = [512,512,512]
-  sim_shape = [1024,1024,1024]
+  sim_shape = [64, 64, 64]
   name = "JHTDB"
   num_simulations = 10
   periodic_x = True

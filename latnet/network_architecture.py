@@ -472,7 +472,7 @@ class NetArch(object):
       self.out_tensors[loss_name] += tf.nn.l2_loss(tf.stop_gradient(self.out_tensors[ true_name[i]]) 
                                                   - self.out_tensors[pred_name[i]])
     if normalize:
-      #normalize_loss_factor = float(len(true_name)) * tf.cast(tf.reduce_prod(tf.shape(self.out_tensors[true_name[0]])), dtype=tf.float32)
+      #normalize_loss_factor = float(len(true_name)) * tf.cast(tf.reduce_prod(tf.shape(self.out_tensors[true_name[0]])), dtype=tf.float32) / (128.0)
       normalize_loss_factor = float(len(true_name) * self.batch_size)
       self.out_tensors[loss_name] = self.out_tensors[loss_name] / normalize_loss_factor
 

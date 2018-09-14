@@ -19,6 +19,7 @@ from john_hopkins_simulation import JohnHopkinsSimulation
 import lattice
 
 # import sailfish
+"""
 sys.path.append('../sailfish')
 from sailfish.subdomain import Subdomain2D
 from sailfish.node_type import NTEquilibriumVelocity, NTFullBBWall, NTDoNothing
@@ -26,6 +27,7 @@ from sailfish.controller import LBSimulationController
 from sailfish.lb_base import ForceObject
 from sailfish.lb_single import LBFluidSim
 from sailfish.sym import S
+"""
 
 # import external librarys
 import numpy as np

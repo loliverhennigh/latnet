@@ -294,7 +294,7 @@ class SpectralDNSDomain(Domain, SpectralDNSWrapper):
     state = state.astype(np.float32)
     
     if subdomain is not None:
-      state, pad_state = numpy_utils.mobius_extract_2(state, subdomain,
+      state, pad_state = numpy_utils.mobius_extract(state, subdomain,
                                             padding_type=self.padding_type,
                                             return_padding=True)
     elif return_padding:
@@ -319,7 +319,7 @@ class SpectralDNSDomain(Domain, SpectralDNSWrapper):
     cstate = np.load(cstate_file)
 
     if subdomain is not None:
-      cstate, pad_cstate = numpy_utils.mobius_extract_2(cstate, subdomain,
+      cstate, pad_cstate = numpy_utils.mobius_extract(cstate, subdomain,
                                                 padding_type=self.padding_type,
                                                 return_padding=True)
     elif return_padding:
@@ -445,8 +445,8 @@ class TrainSailfishDomain(SailfishDomain, TrainDomain):
     ind = np.random.randint(1, len(state_files) - seq_length)
 
     # select random pos to grab from data
-    rand_pos = [np.random.randint(-train_cshape[0], self.sim_shape[0]/cratio+1),
-                np.random.randint(-train_cshape[1], self.sim_shape[1]/cratio+1)]
+    rand_pos = [np.random.randint(-train_cshape[0], int(self.sim_shape[0]/cratio+1)),
+                np.random.randint(-train_cshape[1], int(self.sim_shape[1]/cratio+1))]
     cstate_subdomain = SubDomain(rand_pos, train_cshape)
 
     # get state subdomain and geometry_subdomain
@@ -455,7 +455,7 @@ class TrainSailfishDomain(SailfishDomain, TrainDomain):
     # generate cstate files if needed
     for i in range(seq_length):
       if not os.path.isfile(self.iter_to_cstate_filename(ind + i)):
-        encode_cstate_subdomain = SubDomain(self.DxQy.dims*[0], [x/cratio for x in self.sim_shape])
+        encode_cstate_subdomain = SubDomain(self.DxQy.dims*[0], [int(x/cratio) for x in self.sim_shape])
         encode_state_subdomain = state_shape_converter.out_in_subdomain(copy(encode_cstate_subdomain))
         state = self.read_state(ind+i, subdomain=encode_state_subdomain, add_batch=True, return_padding=True)
         cstate = encode_state({'state':state})[0]
@@ -503,7 +503,7 @@ class TrainSpectralDNSDomain(SpectralDNSDomain, TrainDomain):
   def generate_rand_dp(self, seq_length, state_shape_converter, seq_state_shape_converter, train_cshape, cratio):
     # select random index
     state_iters = self.list_state_iters()
-    ind = np.random.randint(0, len(state_iters) - seq_length)
+    ind = np.random.randint(self.cutoff_latnet_iteration, len(state_iters) - seq_length)
 
     # select random pos to grab from data
     rand_pos = [np.random.randint(-train_cshape[0], self.sim_shape[0]/cratio+1),
@@ -523,7 +523,7 @@ class TrainSpectralDNSDomain(SpectralDNSDomain, TrainDomain):
   def generate_rand_cdp(self, seq_length, state_shape_converter, seq_state_shape_converter, train_cshape, cratio, encode_state, encode_boundary):
     # select random index
     state_iters = self.list_state_iters()
-    ind = np.random.randint(0, len(state_iters) - seq_length)
+    ind = np.random.randint(self.cutoff_latnet_iteration, len(state_iters) - seq_length)
 
     # select random pos to grab from data
     rand_pos = [np.random.randint(-train_cshape[0], self.sim_shape[0]/cratio+1),
@@ -537,7 +537,7 @@ class TrainSpectralDNSDomain(SpectralDNSDomain, TrainDomain):
     # generate cstate files if needed
     for i in range(seq_length):
       if not os.path.isfile(self.iter_to_cstate_filename(ind + i)):
-        encode_cstate_subdomain = SubDomain(self.DxQy.dims*[0], [x/cratio for x in self.sim_shape])
+        encode_cstate_subdomain = SubDomain(self.DxQy.dims*[0], [int(x/cratio) for x in self.sim_shape])
         encode_state_subdomain = state_shape_converter.out_in_subdomain(copy(encode_cstate_subdomain))
         state = self.read_state(ind+i, subdomain=encode_state_subdomain, add_batch=True, return_padding=True)
         cstate = encode_state({'state':state})[0]

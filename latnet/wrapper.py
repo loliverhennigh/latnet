@@ -412,14 +412,16 @@ class SpectralDNSWrapper(object):
     self.config = config
     self.save_dir = save_dir
     self.DxQy = lattice.TYPES[config.DxQy]()
+    self.write_result = config.lb_to_ln
+    self.lb_to_ln = config.lb_to_ln
 
     self.script_name = 'Isotropic.py'
     self.h5filename = self.save_dir + '/isotropic_flow.h5'
     self.dt = 0.002
     self.T = 10
     self.cutoff_time = 2
-    self.cutoff_iteration = self.cutoff_time/self.dt
-    self.write_result = config.lb_to_ln
+    self.cutoff_spectral_iteration = self.cutoff_time/self.dt
+    self.cutoff_latnet_iteration = self.spectral_iter_to_latnet_iter(self.cutoff_spectral_iteration)
 
   @classmethod
   def update_defaults(cls, defaults):
@@ -465,18 +467,16 @@ class SpectralDNSWrapper(object):
     p.communicate()
  
   def iter_to_cstate_filename(self, iteration):
-    sailfish_iter = self.latnet_iter_to_spectral_iter(iteration)
-    zpadding = len(self.last_state_filename()[0].split('.')[-4])
+    spectral_iter = self.latnet_iter_to_spectral_iter(iteration)
     cstate_filename = (self.save_dir + '/flow.' 
-                    + str(sailfish_iter).zfill(zpadding)
+                    + str(spectral_iter).zfill(6)
                     + '.0.comp.npy')
     return cstate_filename
 
   def list_state_iters(self):
     state_stream = h5py.File(self.h5filename)
     iters = list(state_stream['3D']['U'].keys())
-    usable_iters = [int(x) for x in iters if int(x) > self.cutoff_iteration]
-    return usable_iters
+    return iters
 
 class JHTDBWrapper(object):
   def __init__(self, config, save_dir):

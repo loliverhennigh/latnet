@@ -20,18 +20,18 @@ def mobius_extract(dat, subdomain, padding_type=['periodic', 'periodic'], has_ba
   if has_batch:
     padding_x = [[0,0]] + padding_x
   if padding_type[0] == 'periodic':
-    print(padding_x)
-    print(dat.shape)
     dat = np.pad(dat, padding_x, 'wrap')
-    print(dat.shape)
     padding_tensor = np.pad(padding_tensor, padding_x, 'wrap')
   elif padding_type[0] == 'zero':
     dat = np.pad(dat, padding_x, 'constant')
     padding_tensor = np.pad(padding_tensor, padding_x, 'constant')
   new_pos_x = subdomain.pos[0] + pad_bottom_x
-  dat = dat[..., new_pos_x:new_pos_x + subdomain.size[0], :, :]
-  padding_tensor = padding_tensor[..., new_pos_x:new_pos_x + subdomain.size[0], :, :]
-  print(dat.shape)
+  if len(subdomain.pos) == 2:
+    dat = dat[..., new_pos_x:new_pos_x + subdomain.size[0], :, :]
+    padding_tensor = padding_tensor[..., new_pos_x:new_pos_x + subdomain.size[0], :, :]
+  elif len(subdomain.pos) == 3:
+    dat = dat[..., new_pos_x:new_pos_x + subdomain.size[0], :, :, :]
+    padding_tensor = padding_tensor[..., new_pos_x:new_pos_x + subdomain.size[0], :, :, :]
   
   # pad y
   pad_bottom_y = abs(min(subdomain.pos[1], 0))
@@ -46,8 +46,12 @@ def mobius_extract(dat, subdomain, padding_type=['periodic', 'periodic'], has_ba
     dat = np.pad(dat, padding_y, 'constant')
     padding_tensor = np.pad(padding_tensor, padding_y, 'constant')
   new_pos_y = subdomain.pos[1] + pad_bottom_y
-  dat = dat[..., new_pos_y:new_pos_y + subdomain.size[1], :]
-  padding_tensor = padding_tensor[..., new_pos_y:new_pos_y + subdomain.size[1], :]
+  if len(subdomain.pos) == 2:
+    dat = dat[..., new_pos_y:new_pos_y + subdomain.size[1], :]
+    padding_tensor = padding_tensor[..., new_pos_y:new_pos_y + subdomain.size[1], :]
+  if len(subdomain.pos) == 3:
+    dat = dat[..., new_pos_y:new_pos_y + subdomain.size[1], :, :]
+    padding_tensor = padding_tensor[..., new_pos_y:new_pos_y + subdomain.size[1], :, :]
  
   # pad z
   if len(subdomain.pos) == 3:

@@ -31,6 +31,7 @@ class DataQueue(object):
     self.DxQy            = lattice.TYPES[config.DxQy]()
     self.train_cshape    = str2shape(config.train_cshape)
     self.cratio = pow(2, self.nr_downsamples)
+    self.start_num_dps   = config.start_num_dps
 
     # initalize domains
     self.init_sims(config, domains)
@@ -52,7 +53,7 @@ class DataQueue(object):
     group.add_argument('--max_queue', 
                    help='max datapoints in queue', 
                    type=int,
-                   default=200)
+                   default=512)
 
   def init_sims(self, config, domains):
     sims = []
@@ -65,8 +66,8 @@ class DataQueue(object):
         sims.append(sim)
     self.sims = sims
 
-  def load_dp(self, num_dps, state_converter, seq_state_converter):
-    dps_per_sim = int(num_dps/len(self.sims))
+  def load_dp(self, state_converter, seq_state_converter):
+    dps_per_sim = int(self.start_num_dps/len(self.sims))
     for sim in self.sims:
       try:
         print("loaded")
@@ -79,8 +80,8 @@ class DataQueue(object):
                         train_cshape=self.train_cshape,
                         cratio=self.cratio)
  
-  def load_cdp(self, num_cdps, state_converter, seq_cstate_converter, encode_state, encode_boundary):
-    cdps_per_sim = int(num_cdps/len(self.sims))
+  def load_cdp(self, state_converter, seq_cstate_converter, encode_state, encode_boundary):
+    cdps_per_sim = int(self.start_num_dps/len(self.sims))
     for sim in self.sims:
       try:
         sim.load_cdp()
@@ -201,7 +202,7 @@ class DataQueue(object):
 
   def cdp_minibatch(self):
     # queue up data if needed
-    for i in range((self.max_queue/(len(self.gpus) * self.batch_size)) - (len(self.queue_cdp_batches) + self.queue_cdp.qsize())):
+    for i in range(int((self.max_queue/(len(self.gpus) * self.batch_size)) - (len(self.queue_cdp_batches) + self.queue_cdp.qsize()))):
       self.queue_cdp.put(None)
     while len(self.queue_cdp_batches) <= 2: # added times two to make sure enough
       self.waiting_time += 1.0

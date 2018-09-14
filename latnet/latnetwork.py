@@ -31,6 +31,7 @@ class LatNet(object):
       self.train_mode = config.train_mode
     self.DxQy = lattice.TYPES[config.DxQy]()
     self.network_dir  = config.network_dir
+    self.use_boundary = config.use_boundary
     #gpus = config.gpus.split(',')
     #self.gpus = map(int, gpus)
 
@@ -47,6 +48,10 @@ class LatNet(object):
                    help='depth of compressed state',
                    type=int,
                    default=16)
+    group.add_argument('--use_boundary',
+                   help='whether to use boundary condition input or not',
+                   type=str2bool,
+                   default=False)
     group.add_argument('--cboundary_depth',
                    help='depth of compressed boundary',
                    type=int,
@@ -225,7 +230,8 @@ class LatNet(object):
 
     # make shape converter
     shape_converters = {}
-    shape_converters['boundary_converter'] = self.shape_converters[(boundary_name, cboundary_name)]
+    if (boundary_name, cboundary_name) in self.shape_converters.keys():
+      shape_converters['boundary_converter'] = self.shape_converters[(boundary_name, cboundary_name)]
 
     return encode_boundary, shape_converters
 
@@ -234,7 +240,8 @@ class LatNet(object):
     cboundary_name = 'cboundary_0'
     out_name = 'cstate_1'
     self.add_cstate(cstate_name)
-    self.add_cboundary(cboundary_name)
+    if self.use_boundary:
+      self.add_cboundary(cboundary_name)
     with tf.variable_scope('unroll') as scope:
       self.compression_mapping(in_cstate_name=cstate_name,
                                in_cboundary_name=cboundary_name,
@@ -420,7 +427,8 @@ class TrainLatNet(LatNet):
       with tf.device('/gpu:%d' % self.gpus[i]):
         # make input cstate and cboundary
         self.add_cstate(cstate_name)
-        self.add_cboundary(cboundary_name)
+        if self.use_boundary:
+          self.add_cboundary(cboundary_name)
         for j in range(self.seq_length):
           self.add_cstate(true_cstate_names[j])
       
@@ -498,15 +506,13 @@ class TrainLatNet(LatNet):
    
     # get data
     if self.train_mode == "full":
-      self.data_queue.load_dp(100, 
-                 train_shape_converter['state_converter'], 
-                 train_shape_converter['seq_state_converter'])
+      self.data_queue.load_dp(train_shape_converter['state_converter'], 
+                              train_shape_converter['seq_state_converter'])
     elif self.train_mode == "compression":
-      self.data_queue.load_cdp(100, 
-                 train_shape_converter['state_converter'], 
-                 train_shape_converter['seq_cstate_converter'], 
-                 encode_state=encode_state, 
-                 encode_boundary=encode_boundary)
+      self.data_queue.load_cdp(train_shape_converter['state_converter'], 
+                               train_shape_converter['seq_cstate_converter'], 
+                               encode_state=encode_state, 
+                               encode_boundary=encode_boundary)
  
     while True:
       step = get_step()

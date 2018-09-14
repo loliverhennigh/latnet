@@ -15,7 +15,7 @@ def str2bool(v):
 
 def print_dict(name, dictionary, color):
   print_string = name + '\n'
-  names = dictionary.keys()
+  names = list(dictionary.keys())
   names.sort()
   for name in names:
     if type(dictionary[name]) is not list:
@@ -32,9 +32,9 @@ def print_dict(name, dictionary, color):
 
 def llist2list(llist):
   out_list = []
-  for j in xrange(len(llist[0])):
+  for j in range(len(llist[0])):
     store_out_list = []
-    for i in xrange(len(llist)):
+    for i in range(len(llist)):
       store_out_list.append(llist[i][j])
     out_list.append(store_out_list)
   return out_list

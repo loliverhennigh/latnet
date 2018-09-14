@@ -3,7 +3,7 @@ import lattice
 
 import matplotlib.pyplot as plt
 import cv2
-fourcc = cv2.cv.CV_FOURCC('m', 'p', '4', 'v') 
+fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v') 
 import numpy as np
 import os
 import psutil as ps
