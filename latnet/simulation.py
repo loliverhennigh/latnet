@@ -99,8 +99,10 @@ class Simulation(object):
         self.jhtdb_runner = JohnHopkinsSimulation(self.config, self.sim_dir + '/JHTDB')
         subdomain = SubDomain([0, 0, 0], self.domain.sim_shape)
         self.jhtdb_runner.download_datapoint(subdomain, 0)
-        self.start_state = self.jhtdb_runner.read_state(0, subdomain=subdomain, return_padding=False)
-        self.start_boundary = self.jhtdb_runner.read_boundary(subdomain=subdomain, return_padding=False)
+        #self.start_state = self.jhtdb_runner.read_state(0, subdomain=subdomain, return_padding=False)
+        #self.start_boundary = self.jhtdb_runner.read_boundary(subdomain=subdomain, return_padding=False)
+        self.start_state = np.zeros(self.jhtdb_runner.sim_shape + [4])
+        self.start_boudnary = np.zeros(self.jhtdb_runner.sim_shape + [1])
         
     else:
       self.sailfish_runner = None

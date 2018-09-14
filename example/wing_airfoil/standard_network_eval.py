@@ -30,7 +30,7 @@ class LDCSimulation(Simulation):
     defaults.update({
         'latnet_network_dir': './network_save',
         'run_mode': 'eval',
-        'visc': 0.0002,
+        'visc': 0.0001,
         'lb_to_ln': 128,
         'input_cshape': '256x256',
         'input_shape': '512x512',

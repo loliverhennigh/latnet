@@ -19,11 +19,11 @@ class StandardNetwork(LatNet):
   @classmethod
   def add_options(cls, group):
     group.add_argument('--nr_residual_compression', help='network config', type=int,
-                           default=2)
-    group.add_argument('--nr_residual_encoder', help='network config', type=int,
-                           default=1)
-    group.add_argument('--nr_downsamples', help='network config', type=int,
                            default=4)
+    group.add_argument('--nr_residual_encoder', help='network config', type=int,
+                           default=2)
+    group.add_argument('--nr_downsamples', help='network config', type=int,
+                           default=2)
     group.add_argument('--nonlinearity', help='network config', type=str,
                            default='relu')
     group.add_argument('--gated', help='network config', type=bool,
@@ -68,6 +68,12 @@ class StandardNetwork(LatNet):
                    stride=1, 
                    gated=self.config.gated, 
                    weight_name="final_res")
+<<<<<<< HEAD
+=======
+
+    self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
+  
+>>>>>>> 860bcceaba9e7f77b5da6333748a7a50d8cf4da8
 
     self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
   
@@ -107,6 +113,7 @@ class StandardNetwork(LatNet):
 
     self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
   
+    self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
   
   # compression mapping
   def compression_mapping(self, in_cstate_name, in_cboundary_name, out_name, start_apply_boundary=False):
@@ -176,7 +183,12 @@ class StandardNetwork(LatNet):
                        b_name=in_cboundary_name + "_apply",
                        mask_name=in_cboundary_name + "_mask",
                        out_name=out_name)
+<<<<<<< HEAD
     """
+=======
+
+    self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
+>>>>>>> 860bcceaba9e7f77b5da6333748a7a50d8cf4da8
  
   # decoder state
   def decoder_state(self, in_cstate_name, in_cboundary_name, out_name, lattice_size=9):

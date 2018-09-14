@@ -30,6 +30,7 @@ class Trainer(object):
     self.network_dir  = config.latnet_network_dir
     self.seq_length = config.seq_length
     self.gan = config.gan
+    self.train_autoencoder = config.train_autoencoder
     self.train_iters = config.train_iters
     gpus = config.gpus.split(',')
     self.gpus = map(int, gpus)
@@ -77,7 +78,9 @@ class Trainer(object):
       # perform optimization step for gen
       gen_names = ['gen_train_op', 'loss_gen']
       if not self.gan:
-        gen_names += ['loss_l2']
+        if self.train_autoencoder:
+          gen_names += ['loss_auto_l2']
+        gen_names += ['loss_comp_l2']
       if self.gan:
         gen_names += ['loss_l1', 'loss_gen_un_class', 'loss_layer_l2', 'loss_gen_con_class']
       gen_output = self._network.run(gen_names, feed_dict=feed_dict, return_dict=True)
@@ -110,6 +113,7 @@ class Trainer(object):
       if step % self.config.save_network_freq == 0:
         self._network.saver.save_checkpoint(self._network.sess, int(self._network.run('gen_global_step')))
 
+<<<<<<< HEAD
       #if step % 2000 == 0:
       #  print("getting new data")
       #  self.active_data_add()
@@ -127,6 +131,11 @@ class Trainer(object):
           if 'true' not in key:
             feed_dict.pop(key)
         self.save_test_sample(feed_dict, gen_output)
+=======
+      if step % 400 == 0:
+        print("getting new data")
+        self.active_data_add()
+>>>>>>> 860bcceaba9e7f77b5da6333748a7a50d8cf4da8
 
       # end simulation
       if step > self.train_iters:
@@ -161,15 +170,26 @@ class Trainer(object):
   def active_data_add(self):
     # TODO this should be cleaned up
     loss_data_point_pair = []
+<<<<<<< HEAD
     for i in tqdm(xrange(1000)):
       sim_index, data_point, feed_dict = self.data_queue_train.rand_data_point()
       loss_names = ['loss_l2']
+=======
+    for i in tqdm(xrange(200)):
+      sim_index, data_point, feed_dict = self.data_queue.rand_data_point()
+      loss_names = ['loss_gen']
+>>>>>>> 860bcceaba9e7f77b5da6333748a7a50d8cf4da8
       loss_output = self._network.run(loss_names, feed_dict=feed_dict, return_dict=True)
-      loss_data_point_pair.append((loss_output['loss_l2'], sim_index, data_point))
+      loss_data_point_pair.append((loss_output['loss_gen'], sim_index, data_point))
 
     loss_data_point_pair.sort() 
+<<<<<<< HEAD
     for i in xrange(100):
       self.data_queue_train.add_data_point(loss_data_point_pair[-i][1], loss_data_point_pair[-i][2])
+=======
+    for i in xrange(40):
+      self.data_queue.add_data_point(loss_data_point_pair[-i][1], loss_data_point_pair[-i][2])
+>>>>>>> 860bcceaba9e7f77b5da6333748a7a50d8cf4da8
 
   def update_loss_stats(self, output):
     names = output.keys()

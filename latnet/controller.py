@@ -47,6 +47,8 @@ class LatNetController(object):
                         default=100)
 
       group = self._config_parser.add_group('Network Train Details')
+      group.add_argument('--train_autoencoder', help='all mode', type=str, 
+                        default=True)
       group.add_argument('--seq_length', help='all mode', type=int, 
                         default=5)
       group.add_argument('--batch_size', help='all mode', type=int,
@@ -84,7 +86,7 @@ class LatNetController(object):
       group.add_argument('--gpu_fraction', help='all mode', type=float,
                         default=0.9)
       group.add_argument('--max_queue', help='all mode', type=int,
-                        default=40)
+                        default=100)
 
       group = self._config_parser.add_group('Simulation Details')
       group.add_argument('--sim_shape', help='all mode', type=str,

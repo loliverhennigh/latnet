@@ -28,6 +28,7 @@ class SailfishSimulation:
     self.max_sim_iters = config.max_sim_iters
     self.debug_sailfish = config.debug_sailfish
     self.train_sim_dir = config.train_sim_dir
+    self.train_autoencoder = config.train_autoencoder
     self.config=config
  
     self.sim_shape = domain.sim_shape
@@ -370,15 +371,20 @@ class TrainSailfishSimulation(SailfishSimulation):
     ind = np.random.randint(1, len(state_files) - seq_length)
 
     # select random pos to grab from data
-    rand_pos = [np.random.randint(-input_cshape[0], self.sim_shape[0]/cratio),
-                np.random.randint(-input_cshape[1], self.sim_shape[1]/cratio)]
+    rand_pos = [np.random.randint(-input_cshape[0], self.sim_shape[0]/cratio+1),
+                np.random.randint(-input_cshape[1], self.sim_shape[1]/cratio+1)]
+    #rand_pos = [np.random.randint(-1, self.sim_shape[0]/cratio-input_cshape[0]),
+    #            np.random.randint(-1, self.sim_shape[1]/cratio-input_cshape[1])]
     cstate_subdomain = SubDomain(rand_pos, input_cshape)
 
     # get state subdomain and geometry_subdomain
     state_subdomain = state_shape_converter.out_in_subdomain(copy(cstate_subdomain))
 
     # get seq state subdomain
-    seq_state_subdomain = seq_state_shape_converter.in_out_subdomain(copy(state_subdomain))
+    #if self.train_autoencoder:
+    #  seq_state_subdomain = seq_state_shape_converter.in_out_subdomain(copy(state_subdomain))
+    #else:
+    seq_state_subdomain = seq_state_shape_converter.out_in_subdomain(copy(cstate_subdomain))
 
     # data point and return it
     return DataPoint(ind, seq_length, state_subdomain, seq_state_subdomain)

@@ -31,12 +31,20 @@ class DataQueue:
     self.needed_to_wait = False
 
     # configs
+<<<<<<< HEAD
     self.dataset           = config.dataset
     self.batch_size        = config.batch_size
     self.seq_length        = config.seq_length
     self.nr_downsamples    = config.nr_downsamples
     self.train_autoencoder = config.train_autoencoder
     self.free_gpu          = True
+=======
+    self.batch_size      = config.batch_size
+    self.seq_length      = config.seq_length
+    self.train_autoencoder = config.train_autoencoder
+    self.nr_downsamples  = config.nr_downsamples
+    self.free_gpu        = True
+>>>>>>> 860bcceaba9e7f77b5da6333748a7a50d8cf4da8
     gpus = config.gpus.split(',')
     self.gpus = map(int, gpus)
     self.DxQy = lattice.TYPES[config.DxQy]()
@@ -47,12 +55,21 @@ class DataQueue:
     gpu_str = '_gpu_' + str(self.gpus[0])
     self.state_shape_converter = self.shape_converters['state' + gpu_str,
                             'cstate_' + str(self.seq_length-1) + gpu_str]
+<<<<<<< HEAD
     if self.train_autoencoder:
       self.seq_state_shape_converter = self.shape_converters['state' + gpu_str, 
                               'pred_state_' + str(self.seq_length-1) + gpu_str]
     else:
       self.seq_state_shape_converter = self.shape_converters['true_state_' + str(self.seq_length-1) + gpu_str, 
                               'true_cstate_' + str(self.seq_length-1) + gpu_str]
+=======
+    #if self.train_autoencoder:
+    #  self.seq_state_shape_converter = self.shape_converters['state' + gpu_str, 
+    #                          'pred_state_' + str(self.seq_length-1) + gpu_str]
+    #else:
+    self.seq_state_shape_converter = self.shape_converters['true_state_' + str(self.seq_length-1) + gpu_str, 
+                            'true_cstate_' + str(self.seq_length-1) + gpu_str]
+>>>>>>> 860bcceaba9e7f77b5da6333748a7a50d8cf4da8
     self.cratio = pow(2, self.nr_downsamples)
 
     # make queue
@@ -64,6 +81,7 @@ class DataQueue:
     self.sim_runners = []
     for domain in domains:
       print("generating " + domain.name + " dataset")
+      start_num_data_points = 1000/(len(domains)*domain.num_simulations)
       for i in tqdm(xrange(domain.num_simulations)):
         if self.dataset == "sailfish":
           sim = TrainSailfishSimulation(config, domain, self.base_dir + '/sim_' + domain.name + '_' + str(i).zfill(4))
@@ -109,7 +127,7 @@ class DataQueue:
     feed_dict['state' + gpu_str] = state
     feed_dict['boundary' + gpu_str] = geometry
     for j in xrange(self.seq_length):
-      feed_dict['true_state_' + str(j) + gpu_str] = seq_state[j][0]
+      feed_dict['true_state_' + str(j) + gpu_str] = seq_state[j]
 
     return sim_index, data_point, feed_dict
 
@@ -166,8 +184,9 @@ class DataQueue:
       feed_dict['boundary' + gpu_str] = (batch_geometry[i*self.batch_size:(i+1)*self.batch_size],
                                          batch_pad_geometry[i*self.batch_size:(i+1)*self.batch_size])
       for j in xrange(self.seq_length):
-        feed_dict['true_state_' + str(j) + gpu_str] = batch_seq_state[j][i*self.batch_size:(i+1)*self.batch_size]
-      
+        feed_dict['true_state_' + str(j) + gpu_str] = (batch_seq_state[j][i*self.batch_size:(i+1)*self.batch_size],
+                            batch_pad_seq_state[j][i*self.batch_size:(i+1)*self.batch_size])
+
     return feed_dict
 
   def num_data_points(self):

@@ -24,7 +24,8 @@ class LDCSimulation(Simulation):
   script_name = __file__
   network = StandardNetwork
   domain = LDCDomain
-  domain.sim_shape = [512, 512]
+  #domain.sim_shape = [1024, 1024]
+  domain.sim_shape = [256, 256]
 
   @classmethod
   def update_defaults(cls, defaults):

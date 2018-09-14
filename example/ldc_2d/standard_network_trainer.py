@@ -34,8 +34,10 @@ class StandardTrainer(Trainer):
         'latnet_network_dir': './network_save',
         'visc': 0.001,
         'lb_to_ln': 256,
-        'input_cshape': '16x16',
-        'max_sim_iters': 100})
+        'train_autoencoder': True,
+        'seq_length': 5,
+        'input_cshape': '32x32',
+        'max_sim_iters': 1000})
 
 if __name__ == '__main__':
   sim = LatNetController(trainer=StandardTrainer)
