@@ -529,10 +529,10 @@ class TrainLatNet(LatNet):
         if len(self.loss_stats[name + '_history']) > self.stats_history_length:
           self.loss_stats[name + '_history'].pop(0)
         # update loss
-        self.loss_stats[name] = float(output[name])
+        self.loss_stats[name] = output[name]
         # update ave loss
-        self.loss_stats[name + '_ave'] = float(np.sum(np.array(self.loss_stats[name + '_history']))
-                                         / len(self.loss_stats[name + '_history']))
+        self.loss_stats[name + '_ave'] = np.sum(np.array(self.loss_stats[name + '_history']))
+                                         / len(self.loss_stats[name + '_history'])
         # update var loss
         self.loss_stats[name + '_std'] = np.sqrt(np.var(np.array(self.loss_stats[name + '_history'])))
 
