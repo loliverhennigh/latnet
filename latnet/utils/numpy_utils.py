@@ -152,8 +152,6 @@ def mobius_extract_2(dat, subdomain, padding_type=['periodic', 'periodic', 'peri
                                 pad_type=padding_type[0],
                                 zero_value=1.0)
 
-  print(subdomain.size)
-  print(dat.shape)
 
   if return_padding:
     return dat, padding_tensor

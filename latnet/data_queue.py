@@ -32,6 +32,7 @@ class DataQueue(object):
     self.train_cshape    = str2shape(config.train_cshape)
     self.cratio = pow(2, self.nr_downsamples)
     self.start_num_dps   = config.start_num_dps
+    self.threads_per_sim = 10
 
     # initalize domains
     self.init_sims(config, domains)
@@ -70,7 +71,7 @@ class DataQueue(object):
     dps_per_sim = int(self.start_num_dps/len(self.sims))
     for sim in self.sims:
       try:
-        print("loaded")
+        print("trying to load")
         sim.load_dp()
       except:
         sim.add_rand_dps(num_dps=dps_per_sim,
@@ -122,9 +123,10 @@ class DataQueue(object):
     self.queue_dp = Queue()
     self.queue_dp_batches = []
     for sim in self.sims:
-      thr = threading.Thread(target= (lambda: self.dp_worker(sim)))
-      thr.daemon = True
-      thr.start()
+      for i in range(self.threads_per_sim):
+        thr = threading.Thread(target= (lambda: self.dp_worker(sim)))
+        thr.daemon = True
+        thr.start()
 
   def start_cdp_queue(self):
     # queue

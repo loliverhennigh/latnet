@@ -7,6 +7,7 @@ from queue import Queue
 from tqdm import *
 from threading import Thread
 import h5py
+import time
 
 from wrapper import SailfishWrapper, JHTDBWrapper, SpectralDNSWrapper
 import lattice
@@ -45,7 +46,7 @@ class Domain(object):
     group.add_argument('--lb_to_ln', 
                    help='ratio of flow simulation steps to neural network steps', 
                    type=int,
-                   default=60)
+                   default=32)
     group.add_argument('--DxQy', 
                    help='type of flow data', 
                    type=str,
@@ -282,16 +283,29 @@ class SpectralDNSDomain(Domain, SpectralDNSWrapper):
   def update_defaults(cls, defaults):
     pass
 
+  def load_stream(self):
+    if not hasattr(self, 'state_stream'):
+      print("loading dataset...")
+      self.state_stream = h5py.File(self.h5filename, driver='core')
+      print("finished...")
+      self.states = {}
+
   def read_state(self, iteration, subdomain=None, add_batch=False, return_padding=True):
     # load flow file
-    state_stream = h5py.File(self.h5filename)
+    self.load_stream()
+
+    t = time.time()
     spectral_iteration = self.latnet_iter_to_spectral_iter(iteration)
-    key_vel_u    = np.array(state_stream['3D']['U'][str(spectral_iteration)])
-    key_vel_v    = np.array(state_stream['3D']['V'][str(spectral_iteration)])
-    key_vel_w    = np.array(state_stream['3D']['W'][str(spectral_iteration)])
-    key_pressure = np.array(state_stream['3D']['P'][str(spectral_iteration)])
-    state = np.stack([key_vel_u, key_vel_v, key_vel_w, key_pressure], axis=-1)
-    state = state.astype(np.float32)
+    if str(spectral_iteration) not in list(self.states.keys()):
+      #print("Storing data in memory to save time \n iteration: " + str(spectral_iteration))
+      key_vel_u    = self.state_stream['3D']['U'][str(spectral_iteration)].value.astype(np.float32)
+      key_vel_v    = self.state_stream['3D']['V'][str(spectral_iteration)].value.astype(np.float32)
+      key_vel_w    = self.state_stream['3D']['W'][str(spectral_iteration)].value.astype(np.float32)
+      key_pressure = self.state_stream['3D']['P'][str(spectral_iteration)].value.astype(np.float32)
+      state = np.stack([key_vel_u, key_vel_v, key_vel_w, key_pressure], axis=-1)
+      self.states[str(spectral_iteration)] = state
+    else:
+      state = self.states[str(spectral_iteration)]
     
     if subdomain is not None:
       state, pad_state = numpy_utils.mobius_extract(state, subdomain,
@@ -304,6 +318,8 @@ class SpectralDNSDomain(Domain, SpectralDNSWrapper):
       state = np.expand_dims(state, axis=0)
       if return_padding:
         pad_state = np.expand_dims(pad_state, axis=0)
+
+    #print("needed time was: " + str(time.time() - t))
 
     if return_padding:
       return (state, pad_state)
@@ -344,8 +360,15 @@ class SpectralDNSDomain(Domain, SpectralDNSWrapper):
     rho = self.DxQy.lattice_to_rho(state)
     return vel, rho
 
-  def generate_data(self, num_iters):
-    self.new_sim(num_iters)
+  def need_to_generate(self):
+    # check if need to generate train data or not
+    need = True
+    if os.path.isfile(self.h5filename):
+      need = False
+    return need 
+
+  def generate_data(self):
+    self.new_sim()
 
 class JHTDBDomain(Domain, JHTDBWrapper):
   wrapper_name = 'JHTDB'
@@ -489,6 +512,7 @@ class TrainSpectralDNSDomain(SpectralDNSDomain, TrainDomain):
     # check if need to generate data and do so
     if self.need_to_generate() and (not (config.run_mode == 'generate_data')):
       self.generate_train_data()
+    self.load_stream()
 
   def need_to_generate(self):
     # check if need to generate train data or not
@@ -571,7 +595,7 @@ class TrainJHTDBDomain(JHTDBDomain, TrainDomain):
       t = Thread(target=self.download_cdp_worker)
       t.daemon = True
       t.start()
- 
+
   def download_dp_worker(self):
     while True:
       (seq_length, state_shape_converter, seq_state_shape_converter, train_cshape, cratio) = self.dp_queue.get()

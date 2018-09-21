@@ -78,8 +78,8 @@ class LatNet(object):
     variables = tf.global_variables()
     variables_autoencoder = [v for i, v in enumerate(variables) if ("coder" in v.name[:v.name.index(':')]) or ('global' in v.name[:v.name.index(':')])]
     variables_compression = [v for i, v in enumerate(variables) if "compression_mapping" in v.name[:v.name.index(':')]]
-    #for i, v in enumerate(variables_autoencoder):
-    #  print(v.name)
+    for i, v in enumerate(variables_autoencoder):
+      print(v.name)
     #for i, v in enumerate(variables_compression):
     #  print(v.name)
     
@@ -134,6 +134,15 @@ class LatNet(object):
       if ckpt is not None:
         try:
           self.saver_all.restore(self.sess, ckpt.model_checkpoint_path)
+          print("Restored compression mapping succefully!")
+        except:
+          print("there was a problem loading variables, random init will be used instead")
+      print("now loading encoder and decoders checkpoint in " + self.checkpoint_path + '/full_train')
+      ckpt =  tf.train.get_checkpoint_state(self.checkpoint_path + '/full_train')
+      if ckpt is not None:
+        try:
+          self.saver_autoencoder.restore(self.sess, ckpt.model_checkpoint_path)
+          print("Restored encoder and decoder succefully!")
         except:
           print("there was a problem loading variables, random init will be used instead")
       else:
@@ -249,7 +258,8 @@ class LatNet(object):
 
     def compression_mapping(feed_dict):
       feed_dict[cstate_name] = feed_dict.pop('cstate')
-      feed_dict[cboundary_name] = feed_dict.pop('cboundary')
+      if self.use_boundary:
+        feed_dict[cboundary_name] = feed_dict.pop('cboundary')
       cstate = self.run(out_name, feed_dict=feed_dict)
       return cstate
 
@@ -656,7 +666,7 @@ class EvalLatNet(LatNet):
     self.sim_dir = config.sim_dir
     self.dataset = config.dataset
     self.sim_shape = self.domain.sim_shape
-    self.sim_cshape = [x/pow(2,config.nr_downsamples) for x in self.sim_shape]
+    self.sim_cshape = [int(x/pow(2,config.nr_downsamples)) for x in self.sim_shape]
     self.eval_cshape = str2shape(config.eval_cshape)
     self.num_iters = config.num_iters
     self.sim_save_every = config.sim_save_every
@@ -669,6 +679,10 @@ class EvalLatNet(LatNet):
     self.sim = self.domain(config, self.sim_dir + '/' + self.domain.wrapper_name)
     if self.domain.wrapper_name == 'sailfish':
       self.sim.generate_data(1)
+    elif self.domain.wrapper_name == 'spectralDNS':
+      self.start_state_iter = 100 # TODO Hard set for now
+      if self.sim.need_to_generate():
+        self.sim.generate_data()
 
   @classmethod
   def add_options(cls, group):
@@ -687,7 +701,7 @@ class EvalLatNet(LatNet):
     group.add_argument('--sim_save_every',
                    help=' save cstate every sim_save_every iters',
                    type=int,
-                   default=4)
+                   default=1)
 
   def state_input_generator(self, subdomain):
     if self.start_state is not None:
@@ -721,12 +735,15 @@ class EvalLatNet(LatNet):
                                        has_batch=True, 
                                        padding_type=self.sim.padding_type,
                                        return_padding=True)
-      sub_cboundary = mobius_extract_2(self.cboundary,
-                                       subdomain, 
-                                       has_batch=True, 
-                                       padding_type=self.sim.padding_type,
-                                       return_padding=True)
-      return {'cstate': sub_cstate, 'cboundary': sub_cboundary}
+      if self.use_boundary:
+        sub_cboundary = mobius_extract_2(self.cboundary,
+                                         subdomain, 
+                                         has_batch=True, 
+                                         padding_type=self.sim.padding_type,
+                                         return_padding=True)
+        return {'cstate': sub_cstate, 'cboundary': sub_cboundary}
+      else:
+        return {'cstate': sub_cstate}
 
   def eval(self):
     # unroll network
@@ -735,34 +752,38 @@ class EvalLatNet(LatNet):
       encode_boundary, boundary_shape_converter = self.unroll_boundary_encoder()
       compression_mapping, cstate_shape_converter = self.unroll_compression_mapping()
       state_shape_converter = state_shape_converter['state_converter']
-      boundary_shape_converter = boundary_shape_converter['boundary_converter']
+      if self.use_boundary:
+        boundary_shape_converter = boundary_shape_converter['boundary_converter']
       cstate_shape_converter = cstate_shape_converter['cstate_converter']
       self.start_session()
       self.load_checkpoint() 
    
     # get start state and boundary of simulation
     print("Computing compressed state") 
-    self.start_state = self.sim.read_state(1, subdomain=None, add_batch=True, return_padding=False)
+    self.start_state = self.sim.read_state(self.start_state_iter, subdomain=None, add_batch=True, return_padding=False)
     self.cstate = self.mapping(mapping=encode_state,
                                shape_converter=state_shape_converter, 
                                input_generator=self.state_input_generator,
                                output_shape=self.sim_cshape,
                                run_output_shape=self.eval_cshape)
     self.start_state = None
-    print("Computing compressed boundary") 
-    self.start_boundary = self.sim.read_boundary(subdomain=None, add_batch=True, return_padding=False)
-    self.cboundary = self.mapping(encode_boundary, boundary_shape_converter, 
-                         self.boundary_input_generator, self.sim_cshape,
-                         self.eval_cshape)
-    self.start_boundary = None
+    if self.use_boundary:
+      print("Computing compressed boundary") 
+      self.start_boundary = self.sim.read_boundary(subdomain=None, add_batch=True, return_padding=False)
+      self.cboundary = self.mapping(encode_boundary, boundary_shape_converter, 
+                           self.boundary_input_generator, self.sim_cshape,
+                           self.eval_cshape)
+      self.start_boundary = None
+    #else:
+    #  self.cboundary = None
 
     print("Running compressed simulation") 
     for i in tqdm(range(self.num_iters)):
+      if (i % self.sim_save_every) == 0:
+        self.sim_saver.save(i, self.cstate)
       self.cstate = self.mapping(compression_mapping, cstate_shape_converter, 
                        self.cstate_cboundary_input_generator, self.sim_cshape,
                        self.eval_cshape)
-      if i % self.sim_save_every:
-        self.sim_saver.save(i, self.cstate)
 
   def mapping(self, mapping, shape_converter, input_generator, output_shape, run_output_shape):
     nr_subdomains = [int(math.ceil(x/float(y))) for x, y in zip(output_shape, run_output_shape)]
@@ -830,12 +851,13 @@ class DecodeLatNet(EvalLatNet):
     self.compare = config.compare
 
     # restart simulations
-    """
     if self.compare:
       self.sim = self.domain(config, self.sim_dir + '/' + self.domain.wrapper_name)
       if self.domain.wrapper_name == 'sailfish':
         self.sim.generate_data(1)
-    """
+      elif self.domain.wrapper_name == 'spectralDNS':
+        if self.sim.need_to_generate():
+          self.sim.generate_data()
 
   @classmethod
   def add_options(cls, group):
@@ -846,6 +868,9 @@ class DecodeLatNet(EvalLatNet):
 
   def state_subdomain_to_state(self, subdomain, shape_converter, cstate, decode_mapping):
     cstate_subdomain = shape_converter.out_in_subdomain(copy(subdomain))
+    output_subdomain = shape_converter.in_out_subdomain(copy(cstate_subdomain))
+    output_subdomain.pos = [x - y for x, y in zip(output_subdomain.pos, subdomain.pos)]
+    output_subdomain.size = subdomain.size
     sub_cstate = mobius_extract_2(cstate,
                                   cstate_subdomain, 
                                   has_batch=True, 
@@ -853,7 +878,12 @@ class DecodeLatNet(EvalLatNet):
                                   return_padding=True)
     sub_cstate = {'cstate': sub_cstate}
     sub_state = decode_mapping(sub_cstate)
-    #print(sub_state.keys())
+
+    # trim edges
+    sub_state = mobius_extract_2(sub_state,
+                                 output_subdomain,
+                                 has_batch=True)
+     
     return sub_state
 
   def decode(self):
@@ -865,31 +895,18 @@ class DecodeLatNet(EvalLatNet):
    
     print("Decompressing ") 
     for i in tqdm(range(self.num_iters)):
-      if i % self.sim_save_every:
+      if (i % self.sim_save_every) == 0:
         cstate = self.sim_saver.load(i)
         for subdomain in self.decode_subdomains:
           sub_state = self.state_subdomain_to_state(subdomain,
                                  decode_shape_converter['state_converter'],
                                  cstate, decode_mapping)
-          self.sub_state_computation(sub_state, subdomain, i)
+          if self.compare:
+            compare_state = self.sim.read_state(self.start_state_iter+i, subdomain=subdomain, add_batch=True, return_padding=False)
+          else:
+            compare_state = None
+          self.sub_state_computation(sub_state, subdomain, i, compare_state)
 
-  def sub_state_computation(self, sub_state, subdomain, iteration):
-    print("wrong")
+  def sub_state_computation(self, sub_state, subdomain, iteration, compare_state=None):
     pass
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

@@ -70,6 +70,7 @@ class DxQy:
 
   @classmethod
   def _expand(cls, lattice, vec):
+    print(lattice.shape)
     if is_numpy(lattice):
       vec = vec.reshape((len(lattice.shape)-1)*[1] + list(vec.shape))
     else:

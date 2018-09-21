@@ -75,8 +75,7 @@ class NetArch(object):
                               match_name=out_cstate_names[-1], 
                               out_name=out_cstate_names[j])
        self.decoder_state(in_name=out_cstate_names[j], 
-                          out_name=out_names[j],
-                          lattice_size=self.DxQy.Q)
+                          out_name=out_names[j])
        #if gpu_id == 0:
        #  self.lattice_summary(in_name=out_names[j], summary_name=out_names[j])
 

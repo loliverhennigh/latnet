@@ -419,7 +419,7 @@ class SpectralDNSWrapper(object):
     self.h5filename = self.save_dir + '/isotropic_flow.h5'
     self.dt = 0.002
     self.T = 10
-    self.cutoff_time = 2
+    self.cutoff_time = 5.0
     self.cutoff_spectral_iteration = self.cutoff_time/self.dt
     self.cutoff_latnet_iteration = self.spectral_iter_to_latnet_iter(self.cutoff_spectral_iteration)
 
@@ -474,8 +474,12 @@ class SpectralDNSWrapper(object):
     return cstate_filename
 
   def list_state_iters(self):
-    state_stream = h5py.File(self.h5filename)
-    iters = list(state_stream['3D']['U'].keys())
+    if not hasattr(self, 'state_stream'):
+      print("loading dataset...")
+      self.state_stream = h5py.File(self.h5filename, driver='core')
+      print("finished...")
+    iters = list(self.state_stream['3D']['U'].keys())
+    iters.sort(key=int)
     return iters
 
 class JHTDBWrapper(object):

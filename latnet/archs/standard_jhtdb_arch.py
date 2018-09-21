@@ -132,7 +132,7 @@ class StandardJHTDBArch(NetArch):
     self.out_tensors[out_name] = tf.nn.l2_normalize(self.out_tensors[out_name], dim=-1) 
 
   # decoder state
-  def _decoder_state(self, in_name, out_name, lattice_size=9):
+  def _decoder_state(self, in_name, out_name):
   
     # set nonlinearity
     nonlinearity = set_nonlinearity(self.nonlinearity)
@@ -160,7 +160,7 @@ class StandardJHTDBArch(NetArch):
   
     self.trans_conv(in_name=out_name, out_name=out_name,
                     kernel_size=4, stride=2,
-                    filter_size=lattice_size,
+                    filter_size=self.DxQy.Q,
                     weight_name="last_up_conv")
   
   # discriminator
