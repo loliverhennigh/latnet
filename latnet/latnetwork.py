@@ -20,7 +20,7 @@ from shape_converter import SubDomain
 from sim_saver import SimSaver
 from config import NONSAVE_CONFIGS
 from utils.python_utils import *
-from utils.numpy_utils import mobius_extract_2, stack_grid
+from utils.numpy_utils import mobius_extract, mobius_extract_2, stack_grid
 
 class LatNet(object):
   def __init__(self, config):
@@ -705,11 +705,11 @@ class EvalLatNet(LatNet):
 
   def state_input_generator(self, subdomain):
     if self.start_state is not None:
-      start_state, pad_start_state = mobius_extract_2(self.start_state, 
-                                                      subdomain, 
-                                                      has_batch=True, 
-                                                      padding_type=self.sim.padding_type,
-                                                      return_padding=True)
+      start_state, pad_start_state = mobius_extract(self.start_state, 
+                                                    subdomain, 
+                                                    has_batch=True, 
+                                                    padding_type=self.sim.padding_type,
+                                                    return_padding=True)
     else:
       vel = self._domain.velocity_initial_conditions(0,0,None)
       feq = self.DxQy.vel_to_feq(vel).reshape([1] + self.DxQy.dims*[1] + [self.DxQy.Q])
@@ -719,28 +719,28 @@ class EvalLatNet(LatNet):
 
   def boundary_input_generator(self, subdomain):
     if self.start_boundary is not None:
-      input_boundary, pad_input_boundary = mobius_extract_2(self.start_boundary, 
-                                                            subdomain,
-                                                            has_batch=True, 
-                                                            padding_type=self.sim.padding_type,
-                                                            return_padding=True)
+      input_boundary, pad_input_boundary = mobius_extract(self.start_boundary, 
+                                                          subdomain,
+                                                          has_batch=True, 
+                                                          padding_type=self.sim.padding_type,
+                                                          return_padding=True)
     else:
       input_boundary = self.input_boundary(subdomain)
       pad_input_boundary = np.zeros(subdomain.size + [1])
     return {'boundary': [input_boundary, pad_input_boundary]}
 
   def cstate_cboundary_input_generator(self, subdomain):
-      sub_cstate =    mobius_extract_2(self.cstate,
+      sub_cstate =    mobius_extract(self.cstate,
+                                     subdomain, 
+                                     has_batch=True, 
+                                     padding_type=self.sim.padding_type,
+                                     return_padding=True)
+      if self.use_boundary:
+        sub_cboundary = mobius_extract(self.cboundary,
                                        subdomain, 
                                        has_batch=True, 
                                        padding_type=self.sim.padding_type,
                                        return_padding=True)
-      if self.use_boundary:
-        sub_cboundary = mobius_extract_2(self.cboundary,
-                                         subdomain, 
-                                         has_batch=True, 
-                                         padding_type=self.sim.padding_type,
-                                         return_padding=True)
         return {'cstate': sub_cstate, 'cboundary': sub_cboundary}
       else:
         return {'cstate': sub_cstate}
@@ -817,9 +817,10 @@ class EvalLatNet(LatNet):
         sub_output = [sub_output]
 
       for i in range(len(sub_output)):
-        sub_output[i] = mobius_extract_2(sub_output[i], 
-                                         output_subdomain, 
-                                         has_batch=True)
+        sub_output[i] = mobius_extract(sub_output[i], 
+                                       output_subdomain, 
+                                       padding_type=self.sim.padding_type,
+                                       has_batch=True)
 
       # append to list of sub outputs
       output.append(sub_output)
@@ -836,9 +837,10 @@ class EvalLatNet(LatNet):
       output[i] = stack_grid(output[i],
                              nr_subdomains,
                              has_batch=True)
-      output[i] = mobius_extract_2(output[i],
-                                   total_subdomain, 
-                                   has_batch=True)
+      output[i] = mobius_extract(output[i],
+                                 total_subdomain, 
+                                 padding_type=self.sim.padding_type,
+                                 has_batch=True)
     if len(output) == 1:
       output = output[0]
     return output
@@ -851,8 +853,8 @@ class DecodeLatNet(EvalLatNet):
     self.compare = config.compare
 
     # restart simulations
+    self.sim = self.domain(config, self.sim_dir + '/' + self.domain.wrapper_name)
     if self.compare:
-      self.sim = self.domain(config, self.sim_dir + '/' + self.domain.wrapper_name)
       if self.domain.wrapper_name == 'sailfish':
         self.sim.generate_data(1)
       elif self.domain.wrapper_name == 'spectralDNS':
@@ -869,20 +871,22 @@ class DecodeLatNet(EvalLatNet):
   def state_subdomain_to_state(self, subdomain, shape_converter, cstate, decode_mapping):
     cstate_subdomain = shape_converter.out_in_subdomain(copy(subdomain))
     output_subdomain = shape_converter.in_out_subdomain(copy(cstate_subdomain))
-    output_subdomain.pos = [x - y for x, y in zip(output_subdomain.pos, subdomain.pos)]
+    #output_subdomain.pos = [x - y for x, y in zip(output_subdomain.pos, subdomain.pos)]
+    output_subdomain.pos = [y - x for x, y in zip(output_subdomain.pos, subdomain.pos)]
     output_subdomain.size = subdomain.size
-    sub_cstate = mobius_extract_2(cstate,
-                                  cstate_subdomain, 
-                                  has_batch=True, 
-                                  padding_type=self.sim.padding_type,
-                                  return_padding=True)
+    sub_cstate = mobius_extract(cstate,
+                                cstate_subdomain, 
+                                padding_type=self.sim.padding_type,
+                                has_batch=True, 
+                                return_padding=True)
     sub_cstate = {'cstate': sub_cstate}
     sub_state = decode_mapping(sub_cstate)
 
     # trim edges
-    sub_state = mobius_extract_2(sub_state,
-                                 output_subdomain,
-                                 has_batch=True)
+    sub_state = mobius_extract(sub_state,
+                               output_subdomain,
+                               padding_type=self.sim.padding_type,
+                               has_batch=True)
      
     return sub_state
 

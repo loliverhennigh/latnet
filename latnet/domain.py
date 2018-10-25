@@ -41,6 +41,7 @@ class Domain(object):
       if self.periodic_z:
         self.padding_type[2] = 'periodic'
 
+
   @classmethod
   def add_options(cls, group):
     group.add_argument('--lb_to_ln', 

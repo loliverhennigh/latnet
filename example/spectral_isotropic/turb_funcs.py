@@ -2,9 +2,11 @@
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
+plt.style.use('seaborn-white')
 import h5py
 
 import skimage.measure
+from scipy.stats import kde
 
 def int_shape(x):
   return list(map(int, x.get_shape()))
@@ -18,6 +20,9 @@ def _simple_conv_3d(x, k):
   """A simplified 2D convolution operation"""
   y = tf.nn.conv3d(x, k, [1, 1, 1, 1, 1], padding='VALID')
   return y
+
+def vel_to_norm(vel):
+  return np.sqrt(np.sum(np.square(vel), axis=-1))
 
 def energy_spectrum_np(vel):
   """ Compute the energy spectrum of a velocity vector field:
@@ -59,6 +64,7 @@ def energy_spectrum_np(vel):
     return Eu, Ev
 
   elif dim == 3:
+    print(vel.shape)
     kmax = int(round(np.sqrt((1-nxc[0])**2 + (1-nxc[1])**2 + (1-nxc[2])**2)) + 1)
     Eu = np.zeros(kmax)
     Ev = np.zeros(kmax)
@@ -291,16 +297,16 @@ def gradient_tf(dat, dx):
 
 def aij_np(field, dx):
   if len(dx) == 2:
-    a11, a12 = gradient_np(field[:,:,0], dx)
-    a21, a22 = gradient_np(field[:,:,1], dx)
-    a12 = a12.reshape([1,1] + list(a12.shape))
-    a11 = a11.reshape([1,1] + list(a11.shape))
-    a22 = a22.reshape([1,1] + list(a22.shape))
-    a21 = a21.reshape([1,1] + list(a21.shape))
+    a12, a11 = gradient_np(field[:,:,0], dx)
+    a22, a21 = gradient_np(field[:,:,1], dx)
 
-    aij_temp_a = np.concatenate([a11, a12], axis=1)
-    aij_temp_b = np.concatenate([a21, a22], axis=1)
-    aij = np.concatenate([aij_temp_a, aij_temp_b], axis=0)
+    aij = np.zeros([2,2] + list(a12.shape))
+
+    aij[0,0] = a11
+    aij[0,1] = a12
+    aij[1,0] = a21
+    aij[1,1] = a22
+
     return aij
 
   if len(dx) == 3:
@@ -365,13 +371,33 @@ def aij_to_intermittency(aij, bins):
 
 def structure_functions_np(vel, dx, distances, orders):
   u = vel[...,0] 
-  dn = np.zeros((len(distances), len(orders)))
+  u = u-np.min(u)
+  u = 255.0*u/np.max(u)
+  deltau = np.zeros((len(orders), len(distances)))
   for n in range(len(orders)):
     for dist in range(len(distances)):
-      delta_u = u[distances[dist]:] - u[:-distances[dist]]
-      delta_u_sq = np.power(np.abs(delta_u), orders[n] + 1)
-      dn[dist, n] = np.sum(delta_u_sq)/np.prod(delta_u_sq.shape)
-  return dn
+      veldiff = u[distances[dist]:] - u[:-distances[dist]]
+      veldiffsq = np.power(np.abs(veldiff), orders[n])
+      deltau[n, dist] = np.sum(veldiffsq)/(np.prod(veldiffsq.shape))
+
+  dn = deltau
+  zeta = np.zeros(len(orders))
+  x = distances * dx[0]
+
+  for i in range(len(orders)): 
+    y = dn[i,:]
+    p = np.polyfit(np.log(x), np.log(y), 1,  w=np.log(y)) 
+    m = p[0]
+    b = np.exp(p[1])
+    #plt.scatter(x, y)
+    #plt.plot(x, b*np.power(x, m))
+    plt.scatter(np.log(x), np.log(y))
+    plt.plot(np.log(x), m * np.log(x) + p[1])
+    plt.show()
+    zeta[i]=m
+    print(m)
+
+  return zeta
 
 def structure_functions_tf(vel, dx, distances, orders):
   u = vel[...,0] 
@@ -388,7 +414,17 @@ def structure_functions_tf(vel, dx, distances, orders):
   return dn
 
 def q_r_np(vel, dx, coarse_grains=[0,4,16]): # coarse grain with 1 is not doing coarse grain
-  full_aij = aij_np(vel, dx)
+  if len(dx) == 2: 
+    vel_3d = np.zeros(list(vel.shape[:2]) + [3] + [3])
+    print(vel_3d.shape)
+    vel_3d[:,:,0,:] = vel
+    vel_3d[:,:,1,:] = vel
+    vel_3d[:,:,2,:] = vel
+    dx = [0.1,0.1,0.1]
+    full_aij = aij_np(vel_3d, dx)
+  else: 
+    full_aij = aij_np(vel, dx)
+
 
   aij = {}
   for n in coarse_grains:
@@ -448,19 +484,6 @@ def q_r_np(vel, dx, coarse_grains=[0,4,16]): # coarse grain with 1 is not doing 
     q[n] = qm[n] / qw_mean[n]
 
   return q, r
-
-def plot_structure_function(dn, dx, distances, orders):
-  zeta = np.zeros(len(orders))
-  x = dx[0] * np.array(distances)
-  for i in range(len(orders)):
-    y = dn[:,i]
-    plt.scatter(x, y)
-    p = np.polyfit(np.log(x), np.log(y), 1)
-    m = p[0]
-    b = np.exp(p[1])
-    plt.plot(x, b*np.power(x, m))
-    zeta[i] = m
-  plt.show()
 
 def test_energy_spectrum(dim=2):
   if dim == 2:
@@ -640,27 +663,68 @@ def test_fft(dim=2):
     plt.imshow(np.abs(spectrum_np - spectrum_tf_np))
     plt.show()
 
-def test_structure_functions(dim=2):
-  if dim == 2:
-    dx = [0.1, 0.1]
-    orders = np.arange(10)
-    distances = np.arange(2,30,2)
+def test_structure_functions(dim=3):
+  if dim == 3:
+    #dx = [0.05, 0.05, 0.05]
+    dx = [0.0245442, 0.024544]
+    orders = np.arange(1, 10)
+    #distances = np.arange(16, 56, 8)
+    distances = np.arange(1, 32, 2)
 
     # random function
     stream_hr = h5py.File('00000.h5')
-    key_hr = stream_hr.keys()[4]
-    value = np.array(stream_hr[key_hr])[0,:,:,0:2]
+    for key in stream_hr.keys():
+      print(key)
+    key_hr = 'u00000'
+    vel = np.array(stream_hr[key_hr])[0,:,:,0:3]
+ 
+    #vel = np.load('0000.npy')[0,:,:,:,0:3]
+    #vel = np.load('0000.npy')[0,:,:,:,0:3]
  
     # numpy gradient
-    dn = structure_functions_np(value, dx, distances, orders)
-    plot_structure_function(dn, dx, distances, orders)
+    zeta = structure_functions_np(vel, dx, distances, orders)
+    #zeta = zeta/2.0
 
-    # tensorflow energy spectrum
-    sess = tf.InteractiveSession()
-    flow = tf.placeholder(tf.float32, [1024, 1024, 2], name="input_flow")
-    dn_tf = structure_functions_tf(flow, dx, distances, orders)
-    dn_tf_np = sess.run(dn_tf, feed_dict={flow: value})
-    plot_structure_function(dn_tf_np, dx, distances, orders)
+    struct_sim = np.zeros(len(orders))
+    mu = 0.25 
+    for n in range(len(orders)):
+      struct_sim[n]= 1./3.*orders[n]*(1.0-(1.0/6.0)*mu*(orders[n]-3.0));
+    plt.scatter(orders[1:], zeta[1:])
+    plt.plot(orders, struct_sim)
+    plt.plot(orders, orders/3)
+    plt.show()
+
+def plot_contour(axi, x, y, label, color):
+  v = [1e-3, 1e-2, 1e-1, 1.0, 10.0, 100]
+  edges = np.arange(-10, 10, .5)
+  bounds = 10
+  N, xi_edges, yi_edges = np.histogram2d(y, x, bins=(edges, edges), normed=True)
+  #N = np.flip(N, axis=0)
+  #N = np.flip(N, axis=1)
+  xi_width = xi_edges[2] - xi_edges[1]
+  yi_width = yi_edges[2] - yi_edges[1]
+  xc = xi_edges + xi_width/2
+  xc = xc[:-1]
+  yc = yi_edges + yi_width/2
+  yc = yc[:-1]
+
+  xr = np.linspace(-10, 10, 1000)
+  xq = -np.power(27.0/4.0 * np.power(xr, 2.0), (1.0/3.0))
+
+  axi.plot(xr, xq)
+  #axi.scatter(x, y)
+  cnt = axi.contour(xc, yc, N, levels=v, linewidths=1.0, colors=color)
+  h1, _ = cnt.legend_elements()
+  return h1
+
+  #plt.xlim((-10, 10))
+  #plt.ylim((-10, 10))
+  #xi, yi = np.mgrid[x.min():x.max():nbins*1j, y.min():y.max():nbins*1j]
+  #xi, yi = np.mgrid[-bounds:bounds:nbins*1j, -bounds:bounds:nbins*1j]
+  #zi = k(np.vstack([xi.flatten(), yi.flatten()]))
+  #zi = np.log(k(np.vstack([xi.flatten(), yi.flatten()])))
+  #plt.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='gouraud', cmap=plt.cm.BuGn_r)
+  #plt.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='gouraud', cmap=plt.cm.BuGn_r)
 
 def test_q_r_plot(dim=2):
   if dim == 2:
@@ -687,7 +751,6 @@ def test_q_r_plot(dim=2):
 
     # read flow file
     vel = np.load('0000.npy')[0,:,:,:,0:3]
-    print(vel.shape)
  
     # numpy gradient
     q, r = q_r_np(vel, dx, coarse_grains=[0,2,4])
@@ -700,33 +763,37 @@ def test_q_r_plot(dim=2):
     plt.show()
 
 
-def diagnostics_np(net_vel, true_vel, save_path='./', dx=[0.1, 0.1, 0.1], diagnostics=['spectrum', 'intermittency', 'structure_functions', 'QR', 'image']):
+def diagnostics_np(net_vel, true_vel, save_dir='./diagnosticsOliver', iteration=0, pos=[0,0,0], dx=[0.1, 0.1, 0.1], diagnostics=['spectrum', 'intermittency', 'structure_functions', 'QR', 'image']):
 
-  print(net_vel.shape)
-  print(true_vel.shape)
-  
+  save_path = (save_dir + '/iter_' + str(iteration).zfill(4) + '_pos_'
+               + str(pos[0]) + '_'
+               + str(pos[1]) + '_'
+               + str(pos[2]) + '_')
 
   if 'spectrum' in diagnostics:
     net_e = np.sum(energy_spectrum_np(net_vel), axis=0)
     true_e = np.sum(energy_spectrum_np(true_vel), axis=0)
-    net_e = net_e/net_e[1]
+    net_e = net_e/true_e[1]
     true_e = true_e/true_e[1]
+    np.savez(save_path + 'energy_spectrum', net_e=net_e, true_e=true_e)
     x = np.arange(1, net_e.shape[0])
-    plt.loglog(x, net_e[1:],      label='network flow')
+    plt.loglog(x, net_e[1:],      label='Lat-Net flow')
     plt.loglog(x, true_e[1:],     label='true flow')
     plt.loglog(x, np.power(x, -(5.0/3.0)), label='-5/3 power rule')
     plt.title("Energy Spectrum")
     plt.ylabel("Energy")
     plt.legend(loc=0)
     plt.savefig(save_path + 'energy_spectrum.png')
+    #plt.show()
     plt.close()
 
   if 'intermittency' in diagnostics:
-    bins = 100
+    bins = np.arange(-6.5, 6.5, 13.0/100)
     net_aij = aij_np(net_vel, dx)
     true_aij = aij_np(true_vel, dx)
     net_ebins, net_zdns_plot = aij_to_intermittency(net_aij, bins)
     true_ebins, true_zdns_plot = aij_to_intermittency(true_aij, bins)
+    np.savez(save_path + 'intermittency', net_ebins=net_ebins, net_zdns_plot=net_zdns_plot, true_ebins=true_ebins, true_zdns_plot=true_zdns_plot)
     plt.semilogy(net_ebins, net_zdns_plot, label='network flow')
     plt.semilogy(true_ebins, true_zdns_plot, label='true flow')
     plt.legend(loc=0)
@@ -735,47 +802,38 @@ def diagnostics_np(net_vel, true_vel, save_path='./', dx=[0.1, 0.1, 0.1], diagno
     plt.close()
 
   if 'structure_functions' in diagnostics:
-    print("struction function plots not in yet")
-    """
-    dx = [0.1, 0.1]
-    orders = np.arange(10)
-    distances = np.arange(2,30,2)
-
-    # random function
-    stream_hr = h5py.File('00000.h5')
-    key_hr = stream_hr.keys()[4]
-    value = np.array(stream_hr[key_hr])[0,:,:,0:2]
- 
-    # numpy gradient
-    dn = structure_functions_np(value, dx, distances, orders)
-    plot_structure_function(dn, dx, distances, orders)
-
-    # tensorflow energy spectrum
-    sess = tf.InteractiveSession()
-    flow = tf.placeholder(tf.float32, [1024, 1024, 2], name="input_flow")
-    dn_tf = structure_functions_tf(flow, dx, distances, orders)
-    dn_tf_np = sess.run(dn_tf, feed_dict={flow: value})
-    plot_structure_function(dn_tf_np, dx, distances, orders)
-    """
+    dx = [0.0245442, 0.024544, 0.0245442]
+    orders = np.arange(1, 11)
+    distances = np.arange(8,24,1)
+    true_zeta = structure_functions_np(true_vel, dx, distances, orders)
+    net_zeta  = structure_functions_np(net_vel, dx, distances, orders)
+    np.savez(save_path + 'structure', net_zeta=net_zeta, true_zeta=true_zeta)
 
   if 'QR' in diagnostics:
-    print(net_vel.shape)
-    net_q, net_r = q_r_np(net_vel, dx, coarse_grains=[0])
-    true_q, true_r = q_r_np(true_vel, dx, coarse_grains=[0])
-    plt.scatter(net_r[0].flatten(), net_q[0].flatten(), s=0.1, label="network flow")
-    plt.scatter(true_r[0].flatten(), true_q[0].flatten(), s=0.1, label="true flow")
-    xr = np.linspace(-10, 10, 1000)
-    xq = -np.power(27.0/4.0 * np.power(xr, 2.0), (1.0/3.0))
-    plt.plot(xr, xq)
+    net_q, net_r = q_r_np(net_vel, dx, coarse_grains=[0, 8, 32])
+    true_q, true_r = q_r_np(true_vel, dx, coarse_grains=[0, 8, 32])
+    np.savez(save_path + 'qr_data', net_q_0 =net_q[0],  net_q_8=net_q[8],   net_q_32=net_q[32], 
+                                    net_r_0 =net_r[0],  net_r_8=net_r[8],   net_r_32=net_r[32], 
+                                    true_q_0=true_q[0], true_q_8=true_q[8], true_q_32=true_q[32],
+                                    true_r_0=true_r[0], true_r_8=true_r[8], true_r_32=true_r[32])
+    """
+    plot_contour(net_r[0].flatten(), net_q[0].flatten(), label="network flow", color='green')
+    plot_contour(true_r[0].flatten(), true_q[0].flatten(), label="true flow", color='red')
     plt.title("Intermittency")
     plt.xlabel("R/Qw")
     plt.ylabel("Q/Qw")
     plt.legend(loc=0)
+    #plt.show()
     plt.savefig(save_path + 'qr.png')
     plt.close()
-
-
-
+    """
+ 
+  if 'image' in diagnostics:
+    net_norm = vel_to_norm(net_vel)
+    true_norm = vel_to_norm(true_vel)
+    net_norm = net_norm[0]
+    true_norm = true_norm[0]
+    np.savez(save_path + 'image', net_norm=net_norm, true_norm=true_norm)
 
 """
 test_energy_spectrum(dim=2) 
@@ -784,7 +842,6 @@ test_intermittency_plot(dim=2)
 test_intermittency_plot(dim=3)
 test_gradient_plot(dim=2)
 test_gradient_plot(dim=3)
-test_structure_functions(dim=2)
 test_structure_functions(dim=3)
 test_q_r_plot(dim=2)
 test_q_r_plot(dim=3)

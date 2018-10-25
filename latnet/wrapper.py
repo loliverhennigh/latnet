@@ -505,7 +505,6 @@ class JHTDBWrapper(object):
     url_end += str(subdomain.size[1]) + "/"
     url_end += str(subdomain.pos[2]) + ","
     url_end += str(subdomain.size[2]) + "/hdf5/"
-    print(url_end)
     print(url_begining + url_end)
     return url_begining + url_end
 
@@ -517,7 +516,6 @@ class JHTDBWrapper(object):
       while (r == ''):
         try:
           r = requests.get(self.make_url(subdomain, iteration)) 
-          #print(r)
         except:
           print("having trouble getting data, will sleep and try again")
           time.sleep(0.2)

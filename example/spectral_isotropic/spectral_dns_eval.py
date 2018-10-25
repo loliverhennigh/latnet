@@ -36,7 +36,7 @@ class JHTDBSimulation(EvalLatNet, StandardJHTDBArch):
         'eval_cshape': '32x32x32',
         #'eval_cshape': '16x16x16',
         'sim_save_every': 1,
-        'num_iters': 128,
+        'num_iters': 32,
         'DxQy': 'D3Q4'})
 
 if __name__ == '__main__':
